@@ -3,6 +3,8 @@ using SnG.Control.Api.Contracts;
 using SnG.Control.Api.Errors;
 using SnG.Control.Application.Features.Budgets;
 using SnG.Control.Application.Features.Budgets.AssignSg;
+using SnG.Control.Application.Features.Budgets.PreviewQuotation;
+using SnG.Control.Infrastructure.Quotations;
 using SnG.Control.Application.Features.Clients;
 using SnG.Control.Application.Features.Clients.Create;
 using SnG.Control.Application.Features.Clients.GetById;
@@ -26,12 +28,17 @@ public static class DependencyInjection
     {
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();
+        services.AddOptions<BudgetQuotationParserOptions>().BindConfiguration(BudgetQuotationParserOptions.SectionName)
+            .Validate(options => options.MaxUploadBytes > 0 && options.MaxUncompressedBytes > 0 && options.MaxZipEntries > 0,
+                "Quotation preview technical limits must be positive.").ValidateOnStart();
         services.AddControllers().AddJsonOptions(options =>
         {
             options.JsonSerializerOptions.Converters.Add(new ProductLineJsonConverter());
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<OperationalArea>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<ProjectTaskType>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<ProjectTaskStatus>(allowIntegerValues: false));
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<CommercialItemSection>(allowIntegerValues: false));
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<BudgetQuotationWarningCode>(allowIntegerValues: false));
             options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
         });
 
@@ -40,6 +47,8 @@ public static class DependencyInjection
         services.AddScoped<IProjectTaskStore, EfProjectTaskStore>();
         services.AddScoped<IBudgetsWorkflowStore, EfBudgetsWorkflowStore>();
         services.AddScoped<AssignProjectSgCodeUseCase>();
+        services.AddScoped<IBudgetQuotationParser, XlsxBudgetQuotationParser>();
+        services.AddScoped<PreviewBudgetQuotationUseCase>();
         services.AddScoped<SendProjectToBudgetsUseCase>();
         services.AddScoped<ListProjectTasksByAreaUseCase>();
         services.AddScoped<ListProjectTasksByProjectUseCase>();

@@ -6,7 +6,7 @@ La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web
 
 La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las cuatro migraciones, desde `InitialCreate` hasta `EnforceSgCodeFormat`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
-Application implementa diez casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. No hay repositorios genéricos, Unit of Work propio, autenticación, autorización ni Docker. La API exige configuración de conexión, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
+Application implementa once casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. No hay repositorios genéricos, Unit of Work propio, autenticación, autorización ni Docker. La API exige configuración de conexión, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
 
 ## Requisitos y paquetes
 
@@ -19,6 +19,7 @@ Application implementa diez casos de uso: crear, obtener por Id y listar cliente
 | --- | --- | --- | --- |
 | Infrastructure | Microsoft.EntityFrameworkCore.Relational | 10.0.12 | Fluent API relacional y migraciones; fija también EF Core en 10.0.12 |
 | Infrastructure | Npgsql.EntityFrameworkCore.PostgreSQL | 10.0.3 | Proveedor PostgreSQL |
+| Infrastructure | DocumentFormat.OpenXml | 3.5.1 | Lectura XLSX, cachés de fórmulas e imágenes con anchors; licencia MIT |
 | Api | Microsoft.EntityFrameworkCore.Design | 10.0.12 | Tooling del startup project; `PrivateAssets=all` |
 | Api | Microsoft.AspNetCore.OpenApi | 10.0.12 | Documento OpenAPI en desarrollo |
 | Tests | Microsoft.NET.Test.Sdk | 17.14.1 | Ejecución de tests |
@@ -27,6 +28,8 @@ Application implementa diez casos de uso: crear, obtener por Id y listar cliente
 | Tests | coverlet.collector | 6.0.4 | Cobertura opcional |
 
 `Microsoft.EntityFrameworkCore` 10.0.12 y `Npgsql` 10.0.3 se resuelven transitivamente. No se duplican sus referencias en Api ni Tests. Domain y Application no dependen de EF ni de paquetes externos. No se utilizan proveedores InMemory o SQLite.
+
+[Open XML SDK 3.5.1](https://www.nuget.org/packages/DocumentFormat.OpenXml/3.5.1), mantenido en [su repositorio oficial bajo MIT](https://github.com/dotnet/Open-XML-SDK), permite leer valores almacenados, formatos numéricos y posiciones/bytes originales de dibujos sin Office, COM ni procesos externos. Es el único paquete XLSX directo; sus dependencias transitivas las resuelve NuGet. No contiene un motor de cálculo: se usan exclusivamente los valores cacheados del archivo. Application y Domain no referencian la librería.
 
 `dotnet-tools.json` en la raíz registra **dotnet-ef 10.0.12** como herramienta local reproducible. No se necesita una instalación global. Las versiones son estables; la dependencia relacional explícita mantiene alineados los componentes de EF Core.
 
@@ -46,6 +49,8 @@ src/
     Controllers/ClientsController.cs
     Controllers/ProjectsController.cs
     Controllers/ProjectTasksController.cs
+    Controllers/BudgetQuotationController.cs
+    Filters/DisableFormValueModelBindingAttribute.cs
     Errors/ApiExceptionHandler.cs
     Persistence/SnGControlDbContextFactory.cs
     appsettings.json
@@ -57,6 +62,11 @@ src/
         AssignSg/AssignProjectSgCodeUseCase.cs
         AssignSg/AssignProjectSgCodeResult.cs
         AssignSg/AssignProjectSgCodeResponse.cs
+        PreviewQuotation/IBudgetQuotationParser.cs
+        PreviewQuotation/BudgetQuotationParseResult.cs
+        PreviewQuotation/BudgetQuotationPreviewResponse.cs
+        PreviewQuotation/PreviewBudgetQuotationResult.cs
+        PreviewQuotation/PreviewBudgetQuotationUseCase.cs
       Clients/
         IClientStore.cs
         ClientResponse.cs
@@ -85,6 +95,11 @@ src/
     Enums/ProjectTaskType.cs
     Enums/ProjectTaskStatus.cs
   Infrastructure/
+    Quotations/
+      XlsxBudgetQuotationParser.cs
+      QuotationCellReader.cs
+      BudgetQuotationParserOptions.cs
+      UnsupportedQuotationException.cs
     Persistence/
       SnGControlDbContext.cs
       Stores/EfClientStore.cs
@@ -110,6 +125,8 @@ tests/
     Application/
     Api/
     TestDoubles/
+    Fixtures/QuotationWorkbook.cs
+    Quotations/XlsxBudgetQuotationParserTests.cs
     Persistence/SnGControlDbContextTests.cs
     Persistence/EfProjectTaskStoreTests.cs
     Persistence/EfBudgetsWorkflowStoreTests.cs
@@ -118,8 +135,8 @@ tests/
 | Proyecto | Responsabilidad actual |
 | --- | --- |
 | Domain | Entidades e invariantes, sin dependencias de persistencia o HTTP. |
-| Application | Diez casos de uso organizados por feature, respuestas e interfaces de persistencia específicas. |
-| Infrastructure | Contexto EF, stores PostgreSQL, configuraciones Fluent API y migraciones. |
+| Application | Once casos de uso organizados por feature, respuestas, interfaz de parsing e interfaces de persistencia específicas. |
+| Infrastructure | Contexto EF, stores PostgreSQL, configuraciones Fluent API, migraciones y parser XLSX. |
 | Api | Contratos HTTP, Controllers, manejo de errores y composition root. Incluye la fábrica del tooling del startup project. |
 | Tests | Tests de dominio, casos de uso, HTTP y metadata/SQL del proveedor real, sin conexión PostgreSQL. |
 
@@ -177,7 +194,9 @@ Los tests normales funcionan sin conexión configurada, sin contraseña y sin Po
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite contiene 202 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+La suite contiene 268 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+
+Los 66 casos de preview usan XLSX anónimos generados en memoria: bloques reales/vacíos, Main/Additional, números repetidos y formatos con ceros, orden documental, etiquetas, fórmulas cacheadas sin cálculo, M2, imágenes por anchor y sus warnings, SG, archivos inválidos y límites técnicos. Application prueba todos los requisitos del workflow con stores cuyas operaciones de escritura fallan si se invocan. Los tests multipart utilizan el parser real y comprueban el contrato completo y sus errores, sin datos reales de clientes.
 
 Los tests de SG cubren normalización y dígitos ASCII, ceros iniciales, actualización de fechas, Start, primera asignación, corrección e idempotencia, conflictos de workflow y unicidad, request HTTP estricto, CHECK y traducción específica de errores. `EfBudgetsWorkflowStoreTests` comprueba que ambos cambios llegan a una sola llamada SaveChanges, la precisión de timestamps y el detach de ambas entidades sin limpiar entidades ajenas. La transacción y los bloqueos se validan con PostgreSQL real. El doble de workflow usa copias de entidades para no confundir cambios fallidos con datos guardados; la reflexión de copiado se limita a Tests. Los escenarios InProgress usan Start; Completed solo se simula en tests porque no existe esa transición pública.
 
@@ -324,17 +343,17 @@ dotnet run --project src/Api --launch-profile https
 
 El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `Development`, con redirección HTTP a HTTPS. Detener con `Ctrl+C`. También existe el perfil `http` en 5051, sin puerto HTTPS propio; la redirección puede advertir que no encuentra ese puerto. Se recomienda el perfil `https`.
 
-En desarrollo, `GET /openapi/v1.json` publica OpenAPI con las diez operaciones de negocio. No hay Swagger UI ni Minimal APIs de negocio; `/` devuelve 404. Fuera de desarrollo no se publica OpenAPI.
+En desarrollo, `GET /openapi/v1.json` publica OpenAPI con las once operaciones de negocio. No hay Swagger UI ni Minimal APIs de negocio; `/` devuelve 404. Fuera de desarrollo no se publica OpenAPI. El cuerpo multipart del preview se lee manualmente; su contrato de carga se describe más abajo y no se infiere de un parámetro IFormFile.
 
 - `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS y Controllers.
-- `DependencyInjection.cs`: `AddApiServices` registra los diez casos de uso y los cuatro stores con lifetime scoped, Controllers, opciones JSON y manejo de errores. Application no necesita depender de una librería de DI.
+- `DependencyInjection.cs`: `AddApiServices` registra los once casos de uso, los cuatro stores y el parser con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
 - `appsettings.json`: logging (`Information` general y `Warning` para ASP.NET Core) y `AllowedHosts=*`; no contiene conexiones.
 - `Properties/launchSettings.json`: perfiles/puertos locales y `ASPNETCORE_ENVIRONMENT=Development`.
 - El registro del contexto no ejecuta operaciones de base de datos ni aplica migraciones.
 
 ## Casos de uso y persistencia
 
-El flujo es `HTTP → Controller → UseCase → Store EF → PostgreSQL`. Application está organizada verticalmente en `Features/Clients` y `Features/Projects`, cada una con `Create`, `GetById` y `List`; `Features/ProjectTasks`, con `SendToBudgets`, `ListByArea` y `ListByProject`; y `Features/Budgets/AssignSg`. Los casos de uso son clases explícitas con `ExecuteAsync`, sin MediatR ni interfaces por caso de uso.
+El flujo de datos persistidos es `HTTP → Controller → UseCase → Store EF → PostgreSQL`; el preview añade una llamada al parser XLSX después de consultar el workflow. Application está organizada verticalmente en `Features/Clients` y `Features/Projects`, cada una con `Create`, `GetById` y `List`; `Features/ProjectTasks`, con `SendToBudgets`, `ListByArea` y `ListByProject`; y `Features/Budgets`, con `AssignSg` y `PreviewQuotation`. Los casos de uso son clases explícitas con `ExecuteAsync`, sin MediatR ni interfaces por caso de uso.
 
 `IClientStore` declara `AddAsync`, `GetByIdAsync`, `ListAsync` y `ExistsAsync`; `IProjectStore` declara los tres primeros. Las interfaces viven junto a su feature en Application y trabajan con entidades del dominio, sin exponer EF, `IQueryable` ni detalles de PostgreSQL.
 
@@ -392,6 +411,7 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 | GET `/api/project-tasks?area=Budgets&status=Pending` | area y status requeridos como nombres | 200, colección de ProjectTaskResponse | Colección vacía |
 | GET `/api/projects/{id}/tasks` | Guid en ruta, sin filtros | 200, colección de ProjectTaskResponse | 404 |
 | PUT `/api/projects/{id}/sg-code` | `sgCode` | 200, AssignProjectSgCodeResponse; 409 por workflow o SG ocupado | 404 |
+| POST `/api/projects/{id}/budget-quotation/preview` | multipart, un archivo `file` | 200, BudgetQuotationPreviewResponse; 400 archivo inválido; 409 workflow o SG distinto | 404 |
 
 `ClientResponse` contiene `id`, `name`, `createdAt` y `updatedAt`. `ProjectResponse` contiene `id`, `clientId`, `name`, `city`, `productLine`, `sgCode`, `createdAt` y `updatedAt`. Las fechas son UTC en formato ISO 8601. Las respuestas de proyecto no incluyen el objeto Client completo. `sgCode` es null hasta su primera asignación y después contiene el código normalizado.
 
@@ -458,6 +478,138 @@ Devuelve 200 con `AssignProjectSgCodeResponse`:
 ```
 
 Una corrección devuelve la misma estructura con el SG y UpdatedAt nuevos, conservando StartedAt exactamente. Un reenvío del mismo valor normalizado conserva también UpdatedAt. No se acepta null para borrar SG ni campos desconocidos. El endpoint responde 400 por request/formato inválido; 404 si no existe Project; 409 si no fue enviado, el workflow es inconsistente/no soportado o el SG está ocupado. No hay endpoints separados para corregir o iniciar.
+
+### Preview técnico de cotización XLSX
+
+`Application/Features/Budgets/PreviewQuotation/IBudgetQuotationParser` define `ParseAsync(Stream, string fileName, CancellationToken)` y devuelve `BudgetQuotationParseResult.Success` o `Invalid` con un código estable. Sus DTO, `CommercialItemSection` y los códigos de warning viven en Application porque son un contrato reutilizable sin entidad de catálogo persistida. No agregan enums ni columnas al modelo EF.
+
+`PreviewBudgetQuotationUseCase` consulta `IProjectStore.GetByIdAsync` y `IProjectTaskStore.ListByProjectAsync`; sus implementaciones EF usan `AsNoTracking`. Exige un Project existente con SG y exactamente una PrepareQuotation, de área Budgets, InProgress, StartedAt presente y CompletedAt null. Invoca el parser y compara su SG normalizado con el del proyecto mediante igualdad ordinal. No usa `IBudgetsWorkflowStore`, transacciones explícitas, SELECT FOR UPDATE, mutadores del dominio ni SaveChanges. El estado se comprueba al leer; el preview no reserva ni bloquea el proyecto frente a cambios concurrentes posteriores.
+
+`Infrastructure/Quotations/XlsxBudgetQuotationParser` abre el paquete en modo de solo lectura y AutoSave desactivado. `QuotationCellReader` centraliza shared strings, valores cacheados y formatos de ItemNumber; `UnsupportedQuotationException` es exclusivamente una señal interna de validación, convertida a resultado controlado. No se guardan ni recalculan workbooks, no se siguen enlaces ni se ejecutan macros o fórmulas.
+
+**Formato soportado:** extensión `.xlsx` y paquete ZIP/OpenXML de workbook normal, sin VBA. La hoja debe llamarse `COTIZACIÓN`, tolerando espacios exteriores y diferencias de mayúsculas; no se busca una hoja parecida ni se consultan las bases internas. La metadata se toma de C10/C11/C12 (cliente/proyecto/ubicación), I10/I11/I12 (línea cliente/línea producción/elaborado por) y O10 (SG). Los metadatos descriptivos pueden estar vacíos; SG es obligatorio, se recorta, convierte a mayúsculas y exige `SG` + dígitos ASCII, preservando ceros iniciales. Espacios internos, signos o letras adicionales son inválidos. El nombre devuelto elimina componentes de ruta y nunca se usa para abrir un archivo local.
+
+Un encabezado candidato tiene A=ÍTEM/ITEM. Si A de la fila siguiente está vacío se ignora el bloque, incluso si la plantilla vacía utiliza AN/AL abreviados. Para un ítem real se exige además B=UBICACIÓN, C=CONFIGURACIÓN, D=DESCRIPCIÓN (con o sin sus acentos), J=AN (MT), K=AL (MT), L=M2/M², M=CNT, N=VR UNT y O=VR TOTAL. La normalización solo recorta y compara en mayúsculas, sin aproximaciones. N/O se usan exclusivamente para reconocer el encabezado; sus valores económicos no se extraen.
+
+Cada bloque termina antes del siguiente encabezado o marcador ADICIONALES, o al final de los datos de la hoja. `sourceRow` es la fila del número, con índice inicial 1. La fila principal proporciona ubicación B, ancho J, alto K, m² L y cantidad M. Dentro del bloque se exigen una sola vez las etiquetas SISTEMA, CRISTAL, ACABADO ALUMINIO, CERRADURA y OBSERVACIONES en C y se leen sus valores de D, independientemente de su orden. Se permiten valores textuales vacíos, incluidas observaciones. PELÍCULA PROTECCIÓN no se exporta.
+
+ItemNumber es texto visible, nunca identidad ni clave única. Texto e inline/shared strings conservan los ceros; para celdas numéricas se soportan General, texto (`@`) y máscaras enteras de ceros como `00`. Se rechazan otros formatos y números General de magnitud igual o superior a 100.000.000.000 que no puedan representarse con confianza. No se intenta reproducir todo el renderizado de Excel. Se conserva el orden documental y se permiten números repetidos. Antes de ADICIONALES la sección es Main; después es Additional. El título y las plantillas vacías no crean ítems.
+
+Width, Height y SquareMeters son `decimal` positivos; Quantity es `int` positivo sin fracciones, y TotalQuantity suma en `long`. Se leen valores numéricos OpenXML con cultura invariante; textos que parecen números no se convierten por heurísticas regionales. SquareMeters procede del documento y representa el total del ítem; no se calcula Width × Height ni se multiplican unidades. Las fórmulas requieren un valor cacheado utilizable; no se devuelven expresiones ni se recalculan, tampoco si hacen referencia a otro libro.
+
+Las imágenes incrustadas se asocian por la fila superior izquierda de su `OneCellAnchor` o `TwoCellAnchor`, dentro de los límites del bloque, incluido el encabezado. El orden de los drawings o del ZIP no decide la asociación. Una coincidencia devuelve bytes originales como base64 y su contentType; ninguna produce `MissingImage`, y varias producen `AmbiguousImage`, siempre con `image: null`. Logos fuera de los bloques se ignoran. Imágenes vinculadas externamente, agrupadas o sin anchor por celda interpretable hacen rechazar el formato. No se escriben imágenes a disco.
+
+Se rechazan archivos sin ítems, encabezados reales incompletos, etiquetas requeridas ausentes/repetidas, medidas/cantidades inválidas, cachés requeridas inutilizables y estructuras CONTRATADO/MODIFICADO. La recotización/liquidación identificada como SG780 está fuera del contrato por su **estructura**, sin condiciones por nombre o SG en el código. `.xls`, `.csv`, `.xlsm`, archivos cifrados, corruptos o ilegibles no se admiten. Los errores esperables de ZIP/XML/OpenXML se convierten en errores de archivo sin exponer detalles internos; la cancelación se propaga.
+
+**Carga HTTP:** POST `/api/projects/{id}/budget-quotation/preview`, `multipart/form-data`, exactamente una parte de archivo llamada `file`, sin campos adicionales. `BudgetQuotationController` usa MultipartReader y un MemoryStream limitado; `DisableFormValueModelBindingAttribute` evita que MVC consuma antes el formulario o lo almacene temporalmente en disco. No recibe JSON con paths, URLs ni varios archivos. El parser también admite streams no seekable y deja abierto el stream del llamador.
+
+Los límites son técnicos, configurables bajo `BudgetQuotationPreview`, y se validan como positivos al arrancar:
+
+| Opción | Valor predeterminado | Propósito |
+| --- | --- | --- |
+| MaxUploadBytes | 30000000 | Cota en memoria del archivo; alineada con el límite de request predeterminado de Kestrel |
+| MaxUncompressedBytes | 134217728 | Cota de 128 MiB para el contenido ZIP expandido, comprobada sobre longitudes declaradas y bytes leídos; también limita XML por parte |
+| MaxZipEntries | 10000 | Cota de entradas de paquete |
+
+Por ejemplo, se pueden configurar mediante `BudgetQuotationPreview__MaxUploadBytes`, `BudgetQuotationPreview__MaxUncompressedBytes` y `BudgetQuotationPreview__MaxZipEntries`. No son reglas comerciales de tamaño o cantidad de ítems. No se cambia el límite del servidor/proxy; este incluye el overhead multipart y puede rechazar antes la petición, normalmente con 413. Las cotas detectadas por el controller/parser devuelven 400. Cambiar estas opciones requiere evaluar la memoria disponible: los bytes comprimidos, XML, imágenes y base64 ocupan memoria simultáneamente. Nunca se extraen entradas ZIP al filesystem; se rechazan nombres duplicados y rutas inseguras.
+
+**Respuesta 200**, ejemplo anónimo con una imagen ausente:
+
+```json
+{
+  "projectId": "b0825722-a7d2-4385-9d13-a1a5e6fd7e66",
+  "projectSgCode": "SG0012",
+  "document": {
+    "fileName": "cotizacion.xlsx",
+    "clientName": "Cliente de ejemplo",
+    "projectName": "Proyecto de ejemplo",
+    "location": "Ubicación de ejemplo",
+    "clientLine": "Línea cliente",
+    "productionLine": "Línea producción",
+    "preparedBy": "Equipo de ejemplo",
+    "sgCode": "SG0012"
+  },
+  "itemCount": 1,
+  "totalQuantity": 2,
+  "items": [{
+    "itemNumber": "01",
+    "section": "Main",
+    "location": "Zona de ejemplo",
+    "system": "Sistema de ejemplo",
+    "glass": "Cristal de ejemplo",
+    "aluminumFinish": "Acabado de ejemplo",
+    "lockType": "Cerradura de ejemplo",
+    "observations": "",
+    "width": 1,
+    "height": 2.8,
+    "squareMeters": 5.6,
+    "quantity": 2,
+    "image": null,
+    "sourceRow": 15
+  }],
+  "warnings": [{
+    "code": "MissingImage",
+    "itemNumber": "01",
+    "sourceRow": 15,
+    "message": "El ítem no tiene una imagen asociable."
+  }]
+}
+```
+
+Cuando existe imagen, su objeto contiene `contentType` y `base64`. Section se serializa como Main/Additional y los warnings como MissingImage/AmbiguousImage. ItemCount cuenta bloques reales; TotalQuantity suma cantidades agrupadas. No hay unitPrice, totalPrice, projectTotal, costos, utilidad ni película de protección. Las advertencias solo cubren imágenes; no sustituyen errores estructurales.
+
+El controller valida la carga, luego el caso de uso comprueba proyecto/workflow, interpreta el archivo y compara SG. Devuelve 400 por carga o documento inválido, 404 por proyecto inexistente, 409 por workflow no habilitado o SG válido distinto. Los errores del parser incluyen `code`: UnreadableWorkbook, UnsupportedWorkbookFormat, InvalidDocumentSgCode o TechnicalLimitExceeded, dentro de ProblemDetails. Un error inesperado del servidor sigue siendo 500 genérico.
+
+Ejemplo con un proyecto existente ya habilitado y un XLSX cuyo SG coincide:
+
+```powershell
+curl.exe -F "file=@<RUTA_XLSX>" "https://localhost:7265/api/projects/<PROJECT_ID>/budget-quotation/preview"
+```
+
+No se guarda archivo, preview, metadata, catálogo ni versión, y no se cambia ninguna tabla. El modelo sigue teniendo exactamente las cuatro migraciones existentes; el preview no agrega una migración. La comprobación local contra PostgreSQL encontró cero proyectos: se verificó 404 y snapshots idénticos de Clients, Projects, ProjectTasks y migraciones. El smoke exitoso 200 contra PostgreSQL queda pendiente de un proyecto de prueba habilitado; el 200 multipart está cubierto con parser real y stores de test.
+
+### Validación local de corpus sin versionarlo
+
+Los tests sintéticos se ejecutan con `dotnet test`; para solo el parser, `dotnet test --filter FullyQualifiedName~XlsxBudgetQuotationParserTests`. El corpus real debe permanecer fuera del repositorio y abrirse en modo lectura. No copiarlo, extraerlo, modificarlo ni registrar nombres, SG, observaciones, imágenes o previews completos.
+
+Para repetir el smoke agregado, crear un ejecutor local descartable en `artifacts` (ignorado por Git), con referencia a Infrastructure:
+
+```shell
+dotnet new console -f net10.0 -o artifacts/CorpusPreview
+dotnet add artifacts/CorpusPreview/CorpusPreview.csproj reference src/Infrastructure/Infrastructure.csproj
+```
+
+Reemplazar su Program.cs por el siguiente código y ejecutar `dotnet run --project artifacts/CorpusPreview -- "<ZIP_FUERA_DEL_REPOSITORIO>"`. El nombre sintético evita devolver nombres reales en el resultado usado por el smoke:
+
+```csharp
+using System.IO.Compression;
+using System.Text.Json;
+using Microsoft.Extensions.Options;
+using SnG.Control.Application.Features.Budgets.PreviewQuotation;
+using SnG.Control.Infrastructure.Quotations;
+
+var parser = new XlsxBudgetQuotationParser(Options.Create(new BudgetQuotationParserOptions()));
+using var zip = ZipFile.OpenRead(args[0]);
+var stats = new Dictionary<string, long>();
+void Count(string key, long amount = 1) => stats[key] = stats.GetValueOrDefault(key) + amount;
+foreach (var entry in zip.Entries.Where(e => e.Name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)))
+{
+    using var input = entry.Open();
+    Count("processed");
+    if (await parser.ParseAsync(input, "quotation.xlsx", CancellationToken.None) is BudgetQuotationParseResult.Success result)
+    {
+        Count("valid"); Count("items", result.Items.Count);
+        Count("Main", result.Items.Count(i => i.Section == CommercialItemSection.Main));
+        Count("Additional", result.Items.Count(i => i.Section == CommercialItemSection.Additional));
+        Count("images", result.Items.Count(i => i.Image is not null));
+        foreach (var warning in result.Warnings) Count(warning.Code.ToString());
+    }
+    else Count("rejected");
+}
+Console.WriteLine(JsonSerializer.Serialize(stats));
+```
+
+Retirar el ejecutor al terminar; no agregarlo ni agregar el corpus a Git. El smoke local procesó **66 XLSX: 62 válidos y 4 rechazados**, con **1.038 ítems: 1.037 Main, 1 Additional, 1.038 imágenes, 0 MissingImage y 0 AmbiguousImage**. Los rechazos fueron un SG con espacios internos, un documento CONTRATADO/MODIFICADO y dos contenedores OLE ilegibles como XLSX. El archivo con SG inválido tiene apariencia estándar, pero no se sanea el identificador para aceptarlo. No se añadieron excepciones por nombre ni heurísticas para forzar aprobaciones.
 
 ### Errores
 
@@ -534,4 +686,4 @@ El smoke de SG validó primera asignación `"  sg0012  "` → SG0012/InProgress,
 - Validar herramientas, restore, build, tests y migraciones; corregir warnings atribuibles al código sin ocultarlos mediante configuración. Reportar los que legítimamente permanezcan y cualquier supuesto o impedimento.
 - No incluir secretos reales en archivos versionados. No aplicar migraciones automáticamente al arrancar.
 
-Siguen pendientes de alcance posterior la edición de otros campos, eliminación, generación automática de SG, auditoría/historial de cambios SG, Excel, cotización, finalización/devolución de tareas y demás módulos funcionales. Los únicos filtros disponibles son Area+Status para tareas; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation por proyecto.
+Siguen pendientes de alcance posterior la edición de otros campos, eliminación, generación automática de SG, auditoría/historial de cambios SG, confirmación y persistencia de cotizaciones, procesamiento económico del Excel de Comercial, finalización/devolución de tareas y demás módulos funcionales. El preview XLSX es stateless y no incorpora catálogo, documentos ni versionamiento. Los únicos filtros disponibles son Area+Status para tareas; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation por proyecto.
