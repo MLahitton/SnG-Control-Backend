@@ -1,6 +1,0 @@
-@SnG.Control.Api_HostAddress = http://localhost:5051
-
-GET {{SnG.Control.Api_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###
