@@ -82,7 +82,8 @@ public class ProjectTests
 
     [Theory]
     [InlineData(-1)]
-    [InlineData(4)]
+    [InlineData(0)]
+    [InlineData(5)]
     [InlineData(int.MaxValue)]
     public void Constructor_WithUndefinedProductLine_ThrowsArgumentOutOfRangeException(int value)
     {

@@ -4,9 +4,9 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 ## Funcionalidad actualmente implementada
 
-El backend contiene el núcleo de dominio de clientes (`Client`), proyectos (`Project`) y líneas de producto (`ProductLine`). Permite construir entidades en memoria y validar sus datos de creación mediante código.
+El backend contiene el núcleo de dominio de clientes (`Client`), proyectos (`Project`) y líneas de producto (`ProductLine`). Permite construir entidades y validar sus datos de creación mediante código. Incluye infraestructura de persistencia PostgreSQL y una migración que define las tablas de clientes y proyectos en la base existente `sng_control`.
 
-Todavía no hay registro o consulta por HTTP, interfaz de usuario ni almacenamiento persistente. La API puede arrancar, pero no expone operaciones de negocio. Las pruebas automatizadas verifican las reglas del dominio.
+El modelo puede guardarse mediante la infraestructura de persistencia una vez configurada la conexión y aplicada la migración. Todavía no hay registro o consulta por HTTP, interfaz de usuario ni casos de uso en Application. La API requiere una conexión configurada para arrancar y no expone operaciones de negocio. Las pruebas automatizadas verifican las reglas del dominio y el modelo de persistencia sin depender de una base de datos activa.
 
 ## Clientes y proyectos
 
@@ -14,7 +14,7 @@ Un **Client** representa un cliente. Tiene un identificador interno único, un n
 
 Un **Project** representa un proyecto asociado a un cliente. Tiene identificador interno único, identificador del cliente, nombre, ciudad, línea de producto, código SG opcional y fechas de creación y actualización.
 
-La relación es **Client 1 → N Project**: un cliente puede tener varios proyectos y cada proyecto identifica a su cliente mediante `ClientId`. Actualmente se exige un identificador de cliente no vacío; no se consulta un registro de clientes para verificar su existencia porque todavía no hay persistencia.
+La relación es **Client 1 → N Project**: un cliente puede tener varios proyectos y cada proyecto identifica a su cliente mediante `ClientId`. El dominio exige un identificador de cliente no vacío. Al guardar un proyecto, la base de datos exige que el cliente exista mediante una clave foránea. La relación impide eliminar un cliente que tenga proyectos asociados; no existe todavía una funcionalidad de eliminación.
 
 ## Reglas funcionales vigentes
 
@@ -39,7 +39,7 @@ No se aceptan valores fuera de esta lista.
 
 Todo proyecto se crea con `SgCode` sin asignar (`null`). Actualmente no existe una operación para asignarlo o modificarlo.
 
-La regla de negocio conocida para una fase posterior es que Presupuestos asigne un código como `SG1043` o `SG1044`. Será un identificador de negocio que deberá ser único cuando exista, pero no reemplazará la identidad interna del proyecto. El proceso de asignación y el mecanismo que garantice esa unicidad todavía no están implementados.
+La regla de negocio conocida para una fase posterior es que Presupuestos asigne un código como `SG1043` o `SG1044`. Será un identificador de negocio y no reemplazará la identidad interna del proyecto. El modelo de persistencia incluye un índice único para ese código: permite múltiples proyectos sin código y rechaza códigos no nulos repetidos. El proceso de asignación y las reglas de formato siguen pendientes.
 
 ## Flujo funcional disponible
 
@@ -48,7 +48,7 @@ La regla de negocio conocida para una fase posterior es que Presupuestos asigne 
 3. El dominio valida los datos, elimina los espacios exteriores y genera la identidad y las fechas del proyecto; su código SG queda sin asignar.
 4. Pueden crearse más proyectos para el mismo cliente, incluso con nombres repetidos.
 
-Este flujo se ejecuta únicamente en memoria desde código; no guarda datos entre ejecuciones.
+La construcción de entidades se ejecuta desde código. La infraestructura permite guardarlas en PostgreSQL, pero todavía no hay un caso de uso ni una operación HTTP que coordine este flujo. La preparación de la base se realiza explícitamente; no se crean tablas automáticamente al iniciar la API.
 
 ## Contexto funcional futuro
 

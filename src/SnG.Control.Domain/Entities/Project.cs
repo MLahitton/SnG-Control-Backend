@@ -29,12 +29,12 @@ public class Project
         UpdatedAt = CreatedAt;
     }
 
-    public Guid Id { get; }
-    public Guid ClientId { get; }
-    public string Name { get; }
-    public string City { get; }
-    public ProductLine ProductLine { get; }
-    public string? SgCode { get; }
-    public DateTime CreatedAt { get; }
-    public DateTime UpdatedAt { get; }
+    public Guid Id { get; private set; }
+    public Guid ClientId { get; private set; }
+    public string Name { get; private set; }
+    public string City { get; private set; }
+    public ProductLine ProductLine { get; private set; }
+    public string? SgCode { get; private set; }
+    public DateTime CreatedAt { get; private set; }
+    public DateTime UpdatedAt { get; private set; }
 }

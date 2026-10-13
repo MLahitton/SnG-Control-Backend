@@ -1,5 +1,16 @@
+using Microsoft.EntityFrameworkCore;
+using SnG.Control.Infrastructure.Persistence;
+
 var builder = WebApplication.CreateBuilder(args);
 
+var connectionString = builder.Configuration.GetConnectionString("SnGControl");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "Configure ConnectionStrings:SnGControl using User Secrets or ConnectionStrings__SnGControl before starting the API.");
+}
+
+builder.Services.AddDbContext<SnGControlDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
 

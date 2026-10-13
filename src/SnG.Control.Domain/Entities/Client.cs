@@ -12,8 +12,8 @@ public class Client
         UpdatedAt = CreatedAt;
     }
 
-    public Guid Id { get; }
-    public string Name { get; }
-    public DateTime CreatedAt { get; }
-    public DateTime UpdatedAt { get; }
+    public Guid Id { get; private set; }
+    public string Name { get; private set; }
+    public DateTime CreatedAt { get; private set; }
+    public DateTime UpdatedAt { get; private set; }
 }
