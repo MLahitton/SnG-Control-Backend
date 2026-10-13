@@ -6,7 +6,7 @@ La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web
 
 La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y la migración `InitialCreate` están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
-Application no tiene casos de uso. No hay Controllers ni endpoints de negocio, repositorios, Unit of Work, autenticación, autorización ni Docker. La API registra el contexto y exige configuración de conexión, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
+Application implementa seis casos de uso: crear, obtener por Id y listar clientes y proyectos. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. No hay repositorios genéricos, Unit of Work propio, autenticación, autorización ni Docker. La API exige configuración de conexión, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
 
 ## Requisitos y paquetes
 
@@ -38,10 +38,30 @@ SnG.Control.sln
 src/
   Api/
     Program.cs
+    DependencyInjection.cs
+    Contracts/CreateClientRequest.cs
+    Contracts/CreateProjectRequest.cs
+    Contracts/ProductLineJsonConverter.cs
+    Controllers/ClientsController.cs
+    Controllers/ProjectsController.cs
+    Errors/ApiExceptionHandler.cs
     Persistence/SnGControlDbContextFactory.cs
     appsettings.json
     Properties/launchSettings.json
   Application/
+    Features/
+      Clients/
+        IClientStore.cs
+        ClientResponse.cs
+        Create/CreateClientUseCase.cs
+        GetById/GetClientByIdUseCase.cs
+        List/ListClientsUseCase.cs
+      Projects/
+        IProjectStore.cs
+        ProjectResponse.cs
+        Create/CreateProjectUseCase.cs
+        GetById/GetProjectByIdUseCase.cs
+        List/ListProjectsUseCase.cs
   Domain/
     Entities/Client.cs
     Entities/Project.cs
@@ -49,6 +69,8 @@ src/
   Infrastructure/
     Persistence/
       SnGControlDbContext.cs
+      Stores/EfClientStore.cs
+      Stores/EfProjectStore.cs
       Configurations/ClientConfiguration.cs
       Configurations/ProjectConfiguration.cs
       Migrations/
@@ -58,16 +80,19 @@ src/
 tests/
   SnG.Control.Tests/
     Domain/
+    Application/
+    Api/
+    TestDoubles/
     Persistence/SnGControlDbContextTests.cs
 ```
 
 | Proyecto | Responsabilidad actual |
 | --- | --- |
 | Domain | Entidades e invariantes, sin dependencias de persistencia o HTTP. |
-| Application | Capa destinada a coordinar casos de uso; todavía sin implementaciones. |
-| Infrastructure | Contexto EF, configuraciones Fluent API y migraciones PostgreSQL. |
-| Api | Composition root: configuración, registro de DbContext, Controllers, OpenAPI y HTTPS. Incluye la fábrica del tooling para utilizar la configuración del startup project. |
-| Tests | Tests de dominio y metadata/SQL del proveedor real, sin abrir conexiones. |
+| Application | Seis casos de uso organizados por feature, respuestas e interfaces de persistencia específicas. |
+| Infrastructure | Contexto EF, stores PostgreSQL, configuraciones Fluent API y migraciones. |
+| Api | Contratos HTTP, Controllers, manejo de errores y composition root. Incluye la fábrica del tooling del startup project. |
+| Tests | Tests de dominio, casos de uso, HTTP y metadata/SQL del proveedor real, sin conexión PostgreSQL. |
 
 Referencias entre proyectos:
 
@@ -76,7 +101,7 @@ Domain         → ninguna otra capa
 Application    → Domain
 Infrastructure → Application, Domain
 Api            → Application, Infrastructure
-Tests          → Domain, Application, Infrastructure
+Tests          → Domain, Application, Infrastructure, Api
 ```
 
 ## Preparación del entorno
@@ -119,9 +144,11 @@ dotnet build
 dotnet test
 ```
 
-Los tests normales funcionan sin conexión configurada, sin contraseña y sin PostgreSQL levantado. Instancian el contexto con `UseNpgsql()` sin cadena y consultan metadata o compilan consultas sin ejecutarlas.
+Los tests normales funcionan sin conexión configurada, sin contraseña y sin PostgreSQL levantado. Los tests del modelo instancian el contexto con `UseNpgsql()` sin cadena y consultan metadata o compilan consultas sin ejecutarlas. Los tests de Application usan dobles de `IClientStore` e `IProjectStore`, ubicados exclusivamente en Tests.
 
-Cubren invariantes y normalización del dominio, fechas UTC, identidad, nombres repetidos, contrato numérico del enum, tablas y PK, campos obligatorios, tipos PostgreSQL, FK restrictiva, unicidad nullable de SG, ausencia de límites de longitud, generación de SQL y correspondencia del snapshot con el modelo.
+Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
+
+La suite también cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contrato numérico del enum, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de la migración.
 
 Cobertura opcional:
 
@@ -187,7 +214,7 @@ Comprobar que el comando termina correctamente y verificar el estado aplicado:
 dotnet ef migrations list --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
-El repositorio contiene la migración generada y validada; la aplicación es una operación por entorno. Sin conexión configurada queda pendiente aplicar `InitialCreate`, sin impedir restauración, compilación, tests ni validación offline.
+`InitialCreate` es la única migración del modelo. La instalación local de `sng_control` tiene esa migración aplicada; otros entornos deben comprobar su propio historial antes de operar. Los seis casos de uso no requieren cambios de esquema. Los comandos de inspección offline no verifican si una base concreta tiene migraciones aplicadas.
 
 ### Crear migraciones futuras
 
@@ -210,12 +237,77 @@ dotnet run --project src/Api --launch-profile https
 
 El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `Development`, con redirección HTTP a HTTPS. Detener con `Ctrl+C`. También existe el perfil `http` en 5051, sin puerto HTTPS propio; la redirección puede advertir que no encuentra ese puerto. Se recomienda el perfil `https`.
 
-En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin operaciones de negocio. No hay Swagger UI ni Minimal APIs de negocio; `/` devuelve 404. Fuera de desarrollo no se publica OpenAPI.
+En desarrollo, `GET /openapi/v1.json` publica OpenAPI con las seis operaciones de negocio. No hay Swagger UI ni Minimal APIs de negocio; `/` devuelve 404. Fuera de desarrollo no se publica OpenAPI.
 
-- `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` con lifetime scoped y Npgsql, Controllers y OpenAPI; configura HTTPS y rutas de Controllers.
+- `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS y Controllers.
+- `DependencyInjection.cs`: `AddApiServices` registra los seis casos de uso y los dos stores con lifetime scoped, Controllers, opciones JSON y manejo de errores. Application no necesita depender de una librería de DI.
 - `appsettings.json`: logging (`Information` general y `Warning` para ASP.NET Core) y `AllowedHosts=*`; no contiene conexiones.
 - `Properties/launchSettings.json`: perfiles/puertos locales y `ASPNETCORE_ENVIRONMENT=Development`.
 - El registro del contexto no ejecuta operaciones de base de datos ni aplica migraciones.
+
+## Casos de uso y persistencia
+
+El flujo es `HTTP → Controller → UseCase → Store EF → PostgreSQL`. Application está organizada verticalmente en `Features/Clients` y `Features/Projects`, cada una con `Create`, `GetById` y `List`. Los casos de uso son clases explícitas con `ExecuteAsync`, sin MediatR ni interfaces por caso de uso.
+
+`IClientStore` declara `AddAsync`, `GetByIdAsync`, `ListAsync` y `ExistsAsync`; `IProjectStore` declara los tres primeros. Las interfaces viven junto a su feature en Application y trabajan con entidades del dominio, sin exponer EF, `IQueryable` ni detalles de PostgreSQL.
+
+`EfClientStore` y `EfProjectStore` implementan esas operaciones con el contexto existente. `AddAsync` agrega la entidad y ejecuta `SaveChangesAsync` antes de completar; no se requiere un método separado de commit. Todas las lecturas usan `AsNoTracking` y operaciones asíncronas. No se define orden de listado. Controllers, casos de uso y stores propagan `CancellationToken`.
+
+Crear cliente construye la entidad validada, la guarda y mapea `ClientResponse`. Crear proyecto construye la entidad validada, verifica explícitamente la existencia del cliente con `ExistsAsync`, guarda y mapea `ProjectResponse`. Devuelve `null` si el cliente no existe, sin intentar guardar ni esperar un error de FK. Obtener por Id devuelve `null` si la entidad no existe; listar devuelve una colección, vacía cuando no hay registros.
+
+Las respuestas de Application se mapean explícitamente con `FromEntity`, compartido por los casos de uso de cada feature. Los Controllers reciben requests propios de Api y devuelven esos DTO de respuesta, nunca entidades del dominio. No hay AutoMapper, repositorios genéricos ni Unit of Work adicional.
+
+## Contrato HTTP actual
+
+| Método y ruta | Request | Éxito | Recurso inexistente |
+| --- | --- | --- | --- |
+| POST `/api/clients` | `name` | 201, ClientResponse y Location | No aplica |
+| GET `/api/clients` | Sin body | 200, colección de ClientResponse | Colección vacía |
+| GET `/api/clients/{id}` | Guid en ruta | 200, ClientResponse | 404 |
+| POST `/api/projects` | `clientId`, `name`, `city`, `productLine` | 201, ProjectResponse y Location | 404 si no existe Client |
+| GET `/api/projects` | Sin body | 200, colección de ProjectResponse | Colección vacía |
+| GET `/api/projects/{id}` | Guid en ruta | 200, ProjectResponse | 404 |
+
+`ClientResponse` contiene `id`, `name`, `createdAt` y `updatedAt`. `ProjectResponse` contiene `id`, `clientId`, `name`, `city`, `productLine`, `sgCode`, `createdAt` y `updatedAt`. Las fechas son UTC en formato ISO 8601. Las respuestas de proyecto no incluyen el objeto Client completo. `sgCode` se devuelve como JSON null.
+
+Se usa camelCase. `ProductLineJsonConverter` delega la lectura y escritura a `JsonStringEnumConverter<ProductLine>` de System.Text.Json con `allowIntegerValues=false`, y exige un único nombre: rechaza combinaciones separadas por comas que el convertidor estándar puede interpretar como una combinación numérica. Los nombres canónicos devueltos son `Classic`, `Essential`, `Bioconfort` y `Signature`; números JSON, cadenas numéricas, combinaciones y nombres desconocidos producen 400. El almacenamiento sigue siendo integer 1–4. La comparación de nombres no distingue mayúsculas/minúsculas.
+
+Los requests de creación no incluyen `id`, fechas ni `sgCode`. `JsonUnmappedMemberHandling.Disallow` rechaza campos JSON desconocidos, incluidos esos campos controlados por el dominio. Los nombres repetidos continúan permitidos.
+
+### Errores
+
+- `[ApiController]` responde 400 para errores de binding, JSON, Guid, enum o campos de texto requeridos.
+- Las invariantes permanecen en Domain. `ApiExceptionHandler` convierte `ArgumentException` y sus derivadas de validación en 400 con un ProblemDetails genérico.
+- Los Controllers convierten los resultados inexistentes en 404 con ProblemDetails. Utilizan `CreatedAtAction` para los 201, cuya cabecera Location apunta al GET correspondiente.
+- El middleware de excepciones está activo también en Development. Los errores inesperados responden 500 con ProblemDetails genérico, sin mensajes de EF/Npgsql, SQL, stack traces ni detalles de configuración. Los diagnósticos quedan en los logs del servidor.
+- No hay traducción especial de conflictos de escritura concurrentes. La FK sigue protegiendo la integridad si un cliente desaparece externamente entre la comprobación y el guardado; la API no ofrece eliminación.
+
+### Prueba manual
+
+Con la API iniciada por el perfil HTTPS, ejecutar desde PowerShell con datos ficticios:
+
+```powershell
+$baseUrl = 'https://localhost:7265'
+$clientBody = @{ name = 'Cliente Demo' } | ConvertTo-Json
+$client = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/clients" -ContentType 'application/json' -Body $clientBody
+
+$projectBody = @{
+    clientId = $client.id
+    name = 'Casa Campestre'
+    city = 'Bucaramanga'
+    productLine = 'Signature'
+} | ConvertTo-Json
+$project = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/projects" -ContentType 'application/json' -Body $projectBody
+
+Invoke-RestMethod "$baseUrl/api/clients/$($client.id)"
+Invoke-RestMethod "$baseUrl/api/projects/$($project.id)"
+Invoke-RestMethod "$baseUrl/api/clients"
+Invoke-RestMethod "$baseUrl/api/projects"
+```
+
+Los POST generan registros reales y responden 201; los cuatro GET responden 200. Un Guid válido inexistente responde 404. Cambiar `productLine` por un número o nombre desconocido, dejar `name`/`city` en blanco o enviar `Guid.Empty` como `clientId` produce 400. Un proyecto con cliente inexistente produce 404 sin insertar el proyecto.
+
+No hay endpoint de borrado. Para validaciones controladas en una base compartida, identificar los registros de prueba con una marca única y retirar exclusivamente esos registros mediante una operación administrativa segura, primero proyectos y después cliente. No modificar datos ajenos a la prueba.
 
 ## Reglas permanentes para continuar
 
@@ -227,4 +319,4 @@ En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin operaciones de negocio
 - Validar herramientas, restore, build, tests y migraciones; corregir warnings atribuibles al código sin ocultarlos mediante configuración. Reportar los que legítimamente permanezcan y cualquier supuesto o impedimento.
 - No incluir secretos reales en archivos versionados. No aplicar migraciones automáticamente al arrancar.
 
-Siguen pendientes de alcance posterior los casos de uso, endpoints, edición, asignación/formato de SG y demás módulos funcionales. No hay decisión adicional de negocio necesaria para el modelo de persistencia actual.
+Siguen pendientes de alcance posterior la edición, eliminación, asignación/formato de SG y demás módulos funcionales. No se implementan filtros, paginación, búsqueda ni orden configurable. No hay decisión adicional de negocio que bloquee los seis casos de uso actuales.

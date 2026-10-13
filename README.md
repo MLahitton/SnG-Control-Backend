@@ -4,9 +4,9 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 ## Funcionalidad actualmente implementada
 
-El backend contiene el núcleo de dominio de clientes (`Client`), proyectos (`Project`) y líneas de producto (`ProductLine`). Permite construir entidades y validar sus datos de creación mediante código. Incluye infraestructura de persistencia PostgreSQL y una migración que define las tablas de clientes y proyectos en la base existente `sng_control`.
+El backend permite crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. Los casos de uso guardan y consultan los datos en PostgreSQL, en la base `sng_control`.
 
-El modelo puede guardarse mediante la infraestructura de persistencia una vez configurada la conexión y aplicada la migración. Todavía no hay registro o consulta por HTTP, interfaz de usuario ni casos de uso en Application. La API requiere una conexión configurada para arrancar y no expone operaciones de negocio. Las pruebas automatizadas verifican las reglas del dominio y el modelo de persistencia sin depender de una base de datos activa.
+La API requiere una conexión configurada y el esquema preparado mediante la migración `InitialCreate` para operar. No hay interfaz de usuario ni operaciones de edición o eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP y modelo de persistencia sin requerir una base de datos activa.
 
 ## Clientes y proyectos
 
@@ -14,7 +14,7 @@ Un **Client** representa un cliente. Tiene un identificador interno único, un n
 
 Un **Project** representa un proyecto asociado a un cliente. Tiene identificador interno único, identificador del cliente, nombre, ciudad, línea de producto, código SG opcional y fechas de creación y actualización.
 
-La relación es **Client 1 → N Project**: un cliente puede tener varios proyectos y cada proyecto identifica a su cliente mediante `ClientId`. El dominio exige un identificador de cliente no vacío. Al guardar un proyecto, la base de datos exige que el cliente exista mediante una clave foránea. La relación impide eliminar un cliente que tenga proyectos asociados; no existe todavía una funcionalidad de eliminación.
+La relación es **Client 1 → N Project**: un cliente puede tener varios proyectos y cada proyecto identifica a su cliente mediante `ClientId`. El cliente debe existir antes de crear el proyecto: el caso de uso lo comprueba y rechaza la creación si no lo encuentra. La base de datos refuerza esa relación mediante una clave foránea. La relación impide eliminar un cliente que tenga proyectos asociados; no existe todavía una funcionalidad de eliminación.
 
 ## Reglas funcionales vigentes
 
@@ -33,7 +33,7 @@ Todo proyecto requiere una de estas cuatro opciones:
 - Bioconfort
 - Signature
 
-No se aceptan valores fuera de esta lista.
+La API recibe y devuelve estos nombres como texto, no como números. No se aceptan valores fuera de esta lista.
 
 ### Código SG
 
@@ -43,12 +43,15 @@ La regla de negocio conocida para una fase posterior es que Presupuestos asigne 
 
 ## Flujo funcional disponible
 
-1. Se crea un cliente con un nombre válido y se obtiene su identificador interno.
-2. Se crea un proyecto indicando el identificador del cliente, nombre, ciudad y línea de producto.
-3. El dominio valida los datos, elimina los espacios exteriores y genera la identidad y las fechas del proyecto; su código SG queda sin asignar.
-4. Pueden crearse más proyectos para el mismo cliente, incluso con nombres repetidos.
+1. Se crea un cliente proporcionando su nombre y se obtiene su identificador interno.
+2. Se crea un proyecto indicando el identificador de ese cliente, nombre, ciudad y línea de producto.
+3. El sistema valida los datos y la existencia del cliente, normaliza los textos y guarda el proyecto con su identidad y fechas; su código SG queda sin asignar.
+4. Se puede consultar cada cliente o proyecto por su identificador, o listar la colección correspondiente. La respuesta de un proyecto incluye el identificador de su cliente, sin incrustar el objeto cliente completo.
+5. Pueden crearse más clientes o proyectos con nombres repetidos. Incluso un mismo cliente puede tener varios proyectos con exactamente el mismo nombre.
 
-La construcción de entidades se ejecuta desde código. La infraestructura permite guardarlas en PostgreSQL, pero todavía no hay un caso de uso ni una operación HTTP que coordine este flujo. La preparación de la base se realiza explícitamente; no se crean tablas automáticamente al iniciar la API.
+Las creaciones correctas devuelven el registro guardado y una referencia para consultarlo. Las consultas de entidades inexistentes, o la creación de un proyecto para un cliente inexistente, responden como recurso no encontrado. Las entradas inválidas se rechazan sin crear registros.
+
+Los identificadores, las fechas y el código SG no pueden suministrarse en las solicitudes de creación. Los listados devuelven todos los registros, sin filtros, paginación ni orden garantizado. La información persiste entre ejecuciones; la preparación de la base se realiza explícitamente y no al iniciar la API.
 
 ## Contexto funcional futuro
 

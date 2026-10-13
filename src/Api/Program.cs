@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using SnG.Control.Api;
 using SnG.Control.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,10 +12,12 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddDbContext<SnGControlDbContext>(options => options.UseNpgsql(connectionString));
-builder.Services.AddControllers();
+builder.Services.AddApiServices();
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
 {
