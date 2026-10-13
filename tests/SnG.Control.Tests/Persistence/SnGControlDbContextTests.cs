@@ -11,6 +11,7 @@ public class SnGControlDbContextTests
     [Theory]
     [InlineData(typeof(Client), "Clients", 4)]
     [InlineData(typeof(Project), "Projects", 8)]
+    [InlineData(typeof(ProjectTask), "ProjectTasks", 8)]
     public void Model_MapsEntitiesWithDomainGeneratedPrimaryKeys(Type entityType, string tableName, int propertyCount)
     {
         using var context = CreateContext();
@@ -102,22 +103,85 @@ public class SnGControlDbContextTests
     }
 
     [Fact]
-    public void Queries_CompileForBothEntitiesWithoutConnectionOrParameterlessConstructors()
+    public void Queries_CompileForAllEntitiesWithoutConnectionOrParameterlessConstructors()
     {
         using var context = CreateContext();
 
         Assert.Contains("FROM \"Clients\"", context.Clients.ToQueryString());
         Assert.Contains("FROM \"Projects\"", context.Projects.ToQueryString());
+        Assert.Contains("FROM \"ProjectTasks\"", context.ProjectTasks.ToQueryString());
         Assert.True(string.IsNullOrEmpty(context.Database.GetConnectionString()));
     }
 
     [Fact]
-    public void Migrations_ContainInitialCreateAndMatchCurrentModel()
+    public void Migrations_ContainInitialCreateAndProjectTasksAndMatchCurrentModel()
     {
         using var context = CreateContext();
 
-        Assert.EndsWith("_InitialCreate", Assert.Single(context.Database.GetMigrations()));
+        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks" },
+            context.Database.GetMigrations().Select(migration => migration[(migration.IndexOf('_') + 1)..]));
         Assert.False(context.Database.HasPendingModelChanges());
+    }
+
+    [Fact]
+    public void Model_MapsTaskNullabilityAndUtcTimestamps()
+    {
+        using var context = CreateContext();
+        var entity = context.Model.FindEntityType(typeof(ProjectTask))!;
+
+        foreach (var property in entity.GetProperties())
+        {
+            Assert.Equal(property.Name is nameof(ProjectTask.StartedAt) or nameof(ProjectTask.CompletedAt), property.IsNullable);
+            Assert.False(property.IsShadowProperty());
+            Assert.True(property.PropertyInfo!.SetMethod!.IsPrivate);
+            if (property.ClrType == typeof(DateTime) || property.ClrType == typeof(DateTime?))
+            {
+                Assert.Equal("timestamp with time zone", property.GetColumnType());
+            }
+        }
+    }
+
+    [Fact]
+    public void Model_RelatesTasksToProjectsRestrictivelyAndIndexesOnlyCurrentQueries()
+    {
+        using var context = CreateContext();
+        var entity = context.Model.FindEntityType(typeof(ProjectTask))!;
+        var foreignKey = Assert.Single(entity.GetForeignKeys());
+
+        Assert.Equal(nameof(ProjectTask.ProjectId), Assert.Single(foreignKey.Properties).Name);
+        Assert.Equal("uuid", foreignKey.Properties[0].GetColumnType());
+        Assert.Equal(typeof(Project), foreignKey.PrincipalEntityType.ClrType);
+        Assert.Equal(nameof(Project.Id), Assert.Single(foreignKey.PrincipalKey.Properties).Name);
+        Assert.True(foreignKey.IsRequired);
+        Assert.False(foreignKey.IsUnique);
+        Assert.Equal(DeleteBehavior.Restrict, foreignKey.DeleteBehavior);
+        Assert.Null(foreignKey.DependentToPrincipal);
+        Assert.Null(foreignKey.PrincipalToDependent);
+        var indexes = entity.GetIndexes().ToArray();
+        Assert.Equal(2, indexes.Length);
+        Assert.All(indexes, index => Assert.False(index.IsUnique));
+        Assert.Contains(indexes, index => index.Properties.Select(property => property.Name)
+            .SequenceEqual(new[] { nameof(ProjectTask.ProjectId) }));
+        Assert.Contains(indexes, index => index.Properties.Select(property => property.Name)
+            .SequenceEqual(new[] { nameof(ProjectTask.Area), nameof(ProjectTask.Status) }));
+    }
+
+    [Theory]
+    [InlineData(nameof(ProjectTask.Area), OperationalArea.Commercial, 1)]
+    [InlineData(nameof(ProjectTask.Area), OperationalArea.Budgets, 2)]
+    [InlineData(nameof(ProjectTask.Type), ProjectTaskType.PrepareQuotation, 1)]
+    [InlineData(nameof(ProjectTask.Status), ProjectTaskStatus.Pending, 1)]
+    [InlineData(nameof(ProjectTask.Status), ProjectTaskStatus.InProgress, 2)]
+    [InlineData(nameof(ProjectTask.Status), ProjectTaskStatus.Completed, 3)]
+    public void Model_StoresTaskEnumsAsStableIntegers(string propertyName, object value, int storedValue)
+    {
+        using var context = CreateContext();
+        var property = context.Model.FindEntityType(typeof(ProjectTask))!.FindProperty(propertyName)!;
+        var converter = property.GetTypeMapping().Converter!;
+
+        Assert.Equal("integer", property.GetColumnType());
+        Assert.Equal(storedValue, converter.ConvertToProvider(value));
+        Assert.Equal(value, converter.ConvertFromProvider(storedValue));
     }
 
     private static SnGControlDbContext CreateContext()

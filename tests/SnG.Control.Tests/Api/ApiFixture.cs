@@ -9,6 +9,7 @@ using SnG.Control.Api;
 using SnG.Control.Api.Controllers;
 using SnG.Control.Application.Features.Clients;
 using SnG.Control.Application.Features.Projects;
+using SnG.Control.Application.Features.ProjectTasks;
 using SnG.Control.Tests.TestDoubles;
 
 namespace SnG.Control.Tests.Api;
@@ -19,6 +20,7 @@ public class ApiFixture : IAsyncLifetime
     public HttpClient Http { get; private set; } = null!;
     public ClientStoreDouble Clients { get; } = new();
     public ProjectStoreDouble Projects { get; } = new();
+    public ProjectTaskStoreDouble Tasks { get; } = new();
 
     public async Task InitializeAsync()
     {
@@ -32,8 +34,10 @@ public class ApiFixture : IAsyncLifetime
         builder.Services.AddApiServices();
         builder.Services.RemoveAll<IClientStore>();
         builder.Services.RemoveAll<IProjectStore>();
+        builder.Services.RemoveAll<IProjectTaskStore>();
         builder.Services.AddSingleton<IClientStore>(Clients);
         builder.Services.AddSingleton<IProjectStore>(Projects);
+        builder.Services.AddSingleton<IProjectTaskStore>(Tasks);
         app = builder.Build();
         app.UseExceptionHandler();
         app.MapControllers();

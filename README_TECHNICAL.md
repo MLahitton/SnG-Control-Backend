@@ -2,11 +2,11 @@
 
 ## Estado y stack
 
-La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web API con Controllers tradicionales y Clean Architecture. El núcleo de negocio es `Client`, `Project` y `ProductLine`; sus reglas se describen en [README.md](README.md).
+La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web API con Controllers tradicionales y Clean Architecture. El núcleo de negocio contiene `Client`, `Project`, `ProjectTask` y sus enums; sus reglas se describen en [README.md](README.md).
 
-La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y la migración `InitialCreate` están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
+La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las migraciones `InitialCreate` y `AddProjectTasks` están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
-Application implementa seis casos de uso: crear, obtener por Id y listar clientes y proyectos. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. No hay repositorios genéricos, Unit of Work propio, autenticación, autorización ni Docker. La API exige configuración de conexión, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
+Application implementa nueve casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. No hay repositorios genéricos, Unit of Work propio, autenticación, autorización ni Docker. La API exige configuración de conexión, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
 
 ## Requisitos y paquetes
 
@@ -44,6 +44,7 @@ src/
     Contracts/ProductLineJsonConverter.cs
     Controllers/ClientsController.cs
     Controllers/ProjectsController.cs
+    Controllers/ProjectTasksController.cs
     Errors/ApiExceptionHandler.cs
     Persistence/SnGControlDbContextFactory.cs
     appsettings.json
@@ -62,20 +63,35 @@ src/
         Create/CreateProjectUseCase.cs
         GetById/GetProjectByIdUseCase.cs
         List/ListProjectsUseCase.cs
+      ProjectTasks/
+        IProjectTaskStore.cs
+        ProjectTaskResponse.cs
+        SendToBudgets/SendProjectToBudgetsUseCase.cs
+        SendToBudgets/SendProjectToBudgetsResult.cs
+        ListByArea/ListProjectTasksByAreaUseCase.cs
+        ListByProject/ListProjectTasksByProjectUseCase.cs
   Domain/
     Entities/Client.cs
     Entities/Project.cs
+    Entities/ProjectTask.cs
     Enums/ProductLine.cs
+    Enums/OperationalArea.cs
+    Enums/ProjectTaskType.cs
+    Enums/ProjectTaskStatus.cs
   Infrastructure/
     Persistence/
       SnGControlDbContext.cs
       Stores/EfClientStore.cs
       Stores/EfProjectStore.cs
+      Stores/EfProjectTaskStore.cs
       Configurations/ClientConfiguration.cs
       Configurations/ProjectConfiguration.cs
+      Configurations/ProjectTaskConfiguration.cs
       Migrations/
         20261013143318_InitialCreate.cs
         20261013143318_InitialCreate.Designer.cs
+        20261013190849_AddProjectTasks.cs
+        20261013190849_AddProjectTasks.Designer.cs
         SnGControlDbContextModelSnapshot.cs
 tests/
   SnG.Control.Tests/
@@ -89,7 +105,7 @@ tests/
 | Proyecto | Responsabilidad actual |
 | --- | --- |
 | Domain | Entidades e invariantes, sin dependencias de persistencia o HTTP. |
-| Application | Seis casos de uso organizados por feature, respuestas e interfaces de persistencia específicas. |
+| Application | Nueve casos de uso organizados por feature, respuestas e interfaces de persistencia específicas. |
 | Infrastructure | Contexto EF, stores PostgreSQL, configuraciones Fluent API y migraciones. |
 | Api | Contratos HTTP, Controllers, manejo de errores y composition root. Incluye la fábrica del tooling del startup project. |
 | Tests | Tests de dominio, casos de uso, HTTP y metadata/SQL del proveedor real, sin conexión PostgreSQL. |
@@ -144,11 +160,11 @@ dotnet build
 dotnet test
 ```
 
-Los tests normales funcionan sin conexión configurada, sin contraseña y sin PostgreSQL levantado. Los tests del modelo instancian el contexto con `UseNpgsql()` sin cadena y consultan metadata o compilan consultas sin ejecutarlas. Los tests de Application usan dobles de `IClientStore` e `IProjectStore`, ubicados exclusivamente en Tests.
+Los tests normales funcionan sin conexión configurada, sin contraseña y sin PostgreSQL levantado. Los tests del modelo instancian el contexto con `UseNpgsql()` sin cadena y consultan metadata o compilan consultas sin ejecutarlas. Los tests de Application usan dobles de `IClientStore`, `IProjectStore` e `IProjectTaskStore`, ubicados exclusivamente en Tests.
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite también cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contrato numérico del enum, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de la migración.
+La suite contiene 140 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, duplicados de cualquier estado y área sin nueva escritura, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
 
 Cobertura opcional:
 
@@ -160,22 +176,25 @@ Los artefactos de compilación y `TestResults` están excluidos por `.gitignore`
 
 ## Contexto y materialización
 
-`SnGControlDbContext` está en `SnG.Control.Infrastructure.Persistence`. Recibe `DbContextOptions<SnGControlDbContext>`, expone `Clients` y `Projects` y aplica explícitamente `ClientConfiguration` y `ProjectConfiguration`.
+`SnGControlDbContext` está en `SnG.Control.Infrastructure.Persistence`. Recibe `DbContextOptions<SnGControlDbContext>`, expone `Clients`, `Projects` y `ProjectTasks` y aplica explícitamente `ClientConfiguration`, `ProjectConfiguration` y `ProjectTaskConfiguration`.
 
 Las entidades mantienen sus constructores públicos y validaciones. Sus propiedades tienen setters privados, sin métodos de edición ni de asignación de SG. EF enlaza los parámetros de los constructores existentes con las propiedades mapeadas y restaura el resto de valores mediante esos setters; no se necesita un constructor vacío.
 
-Los identificadores nacen de `Guid.NewGuid()` en el dominio y se mapean con `ValueGeneratedNever()`: no hay generación de UUID en PostgreSQL. Las fechas son `DateTime` UTC y ambos valores coinciden al crear la entidad. Los timestamps e identificadores almacenados se conservan al materializar entidades; no hay mecanismo automático de actualización de fechas.
+Los identificadores nacen de `Guid.NewGuid()` en el dominio y se mapean con `ValueGeneratedNever()`: no hay generación de UUID en PostgreSQL. Las fechas son `DateTime` UTC; `CreatedAt` y `UpdatedAt` coinciden al crear clientes o proyectos. Los timestamps e identificadores almacenados se conservan al materializar entidades; no hay mecanismo automático de actualización de fechas.
+
+`ProjectTask(projectId, area, type)` exige un ProjectId no vacío y enums definidos. Genera Id y AssignedAt UTC; fija Status=Pending y StartedAt/CompletedAt=null. No acepta estado ni fechas como parámetros ni expone transiciones. Sus ocho propiedades tienen setters privados. `Project` conserva su estructura, sin estado global ni colección Tasks.
 
 Los proyectos y carpetas bajo `src` se llaman `Api`, `Application`, `Domain` e `Infrastructure`; cada archivo de proyecto tiene el mismo nombre que su carpeta. `RootNamespace` mantiene el prefijo `SnG.Control` en los namespaces del código y de las migraciones. Se utilizan nullable reference types e implicit usings. Las validaciones siguen utilizando `ArgumentNullException`, `ArgumentException` y `ArgumentOutOfRangeException`. Domain no contiene DataAnnotations de persistencia, referencias EF, colecciones de navegación ni dependencias hacia Infrastructure.
 
 ## Tablas y restricciones
 
-Se usan nombres explícitos `Clients` y `Projects`, con columnas PascalCase; el SQL PostgreSQL generado utiliza identificadores entre comillas. No se introduce un esquema personalizado.
+Se usan nombres explícitos `Clients`, `Projects` y `ProjectTasks`, con columnas PascalCase; el SQL PostgreSQL generado utiliza identificadores entre comillas. No se introduce un esquema personalizado.
 
 | Tabla | Columnas y tipos | Nullability |
 | --- | --- | --- |
 | Clients | `Id`: uuid; `Name`: text; `CreatedAt`, `UpdatedAt`: timestamp with time zone | Todas NOT NULL |
 | Projects | `Id`, `ClientId`: uuid; `Name`, `City`, `SgCode`: text; `ProductLine`: integer; `CreatedAt`, `UpdatedAt`: timestamp with time zone | Solo `SgCode` admite NULL |
+| ProjectTasks | `Id`, `ProjectId`: uuid; `Area`, `Type`, `Status`: integer; `AssignedAt`, `StartedAt`, `CompletedAt`: timestamp with time zone | Solo `StartedAt` y `CompletedAt` admiten NULL |
 
 - `PK_Clients` sobre `Clients.Id` y `PK_Projects` sobre `Projects.Id`.
 - `FK_Projects_Clients_ClientId`: `Projects.ClientId` referencia `Clients.Id`, relación 1:N sin navegaciones, con `ON DELETE RESTRICT`. No se eliminan proyectos en cascada.
@@ -184,9 +203,21 @@ Se usan nombres explícitos `Clients` y `Projects`, con columnas PascalCase; el 
 - No hay índices únicos sobre nombres, longitudes máximas de texto, defaults de identidad/fechas ni datos seed.
 - `ProductLine` se convierte a integer: **Classic=1, Essential=2, Bioconfort=3, Signature=4**. Estos valores forman parte del contrato de datos y no deben renumerarse. El constructor rechaza valores de enum no definidos; no se añade una restricción CHECK en esta fase.
 
+`ProjectTasks` tiene `PK_ProjectTasks` sobre Id y `FK_ProjectTasks_Projects_ProjectId` hacia Projects.Id, relación 1:N requerida sin navegaciones y con `ON DELETE RESTRICT`. No hay borrado en cascada. Sus únicos índices secundarios son `IX_ProjectTasks_ProjectId` y `IX_ProjectTasks_Area_Status`, ambos no únicos. No existe un índice único ProjectId+Type.
+
+Los enums de tarea se convierten explícitamente a integer y conservan estos contratos estables:
+
+| Enum | Valores |
+| --- | --- |
+| OperationalArea | Commercial=1, Budgets=2 |
+| ProjectTaskType | PrepareQuotation=1 |
+| ProjectTaskStatus | Pending=1, InProgress=2, Completed=3 |
+
+Domain valida los valores; no hay restricciones CHECK ni valores predeterminados de base para estos campos.
+
 ## Migraciones
 
-`20261013143318_InitialCreate` crea únicamente las dos tablas del modelo, sus PK, FK e índices. Su `Down` contiene la reversión generada por EF; no forma parte del procedimiento normal de instalación. EF administra además su tabla técnica `__EFMigrationsHistory` al aplicar migraciones.
+`20261013143318_InitialCreate` crea Clients y Projects, sus PK, FK e índices; permanece intacta junto con su Designer y modelo histórico. `20261013190849_AddProjectTasks`, generada con EF tooling, agrega exclusivamente ProjectTasks, su PK, FK e índices. El snapshot actual incluye las tres entidades. Los métodos `Down` contienen la reversión generada por EF; no forman parte del procedimiento normal de instalación. EF administra además su tabla técnica `__EFMigrationsHistory` al aplicar migraciones.
 
 No se utilizan `EnsureCreated()` ni migraciones automáticas en startup. No crear tablas manualmente, borrar o recrear la base. Antes de aplicar, confirmar que la conexión apunta a la base **existente** `sng_control` y que el usuario tiene permisos sobre ella. El tooling de EF puede intentar crear una base inexistente; no ejecutarlo contra un destino sin verificar.
 
@@ -197,7 +228,8 @@ La fábrica `SnG.Control.Api.Persistence.SnGControlDbContextFactory` implementa 
 ```shell
 dotnet ef migrations list --no-connect --project src/Infrastructure --startup-project src/Api -- --environment Development
 dotnet ef migrations has-pending-model-changes --project src/Infrastructure --startup-project src/Api -- --environment Development
-dotnet ef migrations script 0 InitialCreate --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script 0 AddProjectTasks --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script InitialCreate AddProjectTasks --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
 ### Aplicar a la base existente
@@ -214,7 +246,7 @@ Comprobar que el comando termina correctamente y verificar el estado aplicado:
 dotnet ef migrations list --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
-`InitialCreate` es la única migración del modelo. La instalación local de `sng_control` tiene esa migración aplicada; otros entornos deben comprobar su propio historial antes de operar. Los seis casos de uso no requieren cambios de esquema. Los comandos de inspección offline no verifican si una base concreta tiene migraciones aplicadas.
+El modelo tiene exactamente dos migraciones: `InitialCreate` y `AddProjectTasks`. Ambas están aplicadas y verificadas en `__EFMigrationsHistory` de la instalación local `sng_control`; otros entornos deben comprobar su propio historial antes de operar. Los comandos de inspección offline no verifican si una base concreta tiene migraciones aplicadas.
 
 ### Crear migraciones futuras
 
@@ -240,7 +272,7 @@ El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `De
 En desarrollo, `GET /openapi/v1.json` publica OpenAPI con las seis operaciones de negocio. No hay Swagger UI ni Minimal APIs de negocio; `/` devuelve 404. Fuera de desarrollo no se publica OpenAPI.
 
 - `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS y Controllers.
-- `DependencyInjection.cs`: `AddApiServices` registra los seis casos de uso y los dos stores con lifetime scoped, Controllers, opciones JSON y manejo de errores. Application no necesita depender de una librería de DI.
+- `DependencyInjection.cs`: `AddApiServices` registra los nueve casos de uso y los tres stores con lifetime scoped, Controllers, opciones JSON y manejo de errores. Application no necesita depender de una librería de DI.
 - `appsettings.json`: logging (`Information` general y `Warning` para ASP.NET Core) y `AllowedHosts=*`; no contiene conexiones.
 - `Properties/launchSettings.json`: perfiles/puertos locales y `ASPNETCORE_ENVIRONMENT=Development`.
 - El registro del contexto no ejecuta operaciones de base de datos ni aplica migraciones.
@@ -257,6 +289,16 @@ Crear cliente construye la entidad validada, la guarda y mapea `ClientResponse`.
 
 Las respuestas de Application se mapean explícitamente con `FromEntity`, compartido por los casos de uso de cada feature. Los Controllers reciben requests propios de Api y devuelven esos DTO de respuesta, nunca entidades del dominio. No hay AutoMapper, repositorios genéricos ni Unit of Work adicional.
 
+### Envío y consultas de tareas
+
+`Features/ProjectTasks` contiene `IProjectTaskStore`, `ProjectTaskResponse` y los casos de uso agrupados en `SendToBudgets`, `ListByArea` y `ListByProject`. La interfaz declara únicamente `AddAsync`, `HasPrepareQuotationAsync`, `ListByAreaAsync` y `ListByProjectAsync`. `EfProjectTaskStore` utiliza el mismo DbContext scoped; guarda con SaveChangesAsync, lee con AsNoTracking y propaga CancellationToken en todas las operaciones.
+
+`SendProjectToBudgetsUseCase` primero consulta el Project, luego comprueba si existe una tarea con ese ProjectId y Type=PrepareQuotation, sin filtrar área ni estado. Si no existe, construye una tarea Budgets/PrepareQuotation/Pending, la guarda y devuelve su DTO. `SendProjectToBudgetsResult` expresa los tres resultados mediante records específicos: `Created`, `ProjectNotFound` y `AlreadySent`. Los dos últimos son resultados esperados, sin excepciones ni framework Result genérico. Crear Project no invoca este caso de uso.
+
+`ListProjectTasksByAreaUseCase` valida los enums y consulta por igualdad de Area y Status. `ListProjectTasksByProjectUseCase` verifica primero el proyecto: devuelve null si no existe, colección vacía si no tiene tareas o todas sus tareas en otro caso. No hay paginación ni orden garantizado en ninguna consulta.
+
+La prevención de duplicados reside en Application y protege reintentos cuando la tarea anterior ya está guardada, cualquiera que sea su estado. La comprobación y la inserción no son atómicas: dos solicitudes simultáneas podrían crear duplicados. No hay índice único ni bloqueo transaccional que lo impida. La política de concurrencia queda pendiente; no se introduce una regla de unicidad permanente que impida futuros retrabajos.
+
 ## Contrato HTTP actual
 
 | Método y ruta | Request | Éxito | Recurso inexistente |
@@ -267,6 +309,9 @@ Las respuestas de Application se mapean explícitamente con `FromEntity`, compar
 | POST `/api/projects` | `clientId`, `name`, `city`, `productLine` | 201, ProjectResponse y Location | 404 si no existe Client |
 | GET `/api/projects` | Sin body | 200, colección de ProjectResponse | Colección vacía |
 | GET `/api/projects/{id}` | Guid en ruta | 200, ProjectResponse | 404 |
+| POST `/api/projects/{id}/send-to-budgets` | Guid en ruta, sin body | 201, ProjectTaskResponse; 409 si ya enviado | 404 |
+| GET `/api/project-tasks?area=Budgets&status=Pending` | area y status requeridos como nombres | 200, colección de ProjectTaskResponse | Colección vacía |
+| GET `/api/projects/{id}/tasks` | Guid en ruta, sin filtros | 200, colección de ProjectTaskResponse | 404 |
 
 `ClientResponse` contiene `id`, `name`, `createdAt` y `updatedAt`. `ProjectResponse` contiene `id`, `clientId`, `name`, `city`, `productLine`, `sgCode`, `createdAt` y `updatedAt`. Las fechas son UTC en formato ISO 8601. Las respuestas de proyecto no incluyen el objeto Client completo. `sgCode` se devuelve como JSON null.
 
@@ -274,11 +319,34 @@ Se usa camelCase. `ProductLineJsonConverter` delega la lectura y escritura a `Js
 
 Los requests de creación no incluyen `id`, fechas ni `sgCode`. `JsonUnmappedMemberHandling.Disallow` rechaza campos JSON desconocidos, incluidos esos campos controlados por el dominio. Los nombres repetidos continúan permitidos.
 
+### Contrato de tareas
+
+El envío no recibe DTO ni body. Devuelve 201 con el DTO creado, sin cabecera Location: no existe GET por Id de tarea. Tampoco existe POST genérico `/api/project-tasks` ni endpoints para modificar estados.
+
+Ejemplo de respuesta del envío:
+
+```json
+{
+  "id": "90628337-3801-4276-996b-43d901623d96",
+  "projectId": "b0825722-a7d2-4385-9d13-a1a5e6fd7e66",
+  "area": "Budgets",
+  "type": "PrepareQuotation",
+  "status": "Pending",
+  "assignedAt": "2026-10-13T19:00:00Z",
+  "startedAt": null,
+  "completedAt": null
+}
+```
+
+`ProjectTaskResponse` expone exactamente estos ocho campos, sin objetos Client/Project incrustados, nombres duplicados ni SG. Los tres enums se serializan mediante JsonStringEnumConverter con valores numéricos deshabilitados.
+
+El GET por área acepta los nombres definidos Commercial/Budgets y Pending/InProgress/Completed, sin distinguir mayúsculas. Ambos parámetros son obligatorios; valores ausentes, vacíos, numéricos, combinados con comas o desconocidos producen 400. La validación de nombres se realiza explícitamente en el Controller porque el binding ordinario de enums también admite números. El flujo solo crea Budgets/Pending; las otras consultas pueden devolver `[]`. El historial devuelve `[]` para un proyecto existente sin tareas.
+
 ### Errores
 
 - `[ApiController]` responde 400 para errores de binding, JSON, Guid, enum o campos de texto requeridos.
 - Las invariantes permanecen en Domain. `ApiExceptionHandler` convierte `ArgumentException` y sus derivadas de validación en 400 con un ProblemDetails genérico.
-- Los Controllers convierten los resultados inexistentes en 404 con ProblemDetails. Utilizan `CreatedAtAction` para los 201, cuya cabecera Location apunta al GET correspondiente.
+- Los Controllers convierten los resultados inexistentes en 404 y AlreadySent en 409 con ProblemDetails. Clientes y proyectos utilizan `CreatedAtAction` para los 201, cuya cabecera Location apunta al GET correspondiente; el envío responde 201 con la tarea y sin Location.
 - El middleware de excepciones está activo también en Development. Los errores inesperados responden 500 con ProblemDetails genérico, sin mensajes de EF/Npgsql, SQL, stack traces ni detalles de configuración. Los diagnósticos quedan en los logs del servidor.
 - No hay traducción especial de conflictos de escritura concurrentes. La FK sigue protegiendo la integridad si un cliente desaparece externamente entre la comprobación y el guardado; la API no ofrece eliminación.
 
@@ -303,11 +371,22 @@ Invoke-RestMethod "$baseUrl/api/clients/$($client.id)"
 Invoke-RestMethod "$baseUrl/api/projects/$($project.id)"
 Invoke-RestMethod "$baseUrl/api/clients"
 Invoke-RestMethod "$baseUrl/api/projects"
+
+# Debe estar vacío: crear Project no lo envía a Presupuestos.
+Invoke-RestMethod "$baseUrl/api/projects/$($project.id)/tasks"
+$task = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
+$task # Budgets / PrepareQuotation / Pending; fechas de inicio y fin nulas.
+Invoke-RestMethod "$baseUrl/api/project-tasks?area=Budgets&status=Pending"
+Invoke-RestMethod "$baseUrl/api/projects/$($project.id)/tasks"
+# Este segundo envío debe producir HTTP 409 (Invoke-RestMethod informa el error).
+Invoke-RestMethod -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
 ```
 
-Los POST generan registros reales y responden 201; los cuatro GET responden 200. Un Guid válido inexistente responde 404. Cambiar `productLine` por un número o nombre desconocido, dejar `name`/`city` en blanco o enviar `Guid.Empty` como `clientId` produce 400. Un proyecto con cliente inexistente produce 404 sin insertar el proyecto.
+Los POST de creación y el primer envío generan registros reales y responden 201; los GET del ejemplo responden 200. El segundo envío responde 409 sin escribir otra tarea. Un Guid válido inexistente responde 404 al consultar entidades, enviar o consultar su historial. Cambiar `productLine`, `area` o `status` por un número o nombre desconocido, omitir área/estado, dejar `name`/`city` en blanco o enviar `Guid.Empty` como `clientId` produce 400. Un proyecto con cliente inexistente produce 404 sin insertar el proyecto.
 
-No hay endpoint de borrado. Para validaciones controladas en una base compartida, identificar los registros de prueba con una marca única y retirar exclusivamente esos registros mediante una operación administrativa segura, primero proyectos y después cliente. No modificar datos ajenos a la prueba.
+No hay endpoint de borrado. Para validaciones controladas en una base compartida, identificar los registros de prueba con una marca única y retirar exclusivamente esos registros mediante una operación administrativa segura, primero ProjectTasks, después Projects y finalmente Clients. No modificar datos ajenos a la prueba.
+
+El smoke local fue validado mediante la API real por HTTPS y PostgreSQL: creación de cliente/proyecto, historial inicial vacío, envío 201, tarea Pending persistida, consultas por área e historial, y segundo envío 409. Se retiraron exclusivamente una tarea, un proyecto y un cliente temporales y se verificó que no quedaran filas de prueba.
 
 ## Reglas permanentes para continuar
 
@@ -319,4 +398,4 @@ No hay endpoint de borrado. Para validaciones controladas en una base compartida
 - Validar herramientas, restore, build, tests y migraciones; corregir warnings atribuibles al código sin ocultarlos mediante configuración. Reportar los que legítimamente permanezcan y cualquier supuesto o impedimento.
 - No incluir secretos reales en archivos versionados. No aplicar migraciones automáticamente al arrancar.
 
-Siguen pendientes de alcance posterior la edición, eliminación, asignación/formato de SG y demás módulos funcionales. No se implementan filtros, paginación, búsqueda ni orden configurable. No hay decisión adicional de negocio que bloquee los seis casos de uso actuales.
+Siguen pendientes de alcance posterior la edición, eliminación, asignación/formato de SG, Excel, cotización, transiciones de tarea y demás módulos funcionales. Los únicos filtros disponibles son Area+Status para tareas; no hay paginación, búsqueda ni orden configurable. La garantía frente a envíos simultáneos y las reglas de reenvío/retrabajo requieren definición posterior.

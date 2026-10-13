@@ -80,11 +80,55 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.ToTable("Projects", (string)null);
                 });
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Area")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("AssignedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("Area", "Status");
+
+                    b.ToTable("ProjectTasks", (string)null);
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.Project", b =>
                 {
                     b.HasOne("SnG.Control.Domain.Entities.Client", null)
                         .WithMany()
                         .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectTask", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
