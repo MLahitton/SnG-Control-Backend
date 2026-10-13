@@ -4,7 +4,7 @@
 
 La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web API con Controllers tradicionales y Clean Architecture. El núcleo de negocio contiene `Client`, `Project`, `ProjectTask` y sus enums; sus reglas se describen en [README.md](README.md).
 
-La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las migraciones `InitialCreate` y `AddProjectTasks` están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
+La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las migraciones `InitialCreate`, `AddProjectTasks` y `EnforceUniquePrepareQuotationTask` están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
 Application implementa nueve casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. No hay repositorios genéricos, Unit of Work propio, autenticación, autorización ni Docker. La API exige configuración de conexión, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
 
@@ -92,6 +92,8 @@ src/
         20261013143318_InitialCreate.Designer.cs
         20261013190849_AddProjectTasks.cs
         20261013190849_AddProjectTasks.Designer.cs
+        20261013192753_EnforceUniquePrepareQuotationTask.cs
+        20261013192753_EnforceUniquePrepareQuotationTask.Designer.cs
         SnGControlDbContextModelSnapshot.cs
 tests/
   SnG.Control.Tests/
@@ -100,6 +102,7 @@ tests/
     Api/
     TestDoubles/
     Persistence/SnGControlDbContextTests.cs
+    Persistence/EfProjectTaskStoreTests.cs
 ```
 
 | Proyecto | Responsabilidad actual |
@@ -164,7 +167,9 @@ Los tests normales funcionan sin conexión configurada, sin contraseña y sin Po
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite contiene 140 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, duplicados de cualquier estado y área sin nueva escritura, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+La suite contiene 147 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+
+`EfProjectTaskStoreTests` usa el ChangeTracker real y un contexto de test que sustituye únicamente SaveChangesAsync, sin conexión ni paquetes adicionales. Verifica éxito y token, traducción exclusiva de SQLSTATE 23505 con el índice esperado, propagación de otros constraints/códigos/errores, detach de la entidad rechazada y conservación de otras entidades tracked. Estos tests comprueban la traducción y limpieza; la garantía de concurrencia se valida además contra PostgreSQL real mediante el smoke descrito más abajo.
 
 Cobertura opcional:
 
@@ -203,7 +208,9 @@ Se usan nombres explícitos `Clients`, `Projects` y `ProjectTasks`, con columnas
 - No hay índices únicos sobre nombres, longitudes máximas de texto, defaults de identidad/fechas ni datos seed.
 - `ProductLine` se convierte a integer: **Classic=1, Essential=2, Bioconfort=3, Signature=4**. Estos valores forman parte del contrato de datos y no deben renumerarse. El constructor rechaza valores de enum no definidos; no se añade una restricción CHECK en esta fase.
 
-`ProjectTasks` tiene `PK_ProjectTasks` sobre Id y `FK_ProjectTasks_Projects_ProjectId` hacia Projects.Id, relación 1:N requerida sin navegaciones y con `ON DELETE RESTRICT`. No hay borrado en cascada. Sus únicos índices secundarios son `IX_ProjectTasks_ProjectId` y `IX_ProjectTasks_Area_Status`, ambos no únicos. No existe un índice único ProjectId+Type.
+`ProjectTasks` tiene `PK_ProjectTasks` sobre Id y `FK_ProjectTasks_Projects_ProjectId` hacia Projects.Id, relación 1:N requerida sin navegaciones y con `ON DELETE RESTRICT`. No hay borrado en cascada. Conserva los índices no únicos `IX_ProjectTasks_ProjectId`, para consultar todas las tareas del proyecto independientemente de su tipo, e `IX_ProjectTasks_Area_Status`.
+
+El índice **`UX_ProjectTasks_ProjectId_PrepareQuotation`** es único sobre ProjectId con filtro exacto **`"Type" = 1`**. Impide dos tareas PrepareQuotation para el mismo proyecto, independientemente de área o estado, incluso ante inserciones concurrentes. No se usa UNIQUE(ProjectId, Type): el filtro limita la regla al tipo actualmente confirmado y no impone unicidad a otros tipos futuros. Fluent API utiliza un índice con nombre propio en el modelo para conservar también el índice no único sobre ProjectId. El nombre se comparte entre configuración y detección de conflictos mediante una constante interna de Infrastructure.
 
 Los enums de tarea se convierten explícitamente a integer y conservan estos contratos estables:
 
@@ -217,7 +224,7 @@ Domain valida los valores; no hay restricciones CHECK ni valores predeterminados
 
 ## Migraciones
 
-`20261013143318_InitialCreate` crea Clients y Projects, sus PK, FK e índices; permanece intacta junto con su Designer y modelo histórico. `20261013190849_AddProjectTasks`, generada con EF tooling, agrega exclusivamente ProjectTasks, su PK, FK e índices. El snapshot actual incluye las tres entidades. Los métodos `Down` contienen la reversión generada por EF; no forman parte del procedimiento normal de instalación. EF administra además su tabla técnica `__EFMigrationsHistory` al aplicar migraciones.
+`20261013143318_InitialCreate` crea Clients y Projects, sus PK, FK e índices. `20261013190849_AddProjectTasks` agrega ProjectTasks, su PK, FK e índices de consulta. Ambas permanecen intactas, incluidos sus Designers y modelos históricos. `20261013192753_EnforceUniquePrepareQuotationTask`, generada mediante EF tooling, agrega únicamente el índice único parcial, sin cambiar columnas, relaciones ni datos. El snapshot vigente incluye las tres entidades y este índice. Los métodos `Down` contienen la reversión generada por EF; no forman parte del procedimiento normal de instalación. EF administra además su tabla técnica `__EFMigrationsHistory` al aplicar migraciones.
 
 No se utilizan `EnsureCreated()` ni migraciones automáticas en startup. No crear tablas manualmente, borrar o recrear la base. Antes de aplicar, confirmar que la conexión apunta a la base **existente** `sng_control` y que el usuario tiene permisos sobre ella. El tooling de EF puede intentar crear una base inexistente; no ejecutarlo contra un destino sin verificar.
 
@@ -228,13 +235,32 @@ La fábrica `SnG.Control.Api.Persistence.SnGControlDbContextFactory` implementa 
 ```shell
 dotnet ef migrations list --no-connect --project src/Infrastructure --startup-project src/Api -- --environment Development
 dotnet ef migrations has-pending-model-changes --project src/Infrastructure --startup-project src/Api -- --environment Development
-dotnet ef migrations script 0 AddProjectTasks --project src/Infrastructure --startup-project src/Api -- --environment Development
-dotnet ef migrations script InitialCreate AddProjectTasks --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script 0 EnforceUniquePrepareQuotationTask --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script AddProjectTasks EnforceUniquePrepareQuotationTask --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
 ### Aplicar a la base existente
 
-Después de configurar y verificar la conexión:
+Después de configurar y verificar la conexión, si la base ya tiene ProjectTasks, comprobar duplicados antes de aplicar el índice:
+
+```sql
+SELECT "ProjectId", COUNT(*)
+FROM "ProjectTasks"
+WHERE "Type" = 1
+GROUP BY "ProjectId"
+HAVING COUNT(*) > 1;
+```
+
+Si devuelve filas, detener la aplicación de la migración, reportar los ProjectId afectados y esperar una decisión sobre esos datos. No borrar ni escoger registros automáticamente. La migración no sanea datos y el índice rechazará duplicados que aparezcan entre la comprobación y su creación.
+
+El SQL de la nueva protección, revisado antes de aplicar, es:
+
+```sql
+CREATE UNIQUE INDEX "UX_ProjectTasks_ProjectId_PrepareQuotation"
+ON "ProjectTasks" ("ProjectId") WHERE "Type" = 1;
+```
+
+Con la comprobación sin duplicados:
 
 ```shell
 dotnet ef database update --project src/Infrastructure --startup-project src/Api -- --environment Development
@@ -246,7 +272,7 @@ Comprobar que el comando termina correctamente y verificar el estado aplicado:
 dotnet ef migrations list --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
-El modelo tiene exactamente dos migraciones: `InitialCreate` y `AddProjectTasks`. Ambas están aplicadas y verificadas en `__EFMigrationsHistory` de la instalación local `sng_control`; otros entornos deben comprobar su propio historial antes de operar. Los comandos de inspección offline no verifican si una base concreta tiene migraciones aplicadas.
+El modelo tiene exactamente tres migraciones, en orden: `InitialCreate`, `AddProjectTasks` y `EnforceUniquePrepareQuotationTask`. Las tres están aplicadas y verificadas en `__EFMigrationsHistory` de la instalación local `sng_control`; la comprobación previa encontró cero grupos duplicados. Otros entornos deben comprobar su propio historial antes de operar. Los comandos de inspección offline no verifican si una base concreta tiene migraciones aplicadas.
 
 ### Crear migraciones futuras
 
@@ -291,13 +317,15 @@ Las respuestas de Application se mapean explícitamente con `FromEntity`, compar
 
 ### Envío y consultas de tareas
 
-`Features/ProjectTasks` contiene `IProjectTaskStore`, `ProjectTaskResponse` y los casos de uso agrupados en `SendToBudgets`, `ListByArea` y `ListByProject`. La interfaz declara únicamente `AddAsync`, `HasPrepareQuotationAsync`, `ListByAreaAsync` y `ListByProjectAsync`. `EfProjectTaskStore` utiliza el mismo DbContext scoped; guarda con SaveChangesAsync, lee con AsNoTracking y propaga CancellationToken en todas las operaciones.
+`Features/ProjectTasks` contiene `IProjectTaskStore`, `ProjectTaskResponse` y los casos de uso agrupados en `SendToBudgets`, `ListByArea` y `ListByProject`. La interfaz declara únicamente `TryAddPrepareQuotationAsync`, `ListByAreaAsync` y `ListByProjectAsync`. La operación de inserción devuelve true si la tarea se guardó y false si ya existe PrepareQuotation para el proyecto. `EfProjectTaskStore` utiliza el mismo DbContext scoped; guarda con SaveChangesAsync, lee con AsNoTracking y propaga CancellationToken en todas las operaciones.
 
-`SendProjectToBudgetsUseCase` primero consulta el Project, luego comprueba si existe una tarea con ese ProjectId y Type=PrepareQuotation, sin filtrar área ni estado. Si no existe, construye una tarea Budgets/PrepareQuotation/Pending, la guarda y devuelve su DTO. `SendProjectToBudgetsResult` expresa los tres resultados mediante records específicos: `Created`, `ProjectNotFound` y `AlreadySent`. Los dos últimos son resultados esperados, sin excepciones ni framework Result genérico. Crear Project no invoca este caso de uso.
+`SendProjectToBudgetsUseCase` primero consulta el Project. Si no existe devuelve `ProjectNotFound`; si existe, construye una tarea Budgets/PrepareQuotation/Pending e intenta insertarla mediante `TryAddPrepareQuotationAsync`. Un true produce `Created` con su DTO; un false produce `AlreadySent`. No hay consulta previa de tareas como garantía de unicidad. `SendProjectToBudgetsResult` expresa esos resultados mediante records específicos, sin excepciones de negocio ni framework Result genérico. Crear Project no invoca este caso de uso.
 
 `ListProjectTasksByAreaUseCase` valida los enums y consulta por igualdad de Area y Status. `ListProjectTasksByProjectUseCase` verifica primero el proyecto: devuelve null si no existe, colección vacía si no tiene tareas o todas sus tareas en otro caso. No hay paginación ni orden garantizado en ninguna consulta.
 
-La prevención de duplicados reside en Application y protege reintentos cuando la tarea anterior ya está guardada, cualquiera que sea su estado. La comprobación y la inserción no son atómicas: dos solicitudes simultáneas podrían crear duplicados. No hay índice único ni bloqueo transaccional que lo impida. La política de concurrencia queda pendiente; no se introduce una regla de unicidad permanente que impida futuros retrabajos.
+PostgreSQL es la autoridad de integridad: la inserción se intenta directamente y el índice único parcial arbitra los envíos concurrentes. El store captura un DbUpdateException **solo** cuando su InnerException es PostgresException con SqlState=`PostgresErrorCodes.UniqueViolation` (23505) **y** ConstraintName=`UX_ProjectTasks_ProjectId_PrepareQuotation`. Ese conflicto se traduce a false → AlreadySent → HTTP 409. Una violación de otra restricción, otro SQLSTATE o cualquier otro error se propaga al manejo global de errores inesperados, sin exponer mensajes PostgreSQL por HTTP.
+
+Después del conflicto esperado, el store establece `context.Entry(task).State = EntityState.Detached`. Solo desacopla la tarea rechazada; no vacía el ChangeTracker ni descarta otras entidades. Así un SaveChanges posterior en el mismo scope no reintenta la inserción fallida. No hay transacciones externas ni UnitOfWork adicional en este flujo; SaveChangesAsync utiliza el comportamiento transaccional de EF.
 
 ## Contrato HTTP actual
 
@@ -348,7 +376,7 @@ El GET por área acepta los nombres definidos Commercial/Budgets y Pending/InPro
 - Las invariantes permanecen en Domain. `ApiExceptionHandler` convierte `ArgumentException` y sus derivadas de validación en 400 con un ProblemDetails genérico.
 - Los Controllers convierten los resultados inexistentes en 404 y AlreadySent en 409 con ProblemDetails. Clientes y proyectos utilizan `CreatedAtAction` para los 201, cuya cabecera Location apunta al GET correspondiente; el envío responde 201 con la tarea y sin Location.
 - El middleware de excepciones está activo también en Development. Los errores inesperados responden 500 con ProblemDetails genérico, sin mensajes de EF/Npgsql, SQL, stack traces ni detalles de configuración. Los diagnósticos quedan en los logs del servidor.
-- No hay traducción especial de conflictos de escritura concurrentes. La FK sigue protegiendo la integridad si un cliente desaparece externamente entre la comprobación y el guardado; la API no ofrece eliminación.
+- Solo el conflicto específico del índice PrepareQuotation se traduce a AlreadySent/409, también bajo concurrencia. Otros errores de persistencia no se confunden con duplicados esperados. Las FK siguen protegiendo la integridad si un cliente o proyecto desaparece externamente entre la comprobación y el guardado; la API no ofrece eliminación.
 
 ### Prueba manual
 
@@ -386,7 +414,11 @@ Los POST de creación y el primer envío generan registros reales y responden 20
 
 No hay endpoint de borrado. Para validaciones controladas en una base compartida, identificar los registros de prueba con una marca única y retirar exclusivamente esos registros mediante una operación administrativa segura, primero ProjectTasks, después Projects y finalmente Clients. No modificar datos ajenos a la prueba.
 
-El smoke local fue validado mediante la API real por HTTPS y PostgreSQL: creación de cliente/proyecto, historial inicial vacío, envío 201, tarea Pending persistida, consultas por área e historial, y segundo envío 409. Se retiraron exclusivamente una tarea, un proyecto y un cliente temporales y se verificó que no quedaran filas de prueba.
+### Validación de concurrencia real
+
+La suite sin conexión no sustituye esta comprobación. Crear un cliente y un proyecto nuevos con una marca única, y lanzar dos POST simultáneos al envío de ese proyecto con clientes HTTP reales. Esperar todas las respuestas y comprobar exactamente un 201 y un 409, sin 500. Consultar PostgreSQL con los identificadores de la prueba y verificar una sola fila ProjectTasks con ProjectId del proyecto temporal y Type=1. Si se lanzan más solicitudes, una sola debe crear y todas las demás deben responder 409.
+
+El smoke local por HTTPS contra PostgreSQL cumplió ese resultado: **2 requests concurrentes, 1 respuesta 201, 1 respuesta 409 y 1 fila PrepareQuotation**. También se verificó directamente que el store devuelve false para otro intento, deja la entidad Detached y permite un SaveChanges posterior que escribe cero filas. La limpieza retiró exclusivamente una tarea, un proyecto y un cliente temporales, en ese orden, y comprobó cero filas restantes de la prueba.
 
 ## Reglas permanentes para continuar
 
@@ -398,4 +430,4 @@ El smoke local fue validado mediante la API real por HTTPS y PostgreSQL: creaci�
 - Validar herramientas, restore, build, tests y migraciones; corregir warnings atribuibles al código sin ocultarlos mediante configuración. Reportar los que legítimamente permanezcan y cualquier supuesto o impedimento.
 - No incluir secretos reales en archivos versionados. No aplicar migraciones automáticamente al arrancar.
 
-Siguen pendientes de alcance posterior la edición, eliminación, asignación/formato de SG, Excel, cotización, transiciones de tarea y demás módulos funcionales. Los únicos filtros disponibles son Area+Status para tareas; no hay paginación, búsqueda ni orden configurable. La garantía frente a envíos simultáneos y las reglas de reenvío/retrabajo requieren definición posterior.
+Siguen pendientes de alcance posterior la edición, eliminación, asignación/formato de SG, Excel, cotización, transiciones de tarea y demás módulos funcionales. Los únicos filtros disponibles son Area+Status para tareas; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation por proyecto.

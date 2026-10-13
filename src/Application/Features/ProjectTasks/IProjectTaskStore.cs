@@ -5,8 +5,8 @@ namespace SnG.Control.Application.Features.ProjectTasks;
 
 public interface IProjectTaskStore
 {
-    Task AddAsync(ProjectTask task, CancellationToken cancellationToken);
-    Task<bool> HasPrepareQuotationAsync(Guid projectId, CancellationToken cancellationToken);
+    // True when inserted; false when a PrepareQuotation task already exists for the project.
+    Task<bool> TryAddPrepareQuotationAsync(ProjectTask task, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProjectTask>> ListByAreaAsync(
         OperationalArea area, ProjectTaskStatus status, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProjectTask>> ListByProjectAsync(Guid projectId, CancellationToken cancellationToken);

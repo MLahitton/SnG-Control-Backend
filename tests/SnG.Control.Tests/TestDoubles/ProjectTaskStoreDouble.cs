@@ -8,23 +8,19 @@ public class ProjectTaskStoreDouble : IProjectTaskStore
 {
     public List<ProjectTask> Items { get; } = [];
     public List<CancellationToken> ReceivedTokens { get; } = [];
-    public int AddCalls { get; private set; }
+    public int InsertAttempts { get; private set; }
 
-    public Task AddAsync(ProjectTask task, CancellationToken cancellationToken)
+    public Task<bool> TryAddPrepareQuotationAsync(ProjectTask task, CancellationToken cancellationToken)
     {
         ReceivedTokens.Add(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
-        AddCalls++;
+        InsertAttempts++;
+        if (Items.Any(existing => existing.ProjectId == task.ProjectId && existing.Type == ProjectTaskType.PrepareQuotation))
+        {
+            return Task.FromResult(false);
+        }
         Items.Add(task);
-        return Task.CompletedTask;
-    }
-
-    public Task<bool> HasPrepareQuotationAsync(Guid projectId, CancellationToken cancellationToken)
-    {
-        ReceivedTokens.Add(cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(Items.Any(task =>
-            task.ProjectId == projectId && task.Type == ProjectTaskType.PrepareQuotation));
+        return Task.FromResult(true);
     }
 
     public Task<IReadOnlyList<ProjectTask>> ListByAreaAsync(

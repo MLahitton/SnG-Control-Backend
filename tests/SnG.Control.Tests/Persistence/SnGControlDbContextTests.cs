@@ -114,11 +114,11 @@ public class SnGControlDbContextTests
     }
 
     [Fact]
-    public void Migrations_ContainInitialCreateAndProjectTasksAndMatchCurrentModel()
+    public void Migrations_ContainExactlyExpectedMigrationsAndMatchCurrentModel()
     {
         using var context = CreateContext();
 
-        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks" },
+        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask" },
             context.Database.GetMigrations().Select(migration => migration[(migration.IndexOf('_') + 1)..]));
         Assert.False(context.Database.HasPendingModelChanges());
     }
@@ -142,7 +142,7 @@ public class SnGControlDbContextTests
     }
 
     [Fact]
-    public void Model_RelatesTasksToProjectsRestrictivelyAndIndexesOnlyCurrentQueries()
+    public void Model_RelatesTasksToProjectsRestrictivelyAndPreservesQueryIndexesWithPartialUniqueness()
     {
         using var context = CreateContext();
         var entity = context.Model.FindEntityType(typeof(ProjectTask))!;
@@ -158,12 +158,19 @@ public class SnGControlDbContextTests
         Assert.Null(foreignKey.DependentToPrincipal);
         Assert.Null(foreignKey.PrincipalToDependent);
         var indexes = entity.GetIndexes().ToArray();
-        Assert.Equal(2, indexes.Length);
-        Assert.All(indexes, index => Assert.False(index.IsUnique));
-        Assert.Contains(indexes, index => index.Properties.Select(property => property.Name)
-            .SequenceEqual(new[] { nameof(ProjectTask.ProjectId) }));
-        Assert.Contains(indexes, index => index.Properties.Select(property => property.Name)
-            .SequenceEqual(new[] { nameof(ProjectTask.Area), nameof(ProjectTask.Status) }));
+        Assert.Equal(3, indexes.Length);
+        var byProject = Assert.Single(indexes, index => index.GetDatabaseName() == "IX_ProjectTasks_ProjectId");
+        Assert.False(byProject.IsUnique);
+        Assert.Null(byProject.GetFilter());
+        Assert.Equal(nameof(ProjectTask.ProjectId), Assert.Single(byProject.Properties).Name);
+        var byArea = Assert.Single(indexes, index => index.GetDatabaseName() == "IX_ProjectTasks_Area_Status");
+        Assert.False(byArea.IsUnique);
+        Assert.Null(byArea.GetFilter());
+        Assert.Equal(new[] { nameof(ProjectTask.Area), nameof(ProjectTask.Status) }, byArea.Properties.Select(property => property.Name));
+        var unique = Assert.Single(indexes, index => index.IsUnique);
+        Assert.Equal("UX_ProjectTasks_ProjectId_PrepareQuotation", unique.GetDatabaseName());
+        Assert.Equal(nameof(ProjectTask.ProjectId), Assert.Single(unique.Properties).Name);
+        Assert.Equal("\"Type\" = 1", unique.GetFilter());
     }
 
     [Theory]

@@ -12,13 +12,12 @@ public class SendProjectToBudgetsUseCase(IProjectStore projects, IProjectTaskSto
         {
             return new SendProjectToBudgetsResult.ProjectNotFound();
         }
-        if (await tasks.HasPrepareQuotationAsync(projectId, cancellationToken))
+        var task = new ProjectTask(projectId, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation);
+        if (!await tasks.TryAddPrepareQuotationAsync(task, cancellationToken))
         {
             return new SendProjectToBudgetsResult.AlreadySent();
         }
 
-        var task = new ProjectTask(projectId, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation);
-        await tasks.AddAsync(task, cancellationToken);
         return new SendProjectToBudgetsResult.Created(ProjectTaskResponse.FromEntity(task));
     }
 }

@@ -10,7 +10,7 @@ namespace SnG.Control.Tests.Application;
 public class ProjectTaskUseCaseTests
 {
     [Fact]
-    public async Task Send_CreatesPendingBudgetsTask_AndRejectsSecondSendWithoutWriting()
+    public async Task Send_CreatesPendingBudgetsTask_AndMapsRejectedInsertToAlreadySent()
     {
         var projects = new ProjectStoreDouble();
         var tasks = new ProjectTaskStoreDouble();
@@ -31,7 +31,8 @@ public class ProjectTaskUseCaseTests
         Assert.Null(result.Task.StartedAt);
         Assert.Null(result.Task.CompletedAt);
         Assert.IsType<SendProjectToBudgetsResult.AlreadySent>(await send.ExecuteAsync(project.Id, token));
-        Assert.Equal(1, tasks.AddCalls);
+        Assert.Equal(2, tasks.InsertAttempts);
+        Assert.Equal(2, tasks.ReceivedTokens.Count);
         Assert.Single(tasks.Items);
         Assert.All(projects.ReceivedTokens.Concat(tasks.ReceivedTokens), received => Assert.Equal(token, received));
     }
@@ -44,14 +45,14 @@ public class ProjectTaskUseCaseTests
             .ExecuteAsync(Guid.NewGuid(), CancellationToken.None);
         Assert.IsType<SendProjectToBudgetsResult.ProjectNotFound>(result);
         Assert.Empty(tasks.ReceivedTokens);
-        Assert.Equal(0, tasks.AddCalls);
+        Assert.Equal(0, tasks.InsertAttempts);
     }
 
     [Theory]
     [InlineData(ProjectTaskStatus.Pending)]
     [InlineData(ProjectTaskStatus.InProgress)]
     [InlineData(ProjectTaskStatus.Completed)]
-    public async Task Send_ExistingQuotationInAnyStatus_PreventsWriting(ProjectTaskStatus status)
+    public async Task Send_StoreRejectsExistingQuotationInAnyStatus_ReturnsAlreadySent(ProjectTaskStatus status)
     {
         var projects = new ProjectStoreDouble();
         var tasks = new ProjectTaskStoreDouble();
@@ -62,7 +63,8 @@ public class ProjectTaskUseCaseTests
         var result = await new SendProjectToBudgetsUseCase(projects, tasks).ExecuteAsync(project.Id, CancellationToken.None);
 
         Assert.IsType<SendProjectToBudgetsResult.AlreadySent>(result);
-        Assert.Equal(0, tasks.AddCalls);
+        Assert.Equal(1, tasks.InsertAttempts);
+        Assert.Single(tasks.Items);
     }
 
     [Fact]

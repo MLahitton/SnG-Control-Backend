@@ -53,12 +53,12 @@ public class ProjectTaskHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture
     public async Task MissingProject_Returns404ForSendAndHistory()
     {
         var id = Guid.NewGuid();
-        var writes = fixture.Tasks.AddCalls;
+        var attempts = fixture.Tasks.InsertAttempts;
         using var sent = await fixture.Http.PostAsync($"/api/projects/{id}/send-to-budgets", null);
         using var history = await fixture.Http.GetAsync($"/api/projects/{id}/tasks");
         Assert.Equal(HttpStatusCode.NotFound, sent.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, history.StatusCode);
-        Assert.Equal(writes, fixture.Tasks.AddCalls);
+        Assert.Equal(attempts, fixture.Tasks.InsertAttempts);
     }
 
     [Theory]

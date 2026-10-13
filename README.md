@@ -6,7 +6,7 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, consultar sus tareas pendientes y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`.
 
-La API requiere una conexión configurada y el esquema preparado mediante las migraciones `InitialCreate` y `AddProjectTasks` para operar. No hay interfaz de usuario ni operaciones de edición o eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP y modelo de persistencia sin requerir una base de datos activa.
+La API requiere una conexión configurada y todas las migraciones del repositorio aplicadas para operar. No hay interfaz de usuario ni operaciones de edición o eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP y modelo de persistencia sin requerir una base de datos activa.
 
 ## Clientes y proyectos
 
@@ -49,7 +49,7 @@ La regla de negocio conocida para una fase posterior es que Presupuestos asigne 
 4. Se puede consultar cada cliente o proyecto por su identificador, o listar la colección correspondiente. La respuesta de un proyecto incluye el identificador de su cliente, sin incrustar el objeto cliente completo.
 5. Comercial puede ejecutar **Enviar a Presupuestos** sobre un proyecto existente. Crear el proyecto no ejecuta este envío automáticamente.
 6. El envío crea una tarea de **preparar cotización**, asignada a Presupuestos y en estado **Pendiente**. Se puede consultar la bandeja de tareas por área y estado, y el historial completo de tareas de cada proyecto.
-7. Un nuevo intento de envío se rechaza si el proyecto ya tiene esa tarea, cualquiera que sea su estado. No existe reenvío ni retrabajo en el flujo actual.
+7. Cada proyecto solo puede enviarse una vez al flujo inicial de Presupuestos. Un nuevo intento responde conflicto si el proyecto ya tiene esa tarea, cualquiera que sea su estado. La garantía también se mantiene ante solicitudes simultáneas: solo una crea la tarea y las demás responden conflicto. No existe reenvío ni retrabajo en el flujo actual.
 
 Las creaciones de clientes y proyectos devuelven el registro guardado y una referencia para consultarlo; el envío devuelve la tarea creada. Las consultas o envíos sobre proyectos inexistentes, o la creación de un proyecto para un cliente inexistente, responden como recurso no encontrado. Las entradas inválidas se rechazan sin crear registros. El historial de un proyecto existente sin tareas es una colección vacía.
 

@@ -1,21 +1,32 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using SnG.Control.Application.Features.ProjectTasks;
 using SnG.Control.Domain.Entities;
 using SnG.Control.Domain.Enums;
+using SnG.Control.Infrastructure.Persistence.Configurations;
 
 namespace SnG.Control.Infrastructure.Persistence.Stores;
 
 public class EfProjectTaskStore(SnGControlDbContext context) : IProjectTaskStore
 {
-    public async Task AddAsync(ProjectTask task, CancellationToken cancellationToken)
+    public async Task<bool> TryAddPrepareQuotationAsync(ProjectTask task, CancellationToken cancellationToken)
     {
         await context.ProjectTasks.AddAsync(task, cancellationToken);
-        await context.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await context.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (DbUpdateException exception) when (exception.InnerException is PostgresException
+        {
+            SqlState: PostgresErrorCodes.UniqueViolation,
+            ConstraintName: ProjectTaskConfiguration.PrepareQuotationIndexName
+        })
+        {
+            context.Entry(task).State = EntityState.Detached;
+            return false;
+        }
     }
-
-    public Task<bool> HasPrepareQuotationAsync(Guid projectId, CancellationToken cancellationToken) =>
-        context.ProjectTasks.AsNoTracking().AnyAsync(
-            task => task.ProjectId == projectId && task.Type == ProjectTaskType.PrepareQuotation, cancellationToken);
 
     public async Task<IReadOnlyList<ProjectTask>> ListByAreaAsync(
         OperationalArea area, ProjectTaskStatus status, CancellationToken cancellationToken) =>

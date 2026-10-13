@@ -112,6 +112,10 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Area", "Status");
 
+                    b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_ProjectId_PrepareQuotation")
+                        .IsUnique()
+                        .HasFilter("\"Type\" = 1");
+
                     b.ToTable("ProjectTasks", (string)null);
                 });
 

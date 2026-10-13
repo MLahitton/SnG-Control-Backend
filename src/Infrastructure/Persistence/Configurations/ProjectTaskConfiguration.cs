@@ -6,6 +6,8 @@ namespace SnG.Control.Infrastructure.Persistence.Configurations;
 
 public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
 {
+    internal const string PrepareQuotationIndexName = "UX_ProjectTasks_ProjectId_PrepareQuotation";
+
     public void Configure(EntityTypeBuilder<ProjectTask> builder)
     {
         builder.ToTable("ProjectTasks");
@@ -26,5 +28,8 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
 
         builder.HasIndex(task => task.ProjectId);
         builder.HasIndex(task => new { task.Area, task.Status });
+        builder.HasIndex(task => task.ProjectId, PrepareQuotationIndexName)
+            .IsUnique()
+            .HasFilter("\"Type\" = 1");
     }
 }
