@@ -37,4 +37,16 @@ public class ProjectTask
     public DateTime AssignedAt { get; private set; }
     public DateTime? StartedAt { get; private set; }
     public DateTime? CompletedAt { get; private set; }
+
+    public void Start()
+    {
+        if (Status != ProjectTaskStatus.Pending)
+        {
+            throw new InvalidOperationException("Only a pending task can be started.");
+        }
+
+        Status = ProjectTaskStatus.InProgress;
+        StartedAt = DateTime.UtcNow;
+        CompletedAt = null;
+    }
 }

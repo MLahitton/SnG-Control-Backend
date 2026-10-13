@@ -139,7 +139,9 @@ public class ProjectTaskUseCaseTests
     private static ProjectTask StoredTask(Guid projectId, OperationalArea area, ProjectTaskStatus status)
     {
         var task = new ProjectTask(projectId, area, ProjectTaskType.PrepareQuotation);
-        typeof(ProjectTask).GetProperty(nameof(ProjectTask.Status))!.SetValue(task, status);
+        if (status == ProjectTaskStatus.InProgress) task.Start();
+        else if (status == ProjectTaskStatus.Completed)
+            typeof(ProjectTask).GetProperty(nameof(ProjectTask.Status))!.SetValue(task, status);
         return task;
     }
 }

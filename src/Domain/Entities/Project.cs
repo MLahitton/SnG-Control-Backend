@@ -37,4 +37,19 @@ public class Project
     public string? SgCode { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public DateTime UpdatedAt { get; private set; }
+
+    public void SetSgCode(string sgCode)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sgCode);
+        var normalized = sgCode.Trim().ToUpperInvariant();
+        if (!normalized.StartsWith("SG", StringComparison.Ordinal) || normalized.Length < 3
+            || normalized.Skip(2).Any(character => character is < '0' or > '9'))
+        {
+            throw new ArgumentException("SgCode must be SG followed by ASCII digits.", nameof(sgCode));
+        }
+        if (SgCode == normalized) return;
+
+        SgCode = normalized;
+        UpdatedAt = DateTime.UtcNow;
+    }
 }

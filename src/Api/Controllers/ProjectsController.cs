@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using SnG.Control.Api.Contracts;
+using SnG.Control.Application.Features.Budgets.AssignSg;
 using SnG.Control.Application.Features.Projects;
 using SnG.Control.Application.Features.Projects.Create;
 using SnG.Control.Application.Features.Projects.GetById;
@@ -17,7 +18,8 @@ public class ProjectsController(
     GetProjectByIdUseCase getById,
     ListProjectsUseCase list,
     SendProjectToBudgetsUseCase sendToBudgets,
-    ListProjectTasksByProjectUseCase listTasks) : ControllerBase
+    ListProjectTasksByProjectUseCase listTasks,
+    AssignProjectSgCodeUseCase assignSgCode) : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType<ProjectResponse>(StatusCodes.Status201Created)]
@@ -77,5 +79,25 @@ public class ProjectsController(
         return result is null
             ? Problem(statusCode: StatusCodes.Status404NotFound, title: "Project not found.")
             : Ok(result);
+    }
+
+    [HttpPut("{id}/sg-code")]
+    [ProducesResponseType<AssignProjectSgCodeResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<AssignProjectSgCodeResponse>> AssignSgCode(
+        Guid id, AssignSgCodeRequest request, CancellationToken cancellationToken)
+    {
+        var result = await assignSgCode.ExecuteAsync(id, request.SgCode, cancellationToken);
+        return result switch
+        {
+            AssignProjectSgCodeResult.Success success => Ok(success.Response),
+            AssignProjectSgCodeResult.ProjectNotFound => Problem(statusCode: 404, title: "Project not found."),
+            AssignProjectSgCodeResult.ProjectNotSentToBudgets => Problem(statusCode: 409, title: "Project has not been sent to Budgets."),
+            AssignProjectSgCodeResult.InvalidWorkflowState => Problem(statusCode: 409, title: "Project workflow does not allow SG assignment."),
+            AssignProjectSgCodeResult.SgCodeAlreadyInUse => Problem(statusCode: 409, title: "SG code is already in use."),
+            _ => throw new InvalidOperationException("Unexpected SG assignment result.")
+        };
     }
 }

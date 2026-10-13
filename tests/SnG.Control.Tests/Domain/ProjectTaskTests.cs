@@ -5,6 +5,37 @@ namespace SnG.Control.Tests.Domain;
 
 public class ProjectTaskTests
 {
+    [Fact]
+    public void Start_PendingTask_SetsUtcStartWithoutChangingAssignment()
+    {
+        var task = new ProjectTask(Guid.NewGuid(), OperationalArea.Budgets, ProjectTaskType.PrepareQuotation);
+        var assignment = (task.Id, task.ProjectId, task.Area, task.Type, task.AssignedAt);
+        var before = DateTime.UtcNow;
+        task.Start();
+        Assert.Equal(ProjectTaskStatus.InProgress, task.Status);
+        Assert.NotNull(task.StartedAt);
+        Assert.Equal(DateTimeKind.Utc, task.StartedAt.Value.Kind);
+        Assert.InRange(task.StartedAt.Value, before, DateTime.UtcNow);
+        Assert.Null(task.CompletedAt);
+        Assert.Equal(assignment, (task.Id, task.ProjectId, task.Area, task.Type, task.AssignedAt));
+    }
+
+    [Theory]
+    [InlineData(ProjectTaskStatus.InProgress)]
+    [InlineData(ProjectTaskStatus.Completed)]
+    public void Start_NonPendingTask_RejectsWithoutChangingDates(ProjectTaskStatus status)
+    {
+        var task = new ProjectTask(Guid.NewGuid(), OperationalArea.Budgets, ProjectTaskType.PrepareQuotation);
+        task.Start();
+        if (status == ProjectTaskStatus.Completed)
+            typeof(ProjectTask).GetProperty(nameof(ProjectTask.Status))!.SetValue(task, status);
+        var started = task.StartedAt;
+        Assert.Throws<InvalidOperationException>(task.Start);
+        Assert.Equal(status, task.Status);
+        Assert.Equal(started, task.StartedAt);
+        Assert.Null(task.CompletedAt);
+    }
+
     [Theory]
     [InlineData(OperationalArea.Commercial)]
     [InlineData(OperationalArea.Budgets)]

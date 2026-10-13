@@ -1,0 +1,31 @@
+using SnG.Control.Application.Features.Projects;
+using SnG.Control.Application.Features.ProjectTasks;
+using SnG.Control.Domain.Enums;
+
+namespace SnG.Control.Application.Features.Budgets.AssignSg;
+
+public class AssignProjectSgCodeUseCase(IBudgetsWorkflowStore store)
+{
+    public async Task<AssignProjectSgCodeResult> ExecuteAsync(Guid projectId, string sgCode, CancellationToken cancellationToken)
+    {
+        var (project, task) = await store.LoadAsync(projectId, cancellationToken);
+        if (project is null) return new AssignProjectSgCodeResult.ProjectNotFound();
+        if (task is null) return new AssignProjectSgCodeResult.ProjectNotSentToBudgets();
+
+        var firstAssignment = project.SgCode is null;
+        var validState = task.CompletedAt is null && (firstAssignment
+            ? task.Status == ProjectTaskStatus.Pending && task.StartedAt is null
+            : task.Status == ProjectTaskStatus.InProgress && task.StartedAt is not null);
+        if (!validState) return new AssignProjectSgCodeResult.InvalidWorkflowState();
+
+        project.SetSgCode(sgCode);
+        if (firstAssignment) task.Start();
+        if (!await store.TrySaveAsync(project, task, cancellationToken))
+        {
+            return new AssignProjectSgCodeResult.SgCodeAlreadyInUse();
+        }
+
+        return new AssignProjectSgCodeResult.Success(new AssignProjectSgCodeResponse(
+            ProjectResponse.FromEntity(project), ProjectTaskResponse.FromEntity(task)));
+    }
+}

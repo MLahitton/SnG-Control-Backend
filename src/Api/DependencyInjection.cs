@@ -1,6 +1,8 @@
 using System.Text.Json.Serialization;
 using SnG.Control.Api.Contracts;
 using SnG.Control.Api.Errors;
+using SnG.Control.Application.Features.Budgets;
+using SnG.Control.Application.Features.Budgets.AssignSg;
 using SnG.Control.Application.Features.Clients;
 using SnG.Control.Application.Features.Clients.Create;
 using SnG.Control.Application.Features.Clients.GetById;
@@ -36,6 +38,8 @@ public static class DependencyInjection
         services.AddScoped<IClientStore, EfClientStore>();
         services.AddScoped<IProjectStore, EfProjectStore>();
         services.AddScoped<IProjectTaskStore, EfProjectTaskStore>();
+        services.AddScoped<IBudgetsWorkflowStore, EfBudgetsWorkflowStore>();
+        services.AddScoped<AssignProjectSgCodeUseCase>();
         services.AddScoped<SendProjectToBudgetsUseCase>();
         services.AddScoped<ListProjectTasksByAreaUseCase>();
         services.AddScoped<ListProjectTasksByProjectUseCase>();

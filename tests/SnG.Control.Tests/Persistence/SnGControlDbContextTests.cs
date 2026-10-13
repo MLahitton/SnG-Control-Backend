@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using SnG.Control.Domain.Entities;
 using SnG.Control.Domain.Enums;
 using SnG.Control.Infrastructure.Persistence;
@@ -118,7 +119,7 @@ public class SnGControlDbContextTests
     {
         using var context = CreateContext();
 
-        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask" },
+        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat" },
             context.Database.GetMigrations().Select(migration => migration[(migration.IndexOf('_') + 1)..]));
         Assert.False(context.Database.HasPendingModelChanges());
     }
@@ -198,5 +199,20 @@ public class SnGControlDbContextTests
             .Options;
 
         return new SnGControlDbContext(options);
+    }
+
+    [Fact]
+    public void Model_EnforcesSgFormatWhilePreservingNullableUniqueSgCode()
+    {
+        using var context = CreateContext();
+        var entity = context.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(Project))!;
+        var check = Assert.Single(entity.GetCheckConstraints());
+        Assert.Equal("CK_Projects_SgCode_Format", check.Name);
+        Assert.Equal("\"SgCode\" IS NULL OR \"SgCode\" ~ '^SG[0-9]+$'", check.Sql);
+        var index = Assert.Single(entity.GetIndexes(), index => index.GetDatabaseName() == "IX_Projects_SgCode");
+        Assert.True(index.IsUnique);
+        Assert.Null(index.GetFilter());
+        Assert.True(entity.FindProperty(nameof(Project.SgCode))!.IsNullable);
+        Assert.Equal("text", entity.FindProperty(nameof(Project.SgCode))!.GetColumnType());
     }
 }

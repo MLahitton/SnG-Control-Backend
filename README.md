@@ -4,9 +4,9 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 ## Funcionalidad actualmente implementada
 
-El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, consultar sus tareas pendientes y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`.
+El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, asignar o corregir su código SG, consultar las tareas por área y estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`.
 
-La API requiere una conexión configurada y todas las migraciones del repositorio aplicadas para operar. No hay interfaz de usuario ni operaciones de edición o eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP y modelo de persistencia sin requerir una base de datos activa.
+La API requiere una conexión configurada y todas las migraciones del repositorio aplicadas para operar. La única modificación disponible es la asignación o corrección del SG con su efecto sobre la tarea de Presupuestos. No hay interfaz de usuario ni operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP y modelo de persistencia sin requerir una base de datos activa.
 
 ## Clientes y proyectos
 
@@ -22,7 +22,7 @@ La relación es **Client 1 → N Project**: un cliente puede tener varios proyec
 - Los espacios en blanco al inicio y al final se eliminan al crear las entidades; los espacios internos se conservan.
 - Los nombres no se utilizan para identificar entidades. Se permiten proyectos con el mismo nombre tanto para clientes distintos como para un mismo cliente. No hay detección ni advertencias de posibles duplicados.
 - Cada entidad recibe su propio identificador interno al crearse. Las relaciones se establecen por ese identificador, nunca por nombre ni por código SG.
-- Las fechas se registran en UTC. Al crear un cliente o proyecto, su fecha de actualización coincide exactamente con la de creación. No existen operaciones de edición en esta fase.
+- Las fechas se registran en UTC. Al crear un cliente o proyecto, su fecha de actualización coincide exactamente con la de creación. Cambiar realmente el SG actualiza la fecha de modificación del proyecto y conserva su fecha de creación.
 
 ### Líneas de producto
 
@@ -37,9 +37,15 @@ La API recibe y devuelve estos nombres como texto, no como números. No se acept
 
 ### Código SG
 
-Todo proyecto se crea con `SgCode` sin asignar (`null`). Actualmente no existe una operación para asignarlo o modificarlo.
+Todo proyecto se crea con `SgCode` sin asignar (`null`). Después del envío a Presupuestos, el usuario de esa área escribe el código manualmente. El sistema no lo genera, calcula ni reserva consecutivos. SG es un identificador de negocio y no reemplaza la identidad interna del proyecto.
 
-La regla de negocio conocida para una fase posterior es que Presupuestos asigne un código como `SG1043` o `SG1044`. Será un identificador de negocio y no reemplazará la identidad interna del proyecto. El modelo de persistencia incluye un índice único para ese código: permite múltiples proyectos sin código y rechaza códigos no nulos repetidos. El proceso de asignación y las reglas de formato siguen pendientes.
+Se eliminan los espacios exteriores y se convierte la entrada a mayúsculas. El formato es `SG` seguido de uno o más dígitos ASCII `0-9`, sin espacios internos, signos ni letras adicionales. Por ejemplo, `"  sg0012  "` se guarda como `SG0012`: los ceros iniciales se conservan y `SG0012` es distinto de `SG12`. No hay una cantidad adicional mínima ni máxima de dígitos.
+
+Un SG solo puede pertenecer a un proyecto, también ante solicitudes simultáneas. La primera asignación cambia la tarea de Presupuestos de **Pendiente** a **En proceso** y fija su fecha de inicio en UTC. El código y el inicio de la tarea se guardan juntos: si el código ya pertenece a otro proyecto, no se guarda ninguno de esos cambios.
+
+Presupuestos puede corregir posteriormente el SG. La corrección conserva exactamente la fecha original de inicio y no crea ni reinicia tareas. Reenviar el mismo valor normalizado tampoco cambia la fecha de actualización del proyecto. La fecha de finalización permanece vacía.
+
+No se permite asignar SG antes de enviar el proyecto a Presupuestos. Los estados inconsistentes y las tareas completadas producen un conflicto; no se reparan automáticamente.
 
 ## Flujo funcional disponible
 
@@ -50,6 +56,7 @@ La regla de negocio conocida para una fase posterior es que Presupuestos asigne 
 5. Comercial puede ejecutar **Enviar a Presupuestos** sobre un proyecto existente. Crear el proyecto no ejecuta este envío automáticamente.
 6. El envío crea una tarea de **preparar cotización**, asignada a Presupuestos y en estado **Pendiente**. Se puede consultar la bandeja de tareas por área y estado, y el historial completo de tareas de cada proyecto.
 7. Cada proyecto solo puede enviarse una vez al flujo inicial de Presupuestos. Un nuevo intento responde conflicto si el proyecto ya tiene esa tarea, cualquiera que sea su estado. La garantía también se mantiene ante solicitudes simultáneas: solo una crea la tarea y las demás responden conflicto. No existe reenvío ni retrabajo en el flujo actual.
+8. Presupuestos asigna manualmente SG y la tarea pasa a En proceso. Puede corregir el código mediante la misma operación sin cambiar la fecha original de inicio.
 
 Las creaciones de clientes y proyectos devuelven el registro guardado y una referencia para consultarlo; el envío devuelve la tarea creada. Las consultas o envíos sobre proyectos inexistentes, o la creación de un proyecto para un cliente inexistente, responden como recurso no encontrado. Las entradas inválidas se rechazan sin crear registros. El historial de un proyecto existente sin tareas es una colección vacía.
 
@@ -59,13 +66,13 @@ Los identificadores, las fechas y el código SG no pueden suministrarse en las s
 
 Una **ProjectTask** representa trabajo asignado a un área y pertenece a un proyecto: **Project 1 → N ProjectTask**. Registra el área, tipo de trabajo, estado y fechas de asignación, inicio y finalización. Al asignarla, solo tiene fecha de asignación; inicio y finalización quedan vacíos.
 
-El contrato contempla Comercial (`Commercial`) y Presupuestos (`Budgets`), y estados Pendiente (`Pending`), En proceso (`InProgress`) y Completado (`Completed`). El flujo disponible solo crea tareas Pendientes para Presupuestos. No permite crear tareas arbitrarias, iniciarlas, completarlas, devolverlas ni procesar una cotización.
+El contrato contempla Comercial (`Commercial`) y Presupuestos (`Budgets`), y estados Pendiente (`Pending`), En proceso (`InProgress`) y Completado (`Completed`). El envío crea una tarea Pendiente y la primera asignación de SG la inicia. No hay una acción separada para iniciar tareas. No se permite crear tareas arbitrarias, completarlas, devolverlas ni procesar una cotización.
 
 Las tareas constituyen el historial operacional y no se eliminan al terminar un área. Actualmente no hay operaciones de finalización ni borrado; la base impide eliminar un proyecto con tareas asociadas. El estado operacional pertenece a las tareas, sin añadir un estado global al proyecto.
 
 ## Contexto funcional futuro
 
-El contexto conocido contempla procesos comerciales, técnicos, operativos y gerenciales alrededor del proyecto: procesamiento de cotizaciones, transiciones de tareas, catálogo comercial, mediciones, Actas de Vanos versionadas, catálogo técnico, pagos, producción, logística y órdenes de producción.
+El contexto conocido contempla procesos comerciales, técnicos, operativos y gerenciales alrededor del proyecto: procesamiento de cotizaciones, finalización y devolución de tareas, catálogo comercial, mediciones, Actas de Vanos versionadas, catálogo técnico, pagos, producción, logística y órdenes de producción.
 
 Estos módulos no están implementados. Sus reglas y flujos se definirán en sus respectivas fases, sin anticiparlos en el núcleo actual.
 

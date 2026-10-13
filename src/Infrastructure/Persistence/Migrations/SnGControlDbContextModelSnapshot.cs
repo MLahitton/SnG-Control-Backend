@@ -75,9 +75,13 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasIndex("ClientId");
 
                     b.HasIndex("SgCode")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasDatabaseName("IX_Projects_SgCode");
 
-                    b.ToTable("Projects", (string)null);
+                    b.ToTable("Projects", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_Projects_SgCode_Format", "\"SgCode\" IS NULL OR \"SgCode\" ~ '^SG[0-9]+$'");
+                        });
                 });
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectTask", b =>

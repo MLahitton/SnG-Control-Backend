@@ -15,7 +15,7 @@ public class ApiExceptionHandler : IExceptionHandler
         {
             Status = status,
             Title = invalidInput ? "Invalid request data." : "An unexpected error occurred.",
-            Detail = invalidInput ? "Check the supplied name, city, clientId and productLine, as applicable." : null
+            Detail = invalidInput ? "Check the supplied request values." : null
         }, cancellationToken);
         return true;
     }
