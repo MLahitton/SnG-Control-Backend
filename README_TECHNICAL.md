@@ -36,17 +36,17 @@ Application no tiene casos de uso. No hay Controllers ni endpoints de negocio, r
 dotnet-tools.json
 SnG.Control.sln
 src/
-  SnG.Control.Api/
+  Api/
     Program.cs
     Persistence/SnGControlDbContextFactory.cs
     appsettings.json
     Properties/launchSettings.json
-  SnG.Control.Application/
-  SnG.Control.Domain/
+  Application/
+  Domain/
     Entities/Client.cs
     Entities/Project.cs
     Enums/ProductLine.cs
-  SnG.Control.Infrastructure/
+  Infrastructure/
     Persistence/
       SnGControlDbContext.cs
       Configurations/ClientConfiguration.cs
@@ -99,7 +99,7 @@ La clave de configuración es `ConnectionStrings:SnGControl`. La API tiene `User
 Configurar localmente el secreto, reemplazando todos los placeholders por datos confirmados:
 
 ```shell
-dotnet user-secrets set "ConnectionStrings:SnGControl" "Host=<HOST>;Port=<PUERTO>;Database=sng_control;Username=<USUARIO>;Password=<CONTRASEÑA>" --project src/SnG.Control.Api
+dotnet user-secrets set "ConnectionStrings:SnGControl" "Host=<HOST>;Port=<PUERTO>;Database=sng_control;Username=<USUARIO>;Password=<CONTRASEÑA>" --project src/Api
 ```
 
 No guardar la contraseña ni una conexión real en código, migraciones, archivos versionados o documentación. User Secrets se almacena fuera del repositorio, en el perfil del usuario; no es un almacén cifrado ni una solución para producción. No hay archivos `.env` ni `appsettings.Local.json`.
@@ -139,7 +139,7 @@ Las entidades mantienen sus constructores públicos y validaciones. Sus propieda
 
 Los identificadores nacen de `Guid.NewGuid()` en el dominio y se mapean con `ValueGeneratedNever()`: no hay generación de UUID en PostgreSQL. Las fechas son `DateTime` UTC y ambos valores coinciden al crear la entidad. Los timestamps e identificadores almacenados se conservan al materializar entidades; no hay mecanismo automático de actualización de fechas.
 
-Se mantienen los namespaces por proyecto/carpeta, nullable reference types e implicit usings. Las validaciones siguen utilizando `ArgumentNullException`, `ArgumentException` y `ArgumentOutOfRangeException`. Domain no contiene DataAnnotations de persistencia, referencias EF, colecciones de navegación ni dependencias hacia Infrastructure.
+Los proyectos y carpetas bajo `src` se llaman `Api`, `Application`, `Domain` e `Infrastructure`; cada archivo de proyecto tiene el mismo nombre que su carpeta. `RootNamespace` mantiene el prefijo `SnG.Control` en los namespaces del código y de las migraciones. Se utilizan nullable reference types e implicit usings. Las validaciones siguen utilizando `ArgumentNullException`, `ArgumentException` y `ArgumentOutOfRangeException`. Domain no contiene DataAnnotations de persistencia, referencias EF, colecciones de navegación ni dependencias hacia Infrastructure.
 
 ## Tablas y restricciones
 
@@ -168,9 +168,9 @@ La fábrica `SnG.Control.Api.Persistence.SnGControlDbContextFactory` implementa 
 ### Inspeccionar sin conectarse
 
 ```shell
-dotnet ef migrations list --no-connect --project src/SnG.Control.Infrastructure --startup-project src/SnG.Control.Api -- --environment Development
-dotnet ef migrations has-pending-model-changes --project src/SnG.Control.Infrastructure --startup-project src/SnG.Control.Api -- --environment Development
-dotnet ef migrations script 0 InitialCreate --project src/SnG.Control.Infrastructure --startup-project src/SnG.Control.Api -- --environment Development
+dotnet ef migrations list --no-connect --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations has-pending-model-changes --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script 0 InitialCreate --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
 ### Aplicar a la base existente
@@ -178,13 +178,13 @@ dotnet ef migrations script 0 InitialCreate --project src/SnG.Control.Infrastruc
 Después de configurar y verificar la conexión:
 
 ```shell
-dotnet ef database update --project src/SnG.Control.Infrastructure --startup-project src/SnG.Control.Api -- --environment Development
+dotnet ef database update --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
 Comprobar que el comando termina correctamente y verificar el estado aplicado:
 
 ```shell
-dotnet ef migrations list --project src/SnG.Control.Infrastructure --startup-project src/SnG.Control.Api -- --environment Development
+dotnet ef migrations list --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
 El repositorio contiene la migración generada y validada; la aplicación es una operación por entorno. Sin conexión configurada queda pendiente aplicar `InitialCreate`, sin impedir restauración, compilación, tests ni validación offline.
@@ -194,7 +194,7 @@ El repositorio contiene la migración generada y validada; la aplicación es una
 Solo después de aprobar el nuevo alcance y ajustar el modelo:
 
 ```shell
-dotnet ef migrations add <NombreDescriptivo> --project src/SnG.Control.Infrastructure --startup-project src/SnG.Control.Api --output-dir Persistence/Migrations -- --environment Development
+dotnet ef migrations add <NombreDescriptivo> --project src/Infrastructure --startup-project src/Api --output-dir Persistence/Migrations -- --environment Development
 ```
 
 Revisar la migración y el snapshot: columnas, tipos, nullability, claves, índices y comportamiento de borrado. Si una migración todavía no aplicada es incorrecta, corregir la configuración y regenerarla mediante tooling. No editar como primera opción el SQL o el snapshot a mano ni alterar migraciones aplicadas. Compilar y ejecutar tests antes de aplicar.
@@ -205,7 +205,7 @@ Con la conexión configurada y, para persistir datos, las migraciones aplicadas:
 
 ```shell
 dotnet dev-certs https --trust
-dotnet run --project src/SnG.Control.Api --launch-profile https
+dotnet run --project src/Api --launch-profile https
 ```
 
 El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `Development`, con redirección HTTP a HTTPS. Detener con `Ctrl+C`. También existe el perfil `http` en 5051, sin puerto HTTPS propio; la redirección puede advertir que no encuentra ese puerto. Se recomienda el perfil `https`.

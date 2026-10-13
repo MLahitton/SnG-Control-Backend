@@ -19,9 +19,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\SnG.Control.Domain\SnG.Control.Domain.csproj" />
-    <ProjectReference Include="..\..\src\SnG.Control.Application\SnG.Control.Application.csproj" />
-    <ProjectReference Include="..\..\src\SnG.Control.Infrastructure\SnG.Control.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Domain\Domain.csproj" />
+    <ProjectReference Include="..\..\src\Application\Application.csproj" />
+    <ProjectReference Include="..\..\src\Infrastructure\Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

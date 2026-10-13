@@ -5,13 +5,13 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnG.Control.Api", "src\SnG.Control.Api\SnG.Control.Api.csproj", "{FEA1657C-2BDA-4AEF-9223-68CE3228F7B7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Api", "src\Api\Api.csproj", "{FEA1657C-2BDA-4AEF-9223-68CE3228F7B7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnG.Control.Domain", "src\SnG.Control.Domain\SnG.Control.Domain.csproj", "{F107304C-4993-4818-ADB4-1A365670D160}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Domain", "src\Domain\Domain.csproj", "{F107304C-4993-4818-ADB4-1A365670D160}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnG.Control.Application", "src\SnG.Control.Application\SnG.Control.Application.csproj", "{5E3CC39A-DD68-46AB-B95E-BCD328A38FD9}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Application", "src\Application\Application.csproj", "{5E3CC39A-DD68-46AB-B95E-BCD328A38FD9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SnG.Control.Infrastructure", "src\SnG.Control.Infrastructure\SnG.Control.Infrastructure.csproj", "{586F59C8-A705-45CD-AFCB-37E8A61C7F0C}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Infrastructure", "src\Infrastructure\Infrastructure.csproj", "{586F59C8-A705-45CD-AFCB-37E8A61C7F0C}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
 EndProject
