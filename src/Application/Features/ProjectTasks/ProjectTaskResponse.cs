@@ -5,9 +5,9 @@ namespace SnG.Control.Application.Features.ProjectTasks;
 
 public sealed record ProjectTaskResponse(
     Guid Id, Guid ProjectId, OperationalArea Area, ProjectTaskType Type, ProjectTaskStatus Status,
-    DateTime AssignedAt, DateTime? StartedAt, DateTime? CompletedAt)
+    DateTime AssignedAt, DateTime? StartedAt, DateTime? CompletedAt, string? AssignedToGoogleSubject)
 {
     internal static ProjectTaskResponse FromEntity(ProjectTask task) => new(
         task.Id, task.ProjectId, task.Area, task.Type, task.Status,
-        task.AssignedAt, task.StartedAt, task.CompletedAt);
+        task.AssignedAt, task.StartedAt, task.CompletedAt, task.AssignedToGoogleSubject);
 }

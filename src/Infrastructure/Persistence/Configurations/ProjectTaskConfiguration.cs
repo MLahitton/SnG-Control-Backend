@@ -15,6 +15,7 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
         builder.HasKey(task => task.Id);
         builder.Property(task => task.Id).ValueGeneratedNever();
         builder.Property(task => task.ProjectId).IsRequired();
+        builder.Property(task => task.AssignedToGoogleSubject).IsRequired(false);
         builder.Property(task => task.Area).HasConversion<int>().IsRequired();
         builder.Property(task => task.Type).HasConversion<int>().IsRequired();
         builder.Property(task => task.Status).HasConversion<int>().IsRequired();

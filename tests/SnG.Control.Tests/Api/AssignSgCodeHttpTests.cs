@@ -55,7 +55,7 @@ public class AssignSgCodeHttpTests(ApiFixture fixture) : IClassFixture<ApiFixtur
     {
         using var missing = await fixture.Http.PutAsJsonAsync(Path(Guid.NewGuid()), new { sgCode = "SG1" });
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
-        var project = new Project(Guid.NewGuid(), "Unsent", "City", ProductLine.Classic);
+        var project = new Project(Guid.NewGuid(), "Unsent", "City", ProductLine.Classic, "google-test-subject");
         fixture.Projects.Items.Add(project);
         using var unsent = await fixture.Http.PutAsJsonAsync(Path(project.Id), new { sgCode = "SG1" });
         Assert.Equal(HttpStatusCode.Conflict, unsent.StatusCode);
@@ -93,7 +93,7 @@ public class AssignSgCodeHttpTests(ApiFixture fixture) : IClassFixture<ApiFixtur
 
     private Project SentProject()
     {
-        var project = new Project(Guid.NewGuid(), "Project", "City", ProductLine.Classic);
+        var project = new Project(Guid.NewGuid(), "Project", "City", ProductLine.Classic, "google-test-subject");
         fixture.Projects.Items.Add(project);
         fixture.Tasks.Items.Add(new ProjectTask(project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation));
         return project;

@@ -4,7 +4,7 @@ namespace SnG.Control.Domain.Entities;
 
 public class ProjectTask
 {
-    public ProjectTask(Guid projectId, OperationalArea area, ProjectTaskType type)
+    public ProjectTask(Guid projectId, OperationalArea area, ProjectTaskType type, string? assignedToGoogleSubject = null)
     {
         if (projectId == Guid.Empty)
         {
@@ -19,6 +19,8 @@ public class ProjectTask
             throw new ArgumentOutOfRangeException(nameof(type), type, "Type must be a defined value.");
         }
 
+        if (assignedToGoogleSubject is not null) ArgumentException.ThrowIfNullOrWhiteSpace(assignedToGoogleSubject);
+        AssignedToGoogleSubject = assignedToGoogleSubject;
         Id = Guid.NewGuid();
         ProjectId = projectId;
         Area = area;
@@ -31,6 +33,7 @@ public class ProjectTask
 
     public Guid Id { get; private set; }
     public Guid ProjectId { get; private set; }
+    public string? AssignedToGoogleSubject { get; private set; }
     public OperationalArea Area { get; private set; }
     public ProjectTaskType Type { get; private set; }
     public ProjectTaskStatus Status { get; private set; }

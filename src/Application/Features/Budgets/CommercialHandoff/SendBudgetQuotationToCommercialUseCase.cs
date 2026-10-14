@@ -1,9 +1,10 @@
 using SnG.Control.Application.Files;
+using SnG.Control.Application.Identity;
 
 namespace SnG.Control.Application.Features.Budgets.CommercialHandoff;
 
 public sealed class SendBudgetQuotationToCommercialUseCase(IBudgetQuotationCommercialHandoffStore store,
-    IFileStorage storage, IBudgetQuotationWorkbookGenerator generator)
+    IFileStorage storage, IBudgetQuotationWorkbookGenerator generator, ICommercialHeadIdentity commercialHead)
 {
     public async Task<CommercialHandoffResult> ExecuteAsync(Guid projectId, CancellationToken cancellationToken)
     {
@@ -17,6 +18,6 @@ public sealed class SendBudgetQuotationToCommercialUseCase(IBudgetQuotationComme
         catch (DirectoryNotFoundException) { return new(CommercialHandoffStatus.DocumentUnavailable); }
         var generated = await generator.GenerateAsync(original, state.Version!.DocumentSgCode, state.WorkbookItems(), cancellationToken);
         if (generated is null) return new(CommercialHandoffStatus.DocumentMismatch);
-        return await store.SendAsync(state, generated, cancellationToken);
+        return await store.SendAsync(state, generated, commercialHead.Subject, cancellationToken);
     }
 }

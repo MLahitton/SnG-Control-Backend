@@ -51,7 +51,7 @@ public class PreviewBudgetQuotationUseCaseTests
             case "no-task": store.Task = null; break;
             case "pending": store.Task = new ProjectTask(store.Project!.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation); break;
             case "completed": Set(store.Task!, nameof(ProjectTask.Status), ProjectTaskStatus.Completed); break;
-            case "no-sg": store.Project = new Project(Guid.NewGuid(), "Test", "City", ProductLine.Classic); break;
+            case "no-sg": store.Project = new Project(Guid.NewGuid(), "Test", "City", ProductLine.Classic, "google-test-subject"); break;
             case "wrong-area": store.Task = new ProjectTask(store.Project!.Id, OperationalArea.Commercial, ProjectTaskType.PrepareQuotation); store.Task.Start(); break;
             case "no-start": Set(store.Task!, nameof(ProjectTask.StartedAt), null); break;
             case "has-completion": Set(store.Task!, nameof(ProjectTask.CompletedAt), DateTime.UtcNow); break;
@@ -98,7 +98,7 @@ public class PreviewBudgetQuotationUseCaseTests
     // Every mutation method fails: successful tests prove the use case only uses the existing read boundary.
     private sealed class ReadStore : IProjectStore, IProjectTaskStore
     {
-        public Project? Project { get; set; } = new(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic);
+        public Project? Project { get; set; } = new(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic, "google-test-subject");
         public ProjectTask? Task { get; set; }
         public List<CancellationToken> Tokens { get; } = [];
         public ReadStore() { Project!.SetSgCode("SG0012"); Task = new ProjectTask(Project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation); Task.Start(); }

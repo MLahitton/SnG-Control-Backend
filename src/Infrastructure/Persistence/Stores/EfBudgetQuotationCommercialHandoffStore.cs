@@ -35,7 +35,7 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
         return new(project, taskList, version, catalog, items, extractions);
     }
 
-    public async Task<CommercialHandoffResult> SendAsync(CommercialHandoffState expected, ReadOnlyMemory<byte> workbook, CancellationToken cancellationToken)
+    public async Task<CommercialHandoffResult> SendAsync(CommercialHandoffState expected, ReadOnlyMemory<byte> workbook, string commercialHeadSubject, CancellationToken cancellationToken)
     {
         // Generation and package validation have finished before acquiring any database lock.
         await using var transaction = await context.Database.BeginTransactionAsync(cancellationToken);
@@ -44,18 +44,18 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
         var status = current.Validate();
         if (status != CommercialHandoffStatus.Sent) return new(status);
         if (!current.SameDocumentAs(expected)) return new(CommercialHandoffStatus.DocumentMismatch);
-        return await PersistAsync(current, workbook, transaction, cancellationToken);
+        return await PersistAsync(current, workbook, transaction, commercialHeadSubject, cancellationToken);
     }
 
     internal async Task<CommercialHandoffResult> PersistAsync(CommercialHandoffState current, ReadOnlyMemory<byte> workbook,
-        IDbContextTransaction transaction, CancellationToken cancellationToken)
+        IDbContextTransaction transaction, string commercialHeadSubject, CancellationToken cancellationToken)
     {
         var budget = current.Tasks.Single(value => value.Type == ProjectTaskType.PrepareQuotation);
         var version = current.Version!;
         context.Attach(budget); context.Attach(version);
         var budgetBefore = context.Entry(budget).CurrentValues.Clone();
         var versionBefore = context.Entry(version).CurrentValues.Clone();
-        var commercial = new ProjectTask(current.Project.Id, OperationalArea.Commercial, ProjectTaskType.ReviewQuotation);
+        var commercial = new ProjectTask(current.Project.Id, OperationalArea.Commercial, ProjectTaskType.ReviewQuotation, commercialHeadSubject);
         var key = $"projects/{current.Project.Id:D}/budget-quotations/{version.Id:D}/confirmed.xlsx";
         var created = false;
         var commitStarted = false;
@@ -114,5 +114,5 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
     }
 
     private static ProjectTaskResponse Response(ProjectTask task) => new(task.Id, task.ProjectId, task.Area, task.Type, task.Status,
-        task.AssignedAt, task.StartedAt, task.CompletedAt);
+        task.AssignedAt, task.StartedAt, task.CompletedAt, task.AssignedToGoogleSubject);
 }

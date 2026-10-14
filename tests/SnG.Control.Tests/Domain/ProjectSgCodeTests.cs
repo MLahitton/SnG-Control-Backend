@@ -64,5 +64,5 @@ public class ProjectSgCodeTests
         Assert.Equal(updated, project.UpdatedAt);
     }
 
-    private static Project NewProject() => new(Guid.NewGuid(), "Project", "City", ProductLine.Classic);
+    private static Project NewProject() => new(Guid.NewGuid(), "Project", "City", ProductLine.Classic, "google-test-subject");
 }

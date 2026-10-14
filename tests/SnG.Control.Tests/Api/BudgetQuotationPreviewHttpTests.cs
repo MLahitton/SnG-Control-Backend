@@ -98,7 +98,7 @@ public class BudgetQuotationPreviewHttpTests(ApiFixture fixture) : IClassFixture
 
     private Project ReadyProject()
     {
-        var project = new Project(Guid.NewGuid(), "Preview test", "City", ProductLine.Classic); project.SetSgCode("SG0012");
+        var project = new Project(Guid.NewGuid(), "Preview test", "City", ProductLine.Classic, "google-test-subject"); project.SetSgCode("SG0012");
         var task = new ProjectTask(project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation); task.Start();
         fixture.Projects.Items.Add(project); fixture.Tasks.Items.Add(task); return project;
     }

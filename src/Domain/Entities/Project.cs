@@ -4,7 +4,11 @@ namespace SnG.Control.Domain.Entities;
 
 public class Project
 {
-    public Project(Guid clientId, string name, string city, ProductLine productLine)
+    // EF Core can materialize historical projects whose creator is unknown.
+    private Project() { }
+
+    public Project(Guid clientId, string name, string city, ProductLine productLine,
+        string createdByGoogleSubject, string? createdByEmail = null, string? createdByName = null)
     {
         if (clientId == Guid.Empty)
         {
@@ -13,6 +17,7 @@ public class Project
 
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(city);
+        ArgumentException.ThrowIfNullOrWhiteSpace(createdByGoogleSubject);
 
         if (!Enum.IsDefined(productLine))
         {
@@ -24,6 +29,9 @@ public class Project
         Name = name.Trim();
         City = city.Trim();
         ProductLine = productLine;
+        CreatedByGoogleSubject = createdByGoogleSubject;
+        CreatedByEmail = string.IsNullOrWhiteSpace(createdByEmail) ? null : createdByEmail;
+        CreatedByName = string.IsNullOrWhiteSpace(createdByName) ? null : createdByName;
         SgCode = null;
         CreatedAt = DateTime.UtcNow;
         UpdatedAt = CreatedAt;
@@ -31,8 +39,11 @@ public class Project
 
     public Guid Id { get; private set; }
     public Guid ClientId { get; private set; }
-    public string Name { get; private set; }
-    public string City { get; private set; }
+    public string Name { get; private set; } = "";
+    public string City { get; private set; } = "";
+    public string? CreatedByGoogleSubject { get; private set; }
+    public string? CreatedByEmail { get; private set; }
+    public string? CreatedByName { get; private set; }
     public ProductLine ProductLine { get; private set; }
     public string? SgCode { get; private set; }
     public DateTime CreatedAt { get; private set; }

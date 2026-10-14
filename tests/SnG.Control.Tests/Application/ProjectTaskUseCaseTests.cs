@@ -14,7 +14,7 @@ public class ProjectTaskUseCaseTests
     {
         var projects = new ProjectStoreDouble();
         var tasks = new ProjectTaskStoreDouble();
-        var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic);
+        var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
@@ -56,7 +56,7 @@ public class ProjectTaskUseCaseTests
     {
         var projects = new ProjectStoreDouble();
         var tasks = new ProjectTaskStoreDouble();
-        var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic);
+        var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
         tasks.Items.Add(StoredTask(project.Id, OperationalArea.Commercial, status));
 
@@ -72,7 +72,7 @@ public class ProjectTaskUseCaseTests
     {
         var projects = new ProjectStoreDouble();
         var tasks = new ProjectTaskStoreDouble();
-        var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic);
+        var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
         var pending = StoredTask(project.Id, OperationalArea.Budgets, ProjectTaskStatus.Pending);
         var completed = StoredTask(project.Id, OperationalArea.Budgets, ProjectTaskStatus.Completed);
@@ -98,7 +98,7 @@ public class ProjectTaskUseCaseTests
     {
         var projects = new ProjectStoreDouble();
         var tasks = new ProjectTaskStoreDouble();
-        var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic);
+        var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
         var history = new ListProjectTasksByProjectUseCase(projects, tasks);
 

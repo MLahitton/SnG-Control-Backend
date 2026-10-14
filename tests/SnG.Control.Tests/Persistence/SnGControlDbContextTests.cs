@@ -9,10 +9,22 @@ namespace SnG.Control.Tests.Persistence;
 
 public class SnGControlDbContextTests
 {
+    [Fact]
+    public void LegacyProject_MaterializesThroughEfWithNullCreatorAndNoPublicBypass()
+    {
+        using var context = CreateContext();
+        var entity = SnG.Control.Tests.Fixtures.LegacyProjectMaterializer.Create(context);
+        Assert.NotEqual(Guid.Empty, entity.Id); Assert.Equal("Historical project", entity.Name);
+        Assert.Equal(ProductLine.Classic, entity.ProductLine);
+        Assert.Null(entity.CreatedByGoogleSubject); Assert.Null(entity.CreatedByEmail); Assert.Null(entity.CreatedByName);
+        Assert.Single(typeof(Project).GetConstructors());
+        Assert.Contains(typeof(Project).GetConstructors().Single().GetParameters(), p => p.Name == "createdByGoogleSubject" && !p.IsOptional);
+    }
+
     [Theory]
     [InlineData(typeof(Client), "Clients", 4)]
-    [InlineData(typeof(Project), "Projects", 8)]
-    [InlineData(typeof(ProjectTask), "ProjectTasks", 8)]
+    [InlineData(typeof(Project), "Projects", 11)]
+    [InlineData(typeof(ProjectTask), "ProjectTasks", 9)]
     public void Model_MapsEntitiesWithDomainGeneratedPrimaryKeys(Type entityType, string tableName, int propertyCount)
     {
         using var context = CreateContext();
@@ -30,14 +42,14 @@ public class SnGControlDbContextTests
     [Theory]
     [InlineData(typeof(Client))]
     [InlineData(typeof(Project))]
-    public void Model_RequiresAllPropertiesExceptSgCodeAndMapsUtcTimestamps(Type entityType)
+    public void Model_MapsProjectAndClientNullabilityAndUtcTimestamps(Type entityType)
     {
         using var context = CreateContext();
         var entity = context.Model.FindEntityType(entityType)!;
 
         foreach (var property in entity.GetProperties())
         {
-            Assert.Equal(property.Name == nameof(Project.SgCode), property.IsNullable);
+            Assert.Equal(property.Name is nameof(Project.SgCode) or nameof(Project.CreatedByGoogleSubject) or nameof(Project.CreatedByEmail) or nameof(Project.CreatedByName), property.IsNullable);
             Assert.False(property.IsShadowProperty());
             Assert.True(property.PropertyInfo!.SetMethod!.IsPrivate);
 
@@ -104,13 +116,17 @@ public class SnGControlDbContextTests
     }
 
     [Fact]
-    public void Queries_CompileForAllEntitiesWithoutConnectionOrParameterlessConstructors()
+    public void Queries_CompileForAllEntitiesWithoutConnection()
     {
         using var context = CreateContext();
 
         Assert.Contains("FROM \"Clients\"", context.Clients.ToQueryString());
         Assert.Contains("FROM \"Projects\"", context.Projects.ToQueryString());
         Assert.Contains("FROM \"ProjectTasks\"", context.ProjectTasks.ToQueryString());
+        Assert.Contains("FROM \"BudgetQuotationVersions\"", context.BudgetQuotationVersions.ToQueryString());
+        Assert.Contains("FROM \"CommercialCatalogs\"", context.CommercialCatalogs.ToQueryString());
+        Assert.Contains("FROM \"CommercialCatalogItems\"", context.CommercialCatalogItems.ToQueryString());
+        Assert.Contains("FROM \"CommercialCatalogItemExtractions\"", context.CommercialCatalogItemExtractions.ToQueryString());
         Assert.True(string.IsNullOrEmpty(context.Database.GetConnectionString()));
     }
 
@@ -119,7 +135,7 @@ public class SnGControlDbContextTests
     {
         using var context = CreateContext();
 
-        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff" },
+        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff", "AddCommercialIdentityAssignments" },
             context.Database.GetMigrations().Select(migration => migration[(migration.IndexOf('_') + 1)..]));
         Assert.False(context.Database.HasPendingModelChanges());
     }
@@ -132,7 +148,7 @@ public class SnGControlDbContextTests
 
         foreach (var property in entity.GetProperties())
         {
-            Assert.Equal(property.Name is nameof(ProjectTask.StartedAt) or nameof(ProjectTask.CompletedAt), property.IsNullable);
+            Assert.Equal(property.Name is nameof(ProjectTask.StartedAt) or nameof(ProjectTask.CompletedAt) or nameof(ProjectTask.AssignedToGoogleSubject), property.IsNullable);
             Assert.False(property.IsShadowProperty());
             Assert.True(property.PropertyInfo!.SetMethod!.IsPrivate);
             if (property.ClrType == typeof(DateTime) || property.ClrType == typeof(DateTime?))

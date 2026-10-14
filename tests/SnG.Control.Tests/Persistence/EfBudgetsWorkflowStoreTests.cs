@@ -69,7 +69,7 @@ public class EfBudgetsWorkflowStoreTests
 
     private static (Project, ProjectTask) ModifiedWorkflow(SnGControlDbContext context)
     {
-        var project = new Project(Guid.NewGuid(), "Project", "City", ProductLine.Classic);
+        var project = new Project(Guid.NewGuid(), "Project", "City", ProductLine.Classic, "google-test-subject");
         var task = new ProjectTask(project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation);
         context.AttachRange(project, task);
         project.SetSgCode("SG1");

@@ -1,3 +1,4 @@
+using SnG.Control.Api.Authorization;
 using Microsoft.AspNetCore.Builder;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authentication;
@@ -45,6 +46,7 @@ public class ApiFixture : IAsyncLifetime
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.Configure<CommercialHeadOptions>(options => options.CommercialHeadSubject = "google-test-subject");
         builder.Services.Configure<GoogleAuthenticationOptions>(options => options.ClientId = "test-client-id");
         builder.Services.AddAuthentication(options =>
         {

@@ -9,6 +9,30 @@ namespace SnG.Control.Tests.Application;
 
 public class ProjectUseCaseTests
 {
+    [Theory]
+    [InlineData("other-google-subject", "a@example.com", "User A")]
+    [InlineData(" Opaque-001 ", null, null)]
+    public async Task Create_UsesCurrentUserAndStoresOriginalSnapshots(string subject, string? email, string? name)
+    {
+        var clients = new ClientStoreDouble(); var projects = new ProjectStoreDouble();
+        var client = new Client("Synthetic"); clients.Items.Add(client);
+        var response = await new CreateProjectUseCase(projects, clients, new IdentityDouble(subject, email, name))
+            .ExecuteAsync(client.Id, "Project", "City", ProductLine.Classic, default);
+        var entity = Assert.Single(projects.Items);
+        Assert.Equal(subject, entity.CreatedByGoogleSubject); Assert.Equal(email, entity.CreatedByEmail); Assert.Equal(name, entity.CreatedByName);
+        Assert.Equal(subject, response!.CreatedBy!.Subject); Assert.Equal(email, response.CreatedBy.Email); Assert.Equal(name, response.CreatedBy.Name);
+    }
+
+    [Theory]
+    [InlineData(null)][InlineData("")][InlineData(" ")]
+    public async Task Create_DoesNotFallBackToEmailWhenSubjectMissing(string? subject)
+    {
+        var projects = new ProjectStoreDouble();
+        await Assert.ThrowsAnyAsync<ArgumentException>(() => new CreateProjectUseCase(projects, new ClientStoreDouble(),
+            new IdentityDouble(subject!, "test@example.com", "User")).ExecuteAsync(Guid.NewGuid(), "Project", "City", ProductLine.Classic, default));
+        Assert.Empty(projects.Items);
+    }
+
     [Fact]
     public async Task CreateGetAndList_UseExistingClientKeepSgNullAndAllowRepeatedNames()
     {
@@ -18,7 +42,7 @@ public class ProjectUseCaseTests
         clients.Items.Add(client);
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
-        var create = new CreateProjectUseCase(projects, clients);
+        var create = new CreateProjectUseCase(projects, clients, new IdentityDouble());
 
         var first = await create.ExecuteAsync(client.Id, " Casa Campestre ", " Bucaramanga ", ProductLine.Signature, token);
         var second = await create.ExecuteAsync(client.Id, "Casa Campestre", "Bucaramanga", ProductLine.Signature, token);
@@ -48,7 +72,7 @@ public class ProjectUseCaseTests
     {
         var clients = new ClientStoreDouble();
         var projects = new ProjectStoreDouble();
-        var result = await new CreateProjectUseCase(projects, clients).ExecuteAsync(
+        var result = await new CreateProjectUseCase(projects, clients, new IdentityDouble()).ExecuteAsync(
             Guid.NewGuid(), "Casa", "Ciudad", ProductLine.Classic, CancellationToken.None);
         Assert.Null(result);
         Assert.Empty(projects.Items);
@@ -72,7 +96,7 @@ public class ProjectUseCaseTests
         var clients = new ClientStoreDouble();
         var projects = new ProjectStoreDouble();
         await Assert.ThrowsAnyAsync<ArgumentException>(() =>
-            new CreateProjectUseCase(projects, clients).ExecuteAsync(
+            new CreateProjectUseCase(projects, clients, new IdentityDouble()).ExecuteAsync(
                 invalidField == "clientId" ? Guid.Empty : Guid.NewGuid(),
                 invalidField == "name" ? " " : "Casa",
                 invalidField == "city" ? " " : "Ciudad",
@@ -90,7 +114,7 @@ public class ProjectUseCaseTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new CreateProjectUseCase(projects, clients).ExecuteAsync(
+            new CreateProjectUseCase(projects, clients, new IdentityDouble()).ExecuteAsync(
                 Guid.NewGuid(), "Casa", "Ciudad", ProductLine.Classic, cancellation.Token));
         Assert.Empty(projects.Items);
         Assert.Empty(projects.ReceivedTokens);

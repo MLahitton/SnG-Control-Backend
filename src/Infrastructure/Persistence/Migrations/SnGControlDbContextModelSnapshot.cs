@@ -289,6 +289,15 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("CreatedByEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedByGoogleSubject")
+                        .HasColumnType("text");
+
+                    b.Property<string>("CreatedByName")
+                        .HasColumnType("text");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
@@ -326,6 +335,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.Property<DateTime>("AssignedAt")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AssignedToGoogleSubject")
+                        .HasColumnType("text");
 
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");

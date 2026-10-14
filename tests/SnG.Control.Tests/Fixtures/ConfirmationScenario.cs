@@ -12,7 +12,7 @@ public sealed class ConfirmationScenario
 {
     public ProjectStoreDouble Projects { get; } = new();
     public ProjectTaskStoreDouble Tasks { get; } = new();
-    public Project Project { get; } = new(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic);
+    public Project Project { get; } = new(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic, "google-test-subject");
     public ProjectTask Task { get; }
     public QuotationConfirmationStoreDouble Store { get; }
     public PreviewBudgetQuotationUseCase Preview { get; }

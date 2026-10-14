@@ -6,28 +6,28 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, asignar o corregir su código SG, consultar las tareas por área y estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede obtener un preview técnico de una cotización XLSX estándar y confirmar sus valores corregidos para crear el catálogo comercial base oficial. El preview no persiste; la confirmación conserva datos en PostgreSQL y archivos en almacenamiento local configurado. Una acción posterior envía la cotización a Comercial, genera su Excel operativo y permite descargarlo.
 
-La API requiere configuración de autenticación Google, conexión, carpeta de almacenamiento y todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. No hay interfaz de usuario ni operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa ni acceso a Google.
+La API requiere configuración de autenticación Google, Subject del Jefe Comercial, conexión y carpeta de almacenamiento, además de todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. Este repositorio contiene solo el backend; no ofrece operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa ni acceso a Google.
 
 ## Identidad y acceso
 
 Las operaciones de negocio requieren autenticación mediante un ID Token de Google válido para el Client ID configurado. Durante esta fase de desarrollo puede acceder cualquier cuenta Google válida para ese cliente OAuth; no hay restricción por dominio corporativo ni jerarquías o roles específicos.
 
-Google identifica al usuario y SnG Control definirá sus permisos de negocio en fases posteriores. La identidad estable es el **Subject (`sub`)**, no el email. `GET /api/auth/me` devuelve únicamente subject, email y nombre del usuario autenticado; permitirá conocer el Subject que se configurará posteriormente para el Jefe Comercial.
+Google identifica al usuario mediante el **Subject (`sub`)**, no el email. `GET /api/auth/me` devuelve únicamente subject, email y nombre del usuario autenticado. Existe un único Jefe Comercial global, identificado por `Authentication:CommercialHeadSubject`. Solo esa identidad puede descargar el Excel operativo mediante `commercial-file`; otro usuario autenticado recibe 403. La comparación es exacta por Subject y no depende del email ni del nombre.
 
-No existe tabla de usuarios y no se almacenan passwords ni tokens. El frontend Google Sign-In todavía no está implementado. Una solicitud sin autenticación o con un token inválido recibe 401; las reglas funcionales existentes siguen vigentes para los usuarios autenticados.
+No existe tabla Users y no se almacenan passwords ni tokens. Una solicitud sin autenticación, con un token inválido o sin Subject recibe 401. Durante desarrollo, cualquier usuario Google autenticado puede crear proyectos y ejecutar las acciones generales, incluido enviar a Comercial; todavía no se modelan usuarios por área. La descarga del Excel operativo es la única acción restringida al Jefe Comercial.
 
 ## Clientes y proyectos
 
 Un **Client** representa un cliente. Tiene un identificador interno único, un nombre y fechas de creación y actualización. Su nombre es descriptivo y nunca reemplaza su identidad interna.
 
-Un **Project** representa un proyecto asociado a un cliente. Tiene identificador interno único, identificador del cliente, nombre, ciudad, línea de producto, código SG opcional y fechas de creación y actualización.
+Un **Project** representa un proyecto asociado a un cliente. Tiene identificador interno único, identificador del cliente, nombre, ciudad, línea de producto, código SG opcional, fechas de creación y actualización e identidad del creador. El servidor registra el Subject del usuario autenticado y snapshots opcionales de email y nombre; el body no puede elegirlos. El creador es actualmente el asesor comercial responsable del proyecto. No existe reasignación ni un segundo responsable persistido. Los proyectos históricos pueden tener `createdBy: null`, sin inventarles identidad.
 
 La relación es **Client 1 → N Project**: un cliente puede tener varios proyectos y cada proyecto identifica a su cliente mediante `ClientId`. El cliente debe existir antes de crear el proyecto: el caso de uso lo comprueba y rechaza la creación si no lo encuentra. La base de datos refuerza esa relación mediante una clave foránea. La relación impide eliminar un cliente que tenga proyectos asociados; no existe todavía una funcionalidad de eliminación.
 
 ## Reglas funcionales vigentes
 
 - El nombre de un cliente y el nombre y la ciudad de un proyecto son obligatorios. No se aceptan valores nulos, vacíos o formados solamente por espacios en blanco.
-- Los espacios en blanco al inicio y al final se eliminan al crear las entidades; los espacios internos se conservan.
+- Los espacios exteriores de los nombres de cliente/proyecto y de la ciudad se eliminan; los espacios internos se conservan. El Subject se conserva exactamente. Los snapshots de email y nombre pueden ser null y no se actualizan en solicitudes posteriores.
 - Los nombres no se utilizan para identificar entidades. Se permiten proyectos con el mismo nombre tanto para clientes distintos como para un mismo cliente. No hay detección ni advertencias de posibles duplicados.
 - Cada entidad recibe su propio identificador interno al crearse. Las relaciones se establecen por ese identificador, nunca por nombre ni por código SG.
 - Las fechas se registran en UTC. Al crear un cliente o proyecto, su fecha de actualización coincide exactamente con la de creación. Cambiar realmente el SG actualiza la fecha de modificación del proyecto y conserva su fecha de creación.
@@ -59,7 +59,7 @@ No se permite asignar SG antes de enviar el proyecto a Presupuestos. Los estados
 
 1. Se crea un cliente proporcionando su nombre y se obtiene su identificador interno.
 2. Se crea un proyecto indicando el identificador de ese cliente, nombre, ciudad y línea de producto.
-3. El sistema valida los datos y la existencia del cliente, normaliza los textos y guarda el proyecto con su identidad y fechas; su código SG queda sin asignar.
+3. El sistema valida los datos y la existencia del cliente, normaliza los textos y guarda el proyecto con su identificador, creador autenticado y fechas; su código SG queda sin asignar.
 4. Se puede consultar cada cliente o proyecto por su identificador, o listar la colección correspondiente. La respuesta de un proyecto incluye el identificador de su cliente, sin incrustar el objeto cliente completo.
 5. Comercial puede ejecutar **Enviar a Presupuestos** sobre un proyecto existente. Crear el proyecto no ejecuta este envío automáticamente.
 6. El envío crea una tarea de **preparar cotización**, asignada a Presupuestos y en estado **Pendiente**. Se puede consultar la bandeja de tareas por área y estado, y el historial completo de tareas de cada proyecto.
@@ -67,16 +67,16 @@ No se permite asignar SG antes de enviar el proyecto a Presupuestos. Los estados
 8. Presupuestos asigna manualmente SG y la tarea pasa a En proceso. Puede corregir el código mediante la misma operación sin cambiar la fecha original de inicio.
 9. Presupuestos prepara la cotización fuera de SnG Control, en Excel, y carga el XLSX estándar para revisar su preview técnico. El sistema comprueba el SG y conserva la tarea En proceso.
 10. Presupuestos corrige los valores permitidos y confirma, enviando nuevamente el XLSX y los valores confirmados. El sistema vuelve a interpretar el archivo, valida la correspondencia exacta y crea el catálogo oficial inicial. La tarea continúa En proceso.
-11. Presupuestos ejecuta **Enviar a Comercial**. El sistema genera el Excel operativo, completa PrepareQuotation e inicia ReviewQuotation de Comercial.
-12. Comercial descarga el archivo con el nombre original; descargarlo no cambia tareas ni fechas.
+11. Presupuestos ejecuta **Enviar a Comercial**. El sistema genera el Excel operativo, completa PrepareQuotation e inicia ReviewQuotation de Comercial asignada al Subject del Jefe Comercial configurado.
+12. El Jefe Comercial descarga el archivo con el nombre original; descargarlo no cambia tareas ni fechas.
 
 Las creaciones de clientes y proyectos devuelven el registro guardado y una referencia para consultarlo; el envío devuelve la tarea creada. Las consultas o envíos sobre proyectos inexistentes, o la creación de un proyecto para un cliente inexistente, responden como recurso no encontrado. Las entradas inválidas se rechazan sin crear registros. El historial de un proyecto existente sin tareas es una colección vacía.
 
-Los identificadores, las fechas y el código SG no pueden suministrarse en las solicitudes de creación. Los listados de clientes y proyectos y el historial de tareas no tienen filtros. La bandeja de tareas exige área y estado. No hay paginación ni orden garantizado. La información persiste entre ejecuciones; la preparación de la base se realiza explícitamente y no al iniciar la API.
+Los identificadores, las fechas, el código SG y la identidad del creador no pueden suministrarse en las solicitudes de creación. Los listados de clientes y proyectos y el historial de tareas no tienen filtros. La bandeja de tareas exige área y estado. No hay paginación ni orden garantizado. La información persiste entre ejecuciones; la preparación de la base se realiza explícitamente y no al iniciar la API.
 
 ## Tareas de las áreas
 
-Una **ProjectTask** representa trabajo asignado a un área y pertenece a un proyecto: **Project 1 → N ProjectTask**. Registra el área, tipo de trabajo, estado y fechas de asignación, inicio y finalización. Al asignarla, solo tiene fecha de asignación; inicio y finalización quedan vacíos.
+Una **ProjectTask** representa trabajo asignado a un área y pertenece a un proyecto: **Project 1 → N ProjectTask**. Registra el área, tipo de trabajo, estado, fechas de asignación, inicio y finalización y `AssignedToGoogleSubject` opcional. PrepareQuotation sigue asignada solo por área, con Subject null; las nuevas ReviewQuotation se asignan al Jefe Comercial. Las tareas históricas pueden mantener Subject null. No existe reasignación genérica. PrepareQuotation nace Pendiente, con inicio y finalización vacíos; ReviewQuotation se inicia inmediatamente al enviar a Comercial.
 
 El contrato contempla Comercial (`Commercial`) y Presupuestos (`Budgets`), y estados Pendiente (`Pending`), En proceso (`InProgress`) y Completado (`Completed`). El envío crea una tarea Pendiente y la primera asignación de SG la inicia. No hay una acción separada para iniciar tareas. No se permite crear tareas arbitrarias ni devolverlas. El envío a Comercial completa PrepareQuotation e inicia ReviewQuotation; el preview y la confirmación no cambian el estado de la tarea.
 
@@ -114,14 +114,14 @@ La confirmación **no completa Presupuestos ni envía el proyecto a Comercial**:
 
 El sistema genera `confirmed.xlsx` a partir del original y aplica los once valores técnicos oficiales, ubicando cada ítem por su sección y fila fuente. Conserva formato, estructura, fórmulas, imágenes, metadatos y SG documental. No procesa precios ni modifica las columnas económicas o PELÍCULA PROTECCIÓN. Los m² oficiales permanecen en el catálogo; cuando una celda contiene fórmula, conserva la fórmula y su valor almacenado se actualiza con lo confirmado. Excel puede recalcularla al abrir el documento.
 
-`original.xlsx` permanece intacto como evidencia histórica. `confirmed.xlsx` es el archivo operativo para Comercial. El envío completa **PrepareQuotation** conservando sus fechas de asignación e inicio, y crea **ReviewQuotation** de Comercial directamente **InProgress**, con StartedAt UTC y sin fecha de finalización. Ese StartedAt será la base del Leak Time de Comercial; todavía no hay SLA ni alertas. Project, catálogo y extracciones conservan sus datos.
+`original.xlsx` permanece intacto como evidencia histórica. `confirmed.xlsx` es el archivo operativo para Comercial. El envío completa **PrepareQuotation** conservando sus fechas de asignación e inicio, y crea **ReviewQuotation** de Comercial asignada personalmente al Jefe Comercial y directamente **InProgress**, con StartedAt UTC y sin fecha de finalización. Ese StartedAt será la base del Leak Time de Comercial; todavía no hay SLA ni alertas. Project, catálogo y extracciones conservan sus datos.
 
-La descarga usa exactamente el nombre original del archivo, sin sufijos. Las descargas repetidas entregan los mismos bytes almacenados y no regeneran el Excel ni cambian el workflow. No está implementada la subida del Excel revisado por Comercial, su procesamiento económico ni la finalización de ReviewQuotation.
+La descarga, exclusiva del Jefe Comercial, usa exactamente el nombre original del archivo, sin sufijos. Las descargas repetidas entregan los mismos bytes almacenados y no regeneran el Excel ni cambian el workflow. No está implementada la subida del Excel revisado por Comercial, su procesamiento económico ni la finalización de ReviewQuotation.
 
 ## Contexto funcional futuro
 
 El contexto conocido contempla procesos comerciales, técnicos, operativos y gerenciales alrededor del proyecto: procesamiento económico de Comercial, finalización de su revisión y devolución de tareas, evolución del catálogo comercial, nuevas versiones de cotización, mediciones, Actas de Vanos versionadas, catálogo técnico, pagos, producción, logística y órdenes de producción.
 
-Estos módulos no están implementados. Sus reglas y flujos se definirán en sus respectivas fases, sin anticiparlos en el núcleo actual.
+PresentQuotationToClient todavía no existe; cuando se implemente utilizará la identidad del creador original. Estos módulos no están implementados. Sus reglas y flujos se definirán en sus respectivas fases, sin anticiparlos en el núcleo actual.
 
 Para ejecutar o continuar el backend, consultar [README_TECHNICAL.md](README_TECHNICAL.md).

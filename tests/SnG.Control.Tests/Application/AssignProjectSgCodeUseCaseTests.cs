@@ -118,7 +118,7 @@ public class AssignProjectSgCodeUseCaseTests
 
     private Project AddProject()
     {
-        var project = new Project(Guid.NewGuid(), "Project", "City", ProductLine.Classic);
+        var project = new Project(Guid.NewGuid(), "Project", "City", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
         return project;
     }

@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using SnG.Control.Api.Authorization;
 using SnG.Control.Application.Features.Budgets.CommercialHandoff;
 
 namespace SnG.Control.Api.Controllers;
@@ -21,6 +23,9 @@ public class CommercialHandoffController(SendBudgetQuotationToCommercialUseCase 
     }
 
     [HttpGet("budget-quotation/commercial-file")]
+    [Authorize(Policy = CommercialHeadRequirement.PolicyName)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<FileContentResult>(StatusCodes.Status200OK, DownloadCommercialQuotationUseCase.ContentType)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]

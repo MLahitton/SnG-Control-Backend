@@ -19,6 +19,9 @@ public class ProjectConfiguration : IEntityTypeConfiguration<Project>
         builder.Property(project => project.City).IsRequired();
         builder.Property(project => project.ProductLine).HasConversion<int>().IsRequired();
         builder.Property(project => project.SgCode).IsRequired(false);
+        builder.Property(project => project.CreatedByGoogleSubject).IsRequired(false);
+        builder.Property(project => project.CreatedByEmail).IsRequired(false);
+        builder.Property(project => project.CreatedByName).IsRequired(false);
         builder.Property(project => project.CreatedAt).HasColumnType("timestamp with time zone").IsRequired();
         builder.Property(project => project.UpdatedAt).HasColumnType("timestamp with time zone").IsRequired();
 

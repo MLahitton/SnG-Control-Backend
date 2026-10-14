@@ -48,6 +48,6 @@ public sealed record CommercialFileState(bool ProjectExists, string? StorageKey 
 public interface IBudgetQuotationCommercialHandoffStore
 {
     Task<CommercialHandoffState?> LoadAsync(Guid projectId, CancellationToken cancellationToken);
-    Task<CommercialHandoffResult> SendAsync(CommercialHandoffState expected, ReadOnlyMemory<byte> workbook, CancellationToken cancellationToken);
+    Task<CommercialHandoffResult> SendAsync(CommercialHandoffState expected, ReadOnlyMemory<byte> workbook, string commercialHeadSubject, CancellationToken cancellationToken);
     Task<CommercialFileState> GetFileAsync(Guid projectId, CancellationToken cancellationToken);
 }

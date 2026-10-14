@@ -15,7 +15,7 @@ public class ProjectTests
         var clientId = Guid.NewGuid();
         var before = DateTime.UtcNow;
 
-        var project = new Project(clientId, "Torre Norte", "Bogotá", productLine);
+        var project = new Project(clientId, "Torre Norte", "Bogotá", productLine, "google-test-subject");
 
         var after = DateTime.UtcNow;
         Assert.NotEqual(Guid.Empty, project.Id);
@@ -34,14 +34,14 @@ public class ProjectTests
     public void Constructor_WithEmptyClientId_ThrowsArgumentException()
     {
         Assert.Throws<ArgumentException>("clientId",
-            () => new Project(Guid.Empty, "Torre Norte", "Bogotá", ProductLine.Classic));
+            () => new Project(Guid.Empty, "Torre Norte", "Bogotá", ProductLine.Classic, "google-test-subject"));
     }
 
     [Fact]
     public void Constructor_WithNullName_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>("name",
-            () => new Project(Guid.NewGuid(), null!, "Bogotá", ProductLine.Classic));
+            () => new Project(Guid.NewGuid(), null!, "Bogotá", ProductLine.Classic, "google-test-subject"));
     }
 
     [Theory]
@@ -51,14 +51,14 @@ public class ProjectTests
     public void Constructor_WithBlankName_ThrowsArgumentException(string name)
     {
         Assert.Throws<ArgumentException>("name",
-            () => new Project(Guid.NewGuid(), name, "Bogotá", ProductLine.Classic));
+            () => new Project(Guid.NewGuid(), name, "Bogotá", ProductLine.Classic, "google-test-subject"));
     }
 
     [Fact]
     public void Constructor_WithNullCity_ThrowsArgumentNullException()
     {
         Assert.Throws<ArgumentNullException>("city",
-            () => new Project(Guid.NewGuid(), "Torre Norte", null!, ProductLine.Classic));
+            () => new Project(Guid.NewGuid(), "Torre Norte", null!, ProductLine.Classic, "google-test-subject"));
     }
 
     [Theory]
@@ -68,13 +68,13 @@ public class ProjectTests
     public void Constructor_WithBlankCity_ThrowsArgumentException(string city)
     {
         Assert.Throws<ArgumentException>("city",
-            () => new Project(Guid.NewGuid(), "Torre Norte", city, ProductLine.Classic));
+            () => new Project(Guid.NewGuid(), "Torre Norte", city, ProductLine.Classic, "google-test-subject"));
     }
 
     [Fact]
     public void Constructor_TrimsNameAndCityAndPreservesInternalWhitespace()
     {
-        var project = new Project(Guid.NewGuid(), " \tTorre  Norte\r\n", "\tSanta  Marta  ", ProductLine.Classic);
+        var project = new Project(Guid.NewGuid(), " \tTorre  Norte\r\n", "\tSanta  Marta  ", ProductLine.Classic, "google-test-subject");
 
         Assert.Equal("Torre  Norte", project.Name);
         Assert.Equal("Santa  Marta", project.City);
@@ -88,7 +88,7 @@ public class ProjectTests
     public void Constructor_WithUndefinedProductLine_ThrowsArgumentOutOfRangeException(int value)
     {
         var exception = Assert.Throws<ArgumentOutOfRangeException>("productLine",
-            () => new Project(Guid.NewGuid(), "Torre Norte", "Bogotá", (ProductLine)value));
+            () => new Project(Guid.NewGuid(), "Torre Norte", "Bogotá", (ProductLine)value, "google-test-subject"));
 
         Assert.Equal((ProductLine)value, exception.ActualValue);
     }
@@ -101,8 +101,8 @@ public class ProjectTests
         var firstClient = new Client("Cliente A");
         var secondClient = sameClient ? firstClient : new Client("Cliente B");
 
-        var first = new Project(firstClient.Id, "Torre Norte", "Bogotá", ProductLine.Classic);
-        var second = new Project(secondClient.Id, "Torre Norte", "Bogotá", ProductLine.Classic);
+        var first = new Project(firstClient.Id, "Torre Norte", "Bogotá", ProductLine.Classic, "google-test-subject");
+        var second = new Project(secondClient.Id, "Torre Norte", "Bogotá", ProductLine.Classic, "google-test-subject");
 
         Assert.Equal(first.Name, second.Name);
         Assert.NotEqual(first.Id, second.Id);

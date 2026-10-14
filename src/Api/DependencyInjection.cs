@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using SnG.Control.Api.Authentication;
+using SnG.Control.Api.Authorization;
 using SnG.Control.Application.Features.Budgets.CommercialHandoff;
 using Microsoft.Extensions.Options;
 using SnG.Control.Application.Features.Budgets.ConfirmQuotation;
@@ -33,6 +34,7 @@ public static class DependencyInjection
     public static IServiceCollection AddApiServices(this IServiceCollection services)
     {
         services.AddGoogleAuthentication();
+        services.AddCommercialHeadAuthorization();
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();
         services.AddSingleton<IValidateOptions<FileStorageOptions>, FileStorageOptionsValidator>();

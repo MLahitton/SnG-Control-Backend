@@ -1,3 +1,4 @@
+using SnG.Control.Api.Authorization;
 using System.Net;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
@@ -32,6 +33,7 @@ public class GoogleBearerHttpTests
         });
         builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.Configure<CommercialHeadOptions>(options => options.CommercialHeadSubject = "google-test-subject");
         builder.Services.Configure<GoogleAuthenticationOptions>(options => options.ClientId = "synthetic-client");
         builder.Services.Configure<FileStorageOptions>(options => options.RootPath = directory.Root);
         // Replace discovery only inside this test. No Google token or outbound request is involved.
