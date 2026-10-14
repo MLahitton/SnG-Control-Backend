@@ -53,6 +53,13 @@ internal sealed class QuotationCellReader(WorkbookPart workbook)
         return value;
     }
 
+    public decimal NonnegativeDecimal(Cell? cell)
+    {
+        var value = Decimal(cell);
+        if (value < 0) throw new UnsupportedQuotationException();
+        return value;
+    }
+
     private decimal Decimal(Cell? cell)
     {
         if (cell is null || (cell.DataType is not null && cell.DataType.Value != CellValues.Number))

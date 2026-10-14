@@ -8,6 +8,7 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
 {
     internal const string PrepareQuotationIndexName = "UX_ProjectTasks_ProjectId_PrepareQuotation";
     internal const string ReviewQuotationIndexName = "UX_ProjectTasks_ProjectId_ReviewQuotation";
+    internal const string PresentQuotationIndexName = "UX_ProjectTasks_ProjectId_PresentQuotationToClient";
 
     public void Configure(EntityTypeBuilder<ProjectTask> builder)
     {
@@ -35,5 +36,7 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
             .HasFilter("\"Type\" = 1");
         builder.HasIndex(task => task.ProjectId, ReviewQuotationIndexName)
             .IsUnique().HasFilter("\"Type\" = 2");
+        builder.HasIndex(task => task.ProjectId, PresentQuotationIndexName)
+            .IsUnique().HasFilter("\"Type\" = 3");
     }
 }

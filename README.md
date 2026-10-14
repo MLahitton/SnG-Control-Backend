@@ -4,7 +4,7 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 ## Funcionalidad actualmente implementada
 
-El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, asignar o corregir su código SG, consultar las tareas por área y estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede obtener un preview técnico de una cotización XLSX estándar y confirmar sus valores corregidos para crear el catálogo comercial base oficial. El preview no persiste; la confirmación conserva datos en PostgreSQL y archivos en almacenamiento local configurado. Una acción posterior envía la cotización a Comercial, genera su Excel operativo y permite descargarlo.
+El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, asignar o corregir su código SG, consultar las tareas por área y estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede obtener un preview técnico de una cotización XLSX estándar y confirmar sus valores corregidos para crear el catálogo comercial base oficial. El preview no persiste; la confirmación conserva datos en PostgreSQL y archivos en almacenamiento local configurado. Una acción posterior envía la cotización a Comercial y genera su Excel operativo temporal. El Jefe Comercial puede subir su revisión, consultar importes y diferencias técnicas y confirmar el archivo final, iniciando la presentación al cliente.
 
 La API requiere configuración de autenticación Google, Subject del Jefe Comercial, conexión y carpeta de almacenamiento, además de todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. Este repositorio contiene solo el backend; no ofrece operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa ni acceso a Google.
 
@@ -14,7 +14,7 @@ Las operaciones de negocio requieren autenticación mediante un ID Token de Goog
 
 Google identifica al usuario mediante el **Subject (`sub`)**, no el email. `GET /api/auth/me` devuelve únicamente subject, email y nombre del usuario autenticado. Existe un único Jefe Comercial global, identificado por `Authentication:CommercialHeadSubject`. Solo esa identidad puede descargar el Excel operativo mediante `commercial-file`; otro usuario autenticado recibe 403. La comparación es exacta por Subject y no depende del email ni del nombre.
 
-No existe tabla Users y no se almacenan passwords ni tokens. Una solicitud sin autenticación, con un token inválido o sin Subject recibe 401. Durante desarrollo, cualquier usuario Google autenticado puede crear proyectos y ejecutar las acciones generales, incluido enviar a Comercial; todavía no se modelan usuarios por área. La descarga del Excel operativo es la única acción restringida al Jefe Comercial.
+No existe tabla Users y no se almacenan passwords ni tokens. Una solicitud sin autenticación, con un token inválido o sin Subject recibe 401. Durante desarrollo, cualquier usuario Google autenticado puede crear proyectos y ejecutar las acciones generales, incluido enviar a Comercial; todavía no se modelan usuarios por área. La descarga del Excel temporal y el preview y confirmación de Comercial están restringidos al Jefe Comercial. El archivo comercial final puede descargarlo el Jefe o el creador/responsable del proyecto, siempre por Subject.
 
 ## Clientes y proyectos
 
@@ -68,7 +68,10 @@ No se permite asignar SG antes de enviar el proyecto a Presupuestos. Los estados
 9. Presupuestos prepara la cotización fuera de SnG Control, en Excel, y carga el XLSX estándar para revisar su preview técnico. El sistema comprueba el SG y conserva la tarea En proceso.
 10. Presupuestos corrige los valores permitidos y confirma, enviando nuevamente el XLSX y los valores confirmados. El sistema vuelve a interpretar el archivo, valida la correspondencia exacta y crea el catálogo oficial inicial. La tarea continúa En proceso.
 11. Presupuestos ejecuta **Enviar a Comercial**. El sistema genera el Excel operativo, completa PrepareQuotation e inicia ReviewQuotation de Comercial asignada al Subject del Jefe Comercial configurado.
-12. El Jefe Comercial descarga el archivo con el nombre original; descargarlo no cambia tareas ni fechas.
+12. El Jefe Comercial descarga el archivo temporal con su nombre original y lo modifica externamente en Excel.
+13. Sube el XLSX revisado y consulta un preview informativo: precios, total del proyecto y diferencias técnicas respecto a Presupuestos. Para corregir algo debe editar el archivo y volver a subirlo.
+14. Confirma el XLSX. El sistema conserva sus bytes exactos como commercial.xlsx, guarda un snapshot comercial separado, elimina confirmed.xlsx y conserva original.xlsx e imágenes.
+15. ReviewQuotation se completa y PresentQuotationToClient comienza InProgress, asignada al creador original. Su StartedAt UTC inicia el Leak Time de presentación al cliente.
 
 Las creaciones de clientes y proyectos devuelven el registro guardado y una referencia para consultarlo; el envío devuelve la tarea creada. Las consultas o envíos sobre proyectos inexistentes, o la creación de un proyecto para un cliente inexistente, responden como recurso no encontrado. Las entradas inválidas se rechazan sin crear registros. El historial de un proyecto existente sin tareas es una colección vacía.
 
@@ -78,7 +81,7 @@ Los identificadores, las fechas, el código SG y la identidad del creador no pue
 
 Una **ProjectTask** representa trabajo asignado a un área y pertenece a un proyecto: **Project 1 → N ProjectTask**. Registra el área, tipo de trabajo, estado, fechas de asignación, inicio y finalización y `AssignedToGoogleSubject` opcional. PrepareQuotation sigue asignada solo por área, con Subject null; las nuevas ReviewQuotation se asignan al Jefe Comercial. Las tareas históricas pueden mantener Subject null. No existe reasignación genérica. PrepareQuotation nace Pendiente, con inicio y finalización vacíos; ReviewQuotation se inicia inmediatamente al enviar a Comercial.
 
-El contrato contempla Comercial (`Commercial`) y Presupuestos (`Budgets`), y estados Pendiente (`Pending`), En proceso (`InProgress`) y Completado (`Completed`). El envío crea una tarea Pendiente y la primera asignación de SG la inicia. No hay una acción separada para iniciar tareas. No se permite crear tareas arbitrarias ni devolverlas. El envío a Comercial completa PrepareQuotation e inicia ReviewQuotation; el preview y la confirmación no cambian el estado de la tarea.
+El contrato contempla Comercial (`Commercial`) y Presupuestos (`Budgets`), y estados Pendiente (`Pending`), En proceso (`InProgress`) y Completado (`Completed`). El envío crea una tarea Pendiente y la primera asignación de SG la inicia. No hay una acción separada para iniciar tareas. No se permite crear tareas arbitrarias ni devolverlas. El envío a Comercial completa PrepareQuotation e inicia ReviewQuotation; el preview y la confirmación de Presupuestos no cambian el estado de su tarea. La confirmación comercial completa ReviewQuotation y crea/inicia PresentQuotationToClient para el creador original.
 
 Las tareas constituyen el historial operacional y no se eliminan al terminar un área. No hay finalización genérica de tareas ni borrado; la base impide eliminar un proyecto con tareas asociadas. El estado operacional pertenece a las tareas, sin añadir un estado global al proyecto.
 
@@ -90,7 +93,7 @@ El preview incluye metadatos del documento y los ítems técnicos con ubicación
 
 Las imágenes se extraen en su formato original. Si falta una imagen o hay varias asociables al mismo bloque, ese ítem devuelve imagen vacía y una advertencia identificada por su número y fila. Una estructura o medida que no pueda interpretarse con seguridad causa rechazo del archivo completo.
 
-Los precios de Presupuestos no se devuelven ni constituyen el catálogo económico definitivo; la autoridad económica corresponderá al Excel revisado por Comercial en una fase posterior. El preview no guarda catálogo, documento, imágenes ni metadatos y no modifica ninguna entidad. Solo la confirmación convierte los valores revisados en información oficial.
+Los precios de Presupuestos no se devuelven ni constituyen el catálogo económico definitivo; la autoridad económica es el XLSX revisado y confirmado por Comercial. El preview no guarda catálogo, documento, imágenes ni metadatos y no modifica ninguna entidad. Solo la confirmación convierte los valores revisados en información oficial.
 
 No se admiten `.xls`, `.csv`, `.xlsm`, archivos cifrados/ilegibles ni recotizaciones o liquidaciones con estructura distinta, como bloques CONTRATADO/MODIFICADO. El rechazo depende del contenido, no del nombre del archivo.
 
@@ -116,12 +119,26 @@ El sistema genera `confirmed.xlsx` a partir del original y aplica los once valor
 
 `original.xlsx` permanece intacto como evidencia histórica. `confirmed.xlsx` es el archivo operativo para Comercial. El envío completa **PrepareQuotation** conservando sus fechas de asignación e inicio, y crea **ReviewQuotation** de Comercial asignada personalmente al Jefe Comercial y directamente **InProgress**, con StartedAt UTC y sin fecha de finalización. Ese StartedAt será la base del Leak Time de Comercial; todavía no hay SLA ni alertas. Project, catálogo y extracciones conservan sus datos.
 
-La descarga, exclusiva del Jefe Comercial, usa exactamente el nombre original del archivo, sin sufijos. Las descargas repetidas entregan los mismos bytes almacenados y no regeneran el Excel ni cambian el workflow. No está implementada la subida del Excel revisado por Comercial, su procesamiento económico ni la finalización de ReviewQuotation.
+La descarga, exclusiva del Jefe Comercial, usa exactamente el nombre original del archivo, sin sufijos. Las descargas repetidas entregan los mismos bytes almacenados y no regeneran el Excel ni cambian el workflow. Después de confirmar la revisión comercial, el temporal deja de estar disponible y su ruta responde conflicto; la descarga final tiene una ruta y autorización distintas.
+
+## Revisión y confirmación comercial
+
+El preview comercial es **solo de lectura**: no admite correcciones web, precios ni totales enviados por JSON. Requiere ReviewQuotation InProgress asignada al Jefe configurado, el catálogo y sus extracciones, confirmed.xlsx disponible y SG coincidente con el histórico. Confirmar vuelve a interpretar el XLSX recibido; no confía en un preview anterior.
+
+Comercial puede cambiar los once valores técnicos: número de ítem, ubicación, sistema, cristal, acabado, cerradura, observaciones, ancho, alto, m² y cantidad. El preview muestra valores anteriores y actuales y un resumen de diferencias. Esos cambios no bloquean la confirmación. Debe conservarse exactamente el conjunto **Section + SourceRow**: altas, bajas o desplazamientos de filas se rechazan como conflicto estructural. Esta limitación no define una regla permanente para futuras revisiones; no se intenta vincular ítems por número, nombre u orden.
+
+Los importes se leen directamente del documento: **UnitPrice en N** y **TotalPrice en O** en la fila del ítem. **ProjectTotal** se toma de O en la única fila cuya N dice VALOR TOTAL antes del marcador ADICIONALES de A. Las filas son variables. El total posterior de adicionales no se suma. Se admiten cero y fracciones; no se recalculan multiplicaciones, sumas, IVA ni descuentos. Las fórmulas requieren un resultado numérico guardado en el XLSX.
+
+La confirmación crea CommercialQuotation y CommercialQuotationItem como **realidad comercial vigente**, conservando CommercialCatalog, CommercialCatalogItem y CommercialCatalogItemExtraction como historia de Presupuestos. Los ítems nuevos enlazan sus ítems históricos para reutilizar las imágenes; no se crea otro conjunto de imágenes. El archivo commercial.xlsx se conserva exactamente como fue subido, sin regenerarlo.
+
+La operación completa ReviewQuotation, preserva su inicio y crea/inicia una única PresentQuotationToClient para el Subject del creador original. Un proyecto histórico sin creador puede tener preview, pero confirmar responde **409 ProjectCreatorUnavailable**: no se inventa asesor. No existe reasignación. Solo se admite una confirmación comercial inicial; solicitudes repetidas o concurrentes no crean otra cotización ni otra tarea.
+
+Al terminar, permanecen **original.xlsx, commercial.xlsx y las imágenes históricas**. confirmed.xlsx se elimina físicamente y su referencia queda null. Ante fallos se revierte DB y se compensan los archivos cuando el resultado es conocido; una interrupción o commit incierto puede requerir inspección administrativa, como detalla la guía técnica. La descarga final está disponible para el Jefe Comercial y el creador del proyecto y no cambia estado ni archivos.
 
 ## Contexto funcional futuro
 
-El contexto conocido contempla procesos comerciales, técnicos, operativos y gerenciales alrededor del proyecto: procesamiento económico de Comercial, finalización de su revisión y devolución de tareas, evolución del catálogo comercial, nuevas versiones de cotización, mediciones, Actas de Vanos versionadas, catálogo técnico, pagos, producción, logística y órdenes de producción.
+El contexto conocido contempla procesos comerciales, técnicos, operativos y gerenciales alrededor del proyecto: aprobación del cliente, devolución de tareas, evolución del catálogo comercial, nuevas versiones de cotización, mediciones, Actas de Vanos versionadas, catálogo técnico, pagos, producción, logística y órdenes de producción.
 
-PresentQuotationToClient todavía no existe; cuando se implemente utilizará la identidad del creador original. Estos módulos no están implementados. Sus reglas y flujos se definirán en sus respectivas fases, sin anticiparlos en el núcleo actual.
+PresentQuotationToClient está iniciada para el asesor, pero todavía no hay confirmación de presentación, aprobación del cliente ni anticipo. Los módulos futuros no están implementados. Sus reglas y flujos se definirán en sus respectivas fases, sin anticiparlos en el núcleo actual.
 
 Para ejecutar o continuar el backend, consultar [README_TECHNICAL.md](README_TECHNICAL.md).

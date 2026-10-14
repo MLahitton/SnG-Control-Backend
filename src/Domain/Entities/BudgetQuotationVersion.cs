@@ -47,4 +47,10 @@ public sealed class BudgetQuotationVersion
             throw new ArgumentException("The operational file key must be relative and safe.", nameof(key));
         ConfirmedFileStorageKey = key;
     }
+
+    public void ClearConfirmedFileStorageKey()
+    {
+        if (ConfirmedFileStorageKey is null) throw new InvalidOperationException("The operational file is unavailable.");
+        ConfirmedFileStorageKey = null;
+    }
 }

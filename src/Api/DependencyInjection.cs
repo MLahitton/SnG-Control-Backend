@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using SnG.Control.Api.Authentication;
+using SnG.Control.Application.Features.CommercialQuotations;
 using SnG.Control.Api.Authorization;
 using SnG.Control.Application.Features.Budgets.CommercialHandoff;
 using Microsoft.Extensions.Options;
@@ -35,6 +36,11 @@ public static class DependencyInjection
     {
         services.AddGoogleAuthentication();
         services.AddCommercialHeadAuthorization();
+        services.AddScoped<ICommercialQuotationParser, XlsxCommercialQuotationParser>();
+        services.AddScoped<ICommercialQuotationStore, EfCommercialQuotationStore>();
+        services.AddScoped<PreviewCommercialQuotationUseCase>();
+        services.AddScoped<ConfirmCommercialQuotationUseCase>();
+        services.AddScoped<DownloadCommercialQuotationFileUseCase>();
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();
         services.AddSingleton<IValidateOptions<FileStorageOptions>, FileStorageOptionsValidator>();
@@ -56,6 +62,7 @@ public static class DependencyInjection
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<ProjectTaskType>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<ProjectTaskStatus>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new CommercialItemSectionJsonConverter());
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<TechnicalField>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<CatalogItemImageStatus>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<BudgetQuotationWarningCode>(allowIntegerValues: false));
             options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;

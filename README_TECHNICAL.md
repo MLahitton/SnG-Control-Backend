@@ -2,11 +2,11 @@
 
 ## Estado y stack
 
-La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web API con Controllers tradicionales y Clean Architecture. El núcleo de negocio contiene `Client`, `Project`, `ProjectTask`, la versión de cotización confirmada, el catálogo comercial base y sus snapshots; sus reglas se describen en [README.md](README.md).
+La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web API con Controllers tradicionales y Clean Architecture. El núcleo de negocio contiene `Client`, `Project`, `ProjectTask`, la versión de cotización de Presupuestos, el catálogo base histórico y la cotización comercial confirmada con sus ítems; sus reglas se describen en [README.md](README.md).
 
-La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las siete migraciones, desde `InitialCreate` hasta `AddCommercialIdentityAssignments`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
+La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las ocho migraciones, desde `InitialCreate` hasta `AddCommercialQuotationConfirmation`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
-Application implementa catorce casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel operativo. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. La autenticación Google protege las operaciones y `/api/auth/me` consulta la identidad mediante ICurrentUser, sin persistencia ni otro caso de uso de negocio. No hay repositorios genéricos, Unit of Work propio, roles específicos ni Docker. La API exige configuración de autenticación, conexión y almacenamiento, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
+Application implementa diecisiete casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel temporal; obtener preview comercial, confirmar su revisión y descargar el XLSX comercial final. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. La autenticación Google protege las operaciones y `/api/auth/me` consulta la identidad mediante ICurrentUser, sin persistencia ni otro caso de uso de negocio. No hay repositorios genéricos, Unit of Work propio, roles específicos ni Docker. La API exige configuración de autenticación, conexión y almacenamiento, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
 
 ## Requisitos y paquetes
 
@@ -63,6 +63,7 @@ src/
     Controllers/BudgetQuotationController.cs
     Controllers/AuthController.cs
     Controllers/CommercialHandoffController.cs
+    Controllers/CommercialQuotationController.cs
     Filters/DisableFormValueModelBindingAttribute.cs
     Errors/ApiExceptionHandler.cs
     Persistence/SnGControlDbContextFactory.cs
@@ -73,6 +74,12 @@ src/
     Identity/ICommercialHeadIdentity.cs
     Files/IFileStorage.cs
     Features/
+      CommercialQuotations/
+        CommercialQuotationContracts.cs
+        ICommercialQuotationStore.cs
+        PreviewCommercialQuotationUseCase.cs
+        ConfirmCommercialQuotationUseCase.cs
+        DownloadCommercialQuotationFileUseCase.cs
       Budgets/
         IBudgetsWorkflowStore.cs
         BudgetQuotationWorkflow.cs
@@ -118,6 +125,8 @@ src/
     Entities/CommercialCatalog.cs
     Entities/CommercialCatalogItem.cs
     Entities/CommercialCatalogItemExtraction.cs
+    Entities/CommercialQuotation.cs
+    Entities/CommercialQuotationItem.cs
     ValueObjects/CatalogItemValues.cs
     Enums/CommercialItemSection.cs
     Enums/CatalogItemImageStatus.cs
@@ -131,6 +140,7 @@ src/
     Files/LocalFileStorage.cs
     Quotations/
       XlsxBudgetQuotationParser.cs
+      XlsxCommercialQuotationParser.cs
       XlsxBudgetQuotationWorkbookGenerator.cs
       QuotationWorksheetLayout.cs
       QuotationCellReader.cs
@@ -144,6 +154,7 @@ src/
       Stores/EfBudgetsWorkflowStore.cs
       Stores/EfBudgetQuotationConfirmationStore.cs
       Stores/EfBudgetQuotationCommercialHandoffStore.cs
+      Stores/EfCommercialQuotationStore.cs
       Configurations/ClientConfiguration.cs
       Configurations/ProjectConfiguration.cs
       Configurations/ProjectTaskConfiguration.cs
@@ -151,6 +162,8 @@ src/
       Configurations/CommercialCatalogConfiguration.cs
       Configurations/CommercialCatalogItemConfiguration.cs
       Configurations/CommercialCatalogItemExtractionConfiguration.cs
+      Configurations/CommercialQuotationConfiguration.cs
+      Configurations/CommercialQuotationItemConfiguration.cs
       Migrations/
         20261013143318_InitialCreate.cs
         20261013143318_InitialCreate.Designer.cs
@@ -166,6 +179,8 @@ src/
         20261014141907_AddCommercialQuotationHandoff.Designer.cs
         20261014192650_AddCommercialIdentityAssignments.cs
         20261014192650_AddCommercialIdentityAssignments.Designer.cs
+        20261014201256_AddCommercialQuotationConfirmation.cs
+        20261014201256_AddCommercialQuotationConfirmation.Designer.cs
         SnGControlDbContextModelSnapshot.cs
 tests/
   SnG.Control.Tests/
@@ -176,22 +191,26 @@ tests/
     Fixtures/QuotationWorkbook.cs
     Fixtures/ConfirmationScenario.cs
     Fixtures/CommercialHandoffScenario.cs
+    Fixtures/CommercialQuotationScenario.cs
     Fixtures/TemporaryStorage.cs
     Storage/LocalFileStorageTests.cs
     Quotations/XlsxBudgetQuotationParserTests.cs
     Quotations/CommercialWorkbookGeneratorTests.cs
+    Quotations/CommercialEconomicsTests.cs
     Persistence/SnGControlDbContextTests.cs
     Persistence/EfProjectTaskStoreTests.cs
     Persistence/EfBudgetsWorkflowStoreTests.cs
     Persistence/QuotationCatalogModelTests.cs
     Persistence/QuotationConfirmationCompensationTests.cs
     Persistence/CommercialHandoffCompensationTests.cs
+    Persistence/CommercialQuotationCompensationTests.cs
+    Persistence/CommercialQuotationModelTests.cs
 ```
 
 | Proyecto | Responsabilidad actual |
 | --- | --- |
 | Domain | Entidades e invariantes, sin dependencias de persistencia o HTTP. |
-| Application | Catorce casos de uso, respuestas e interfaces específicas de parsing, archivos y persistencia. |
+| Application | Diecisiete casos de uso, respuestas e interfaces específicas de parsing, archivos y persistencia. |
 | Infrastructure | Contexto EF, stores PostgreSQL, configuraciones Fluent API, migraciones, parser/generador XLSX y almacenamiento local. |
 | Api | Contratos HTTP, Controllers, manejo de errores y composition root. Incluye la fábrica del tooling del startup project. |
 | Tests | Tests de dominio, casos de uso, HTTP y metadata/SQL del proveedor real, sin conexión PostgreSQL. |
@@ -241,7 +260,7 @@ La API rechaza una conexión ausente, vacía o solo whitespace al arrancar, con 
 
 ### Autenticación Google
 
-La API recibe `Authorization: Bearer <GOOGLE_ID_TOKEN>` y usa Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12 con discovery OpenID Connect. Google es la autoridad de identidad; SnG Control aplica la política específica CommercialHead para la descarga del Excel operativo. No se usa Google.Apis.Auth ni un validador JWT propio. La librería estándar gestiona discovery, claves públicas y su actualización. Referencias: [validación de ID tokens de Google](https://developers.google.com/identity/sign-in/web/backend-auth) y [JwtBearer en ASP.NET Core](https://learn.microsoft.com/aspnet/core/security/authentication/configure-jwt-bearer-authentication?view=aspnetcore-10.0).
+La API recibe `Authorization: Bearer <GOOGLE_ID_TOKEN>` y usa Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12 con discovery OpenID Connect. Google es la autoridad de identidad; SnG Control aplica CommercialHead a la descarga temporal y al preview/confirmación comerciales; la descarga final autoriza al Jefe o al creador por Subject. No se usa Google.Apis.Auth ni un validador JWT propio. La librería estándar gestiona discovery, claves públicas y su actualización. Referencias: [validación de ID tokens de Google](https://developers.google.com/identity/sign-in/web/backend-auth) y [JwtBearer en ASP.NET Core](https://learn.microsoft.com/aspnet/core/security/authentication/configure-jwt-bearer-authentication?view=aspnetcore-10.0).
 
 La opción de autenticación Google es `Authentication:Google:ClientId`, vinculada a GoogleAuthenticationOptions y validada al startup: no puede ser null, vacía ni whitespace. Configurar mediante User Secrets en Development o la variable `Authentication__Google__ClientId`. Los valores siguientes son placeholders; no versionar el valor real:
 
@@ -253,7 +272,7 @@ dotnet user-secrets set "Authentication:Google:ClientId" "<GOOGLE_OAUTH_CLIENT_I
 $env:Authentication__Google__ClientId = '<GOOGLE_OAUTH_CLIENT_ID>'
 ```
 
-Este flujo no utiliza ni requiere Client Secret. No se configura un dominio permitido. Cualquier cuenta Google con un ID token válido para este cliente OAuth puede ejecutar las operaciones generales, incluido crear Project y enviar a Comercial. La descarga de commercial-file exige además el Subject del Jefe Comercial. No hay usuarios persistidos, passwords, cookies de sesión, roles, refresh tokens ni tokens propios de SnG Control.
+Este flujo no utiliza ni requiere Client Secret. No se configura un dominio permitido. Cualquier cuenta Google con un ID token válido para este cliente OAuth puede ejecutar las operaciones generales, incluido crear Project y enviar a Comercial. La descarga de commercial-file y el preview/confirmación comerciales exigen además el Subject del Jefe Comercial. No hay usuarios persistidos, passwords, cookies de sesión, roles, refresh tokens ni tokens propios de SnG Control.
 
 Authority es `https://accounts.google.com`; Audience es exclusivamente el ClientId configurado. Se aceptan los issuers oficiales `https://accounts.google.com` y `accounts.google.com`. Permanecen activados ValidateIssuer, ValidateAudience, ValidateLifetime y ValidateIssuerSigningKey; se exige firma RS256 y expiración, con tolerancia de reloj de 60 segundos. La audience no admite una barra final adicional. Discovery exige HTTPS y necesita conectividad a Google cuando obtiene o renueva sus claves; los tests no hacen esas solicitudes.
 
@@ -277,7 +296,7 @@ Respuesta sintética ilustrativa:
 { "subject": "google-test-subject", "email": "test@example.com", "name": "Test User" }
 ```
 
-Los ejemplos HTTP de negocio requieren un ID token válido; para commercial-file debe pertenecer al Jefe Comercial configurado. No registrar ni compartir tokens en logs o reportes. La validación con Google real requiere un ID token obtenido en el navegador; los tests locales usan exclusivamente identidades sintéticas.
+Los ejemplos HTTP de negocio requieren un ID token válido; para commercial-file debe pertenecer al Jefe Comercial configurado. No registrar ni compartir tokens en logs o reportes. La validación con Google real requiere un ID token obtenido en el navegador; los tests locales usan exclusivamente identidades sintéticas. La descarga comercial final acepta también al creador original por Subject, aunque su email actual sea diferente.
 
 ### Identidad y autorización del Jefe Comercial
 
@@ -291,7 +310,7 @@ Alternativa de entorno: `Authentication__CommercialHeadSubject=<GOOGLE_SUBJECT>`
 
 Application declara `ICommercialHeadIdentity` con una única propiedad `string Subject`. Api registra `ConfiguredCommercialHeadIdentity`, que lee IOptions<CommercialHeadOptions> validado. Application no conoce IConfiguration, IOptions ni HttpContext.
 
-`CommercialHeadRequirement` y `CommercialHeadAuthorizationHandler` implementan la política **CommercialHead**: identidad autenticada, claim `sub` presente y coincidencia mediante StringComparison.Ordinal con el provider. Email y nombre no autorizan. El handler no consulta DB ni Google. Solo GET `/api/projects/{id}/budget-quotation/commercial-file` lleva esta política; se evalúa antes del Controller y de cualquier acceso al archivo. Sin autenticación válida responde 401; con otro Subject, 403; el Jefe Comercial continúa a las reglas 404/409/200/500 existentes.
+`CommercialHeadRequirement` y `CommercialHeadAuthorizationHandler` implementan la política **CommercialHead**: identidad autenticada, claim `sub` presente y coincidencia mediante StringComparison.Ordinal con el provider. Email y nombre no autorizan. El handler no consulta DB ni Google. GET `/api/projects/{id}/budget-quotation/commercial-file` y POST `/api/projects/{id}/commercial-quotation/preview` y `/confirm` llevan esta política; se evalúa antes del Controller y de cualquier acceso al archivo. Sin autenticación válida responde 401; con otro Subject, 403; el Jefe Comercial continúa a las reglas 404/409/200/500 existentes.
 
 POST send-to-commercial conserva únicamente la autenticación global: envía trabajo al Jefe, no es una acción exclusiva de él. No hay tabla Users, roles genéricos, allowlist ni modelado de usuarios por área. Cualquier usuario autenticado puede crear Project y queda como creador y asesor comercial responsable; no existe reasignación ni campos ResponsibleCommercial duplicados.
 
@@ -316,8 +335,10 @@ La escritura crea directorios necesarios, escribe un temporal único con CreateN
 ```text
 <ROOT>/projects/<projectId>/budget-quotations/<quotationVersionId>/
   original.xlsx
-  confirmed.xlsx  (después del envío a Comercial)
+  confirmed.xlsx  (temporal entre envío a Comercial y confirmación comercial)
   images/<catalogItemId>.<extension>
+<ROOT>/projects/<projectId>/commercial-quotations/<commercialQuotationId>/
+  commercial.xlsx  (bytes exactos del archivo confirmado)
 ```
 
 Las claves se generan internamente con Guid del dominio, nunca con SG, nombres de personas/proyectos o ItemNumber. El XLSX original conserva exactamente los bytes recibidos; no se vuelve a guardar con OpenXML. El generador edita únicamente la copia operativa. Su contentType es `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`. Las imágenes conservan bytes y contentType originales: PNG→`.png`, JPEG→`.jpg`, GIF→`.gif`, BMP→`.bmp`, TIFF→`.tiff`; otros tipos usan `.bin` sin conversión. El Excel operativo se descarga por HTTP después del envío a Comercial. No hay servicio HTTP de imágenes ni soporte S3/Azure.
@@ -333,7 +354,7 @@ Los tests normales funcionan sin conexión configurada, sin contraseña y sin Po
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite contiene 529 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+La suite contiene 632 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
 
 ApiFixture autentica por defecto mediante el esquema TestIdentity, exclusivo de Tests: sub=google-test-subject, email=test@example.com y name=Test User. Aplica a la identidad sintética la misma regla OnTokenValidated de presencia de sub. Los tests negativos omiten la cabecera o seleccionan una identidad inválida sin cambiar los defaults de otros tests. CommercialHeadSubject se configura como google-test-subject únicamente en Tests; other-google-subject prueba el 403 con el mismo email, y el mismo Subject con otro email conserva acceso. No se modifica la configuración productiva para permitir accesos de prueba. Las pruebas del handler JwtBearer real sustituyen discovery por configuración estática únicamente en Tests y verifican 401 para entradas ausentes o inválidas, sin Internet. También se comprueban startup de ambas opciones, opciones JWT, política global y CommercialHead, claims originales, ausencia de email como fallback, snapshots del creador, rechazo de identidad en el body, CreatedBy legacy null mediante materialización real de EF, asignación personal, DTOs y reintentos concurrentes HTTP con doble de persistencia. Los tests de compensación verifican la asignación en el ChangeTracker y un único SaveChanges; los índices y bloqueos PostgreSQL conservan la garantía de concurrencia real.
 
@@ -353,9 +374,9 @@ Los artefactos de compilación y `TestResults` están excluidos por `.gitignore`
 
 ## Contexto y materialización
 
-`SnGControlDbContext` está en `SnG.Control.Infrastructure.Persistence`. Recibe `DbContextOptions<SnGControlDbContext>`, expone siete DbSets: `Clients`, `Projects`, `ProjectTasks`, `BudgetQuotationVersions`, `CommercialCatalogs`, `CommercialCatalogItems` y `CommercialCatalogItemExtractions`. Aplica explícitamente las siete configuraciones IEntityTypeConfiguration correspondientes.
+`SnGControlDbContext` está en `SnG.Control.Infrastructure.Persistence`. Recibe `DbContextOptions<SnGControlDbContext>`, expone nueve DbSets: `Clients`, `Projects`, `ProjectTasks`, `BudgetQuotationVersions`, `CommercialCatalogs`, `CommercialCatalogItems`, `CommercialCatalogItemExtractions`, `CommercialQuotations` y `CommercialQuotationItems`. Aplica explícitamente las nueve configuraciones IEntityTypeConfiguration correspondientes.
 
-Las propiedades tienen setters privados. EF enlaza constructores y restaura los valores persistidos. Project y las cuatro entidades de cotización/catálogo tienen constructor privado sin parámetros reservado para materialización; Client y ProjectTask usan constructor enlazado. El constructor público de Project exige CreatedByGoogleSubject no vacío, mientras EF puede materializar proyectos históricos con los tres campos de creador null. Los tests compilan consultas de los siete DbSets y prueban esa materialización con IStructuralTypeMaterializerSource, sin conexión.
+Las propiedades tienen setters privados. EF enlaza constructores y restaura los valores persistidos. Project y las seis entidades de cotización/catálogo tienen constructor privado sin parámetros reservado para materialización; Client y ProjectTask usan constructor enlazado. El constructor público de Project exige CreatedByGoogleSubject no vacío, mientras EF puede materializar proyectos históricos con los tres campos de creador null. Los tests compilan consultas de los nueve DbSets y prueban esa materialización con IStructuralTypeMaterializerSource, sin conexión.
 
 Los identificadores nacen de `Guid.NewGuid()` en el dominio y se mapean con `ValueGeneratedNever()`: no hay generación de UUID en PostgreSQL. Las fechas son `DateTime` UTC; `CreatedAt` y `UpdatedAt` coinciden al crear clientes o proyectos. Los timestamps e identificadores almacenados se conservan al materializar entidades; no hay mecanismo automático de actualización de fechas.
 
@@ -367,7 +388,7 @@ Los proyectos y carpetas bajo `src` se llaman `Api`, `Application`, `Domain` e `
 
 ## Tablas y restricciones
 
-No hay tablas Users/Employees ni roles persistidos. La identidad necesaria para el negocio se guarda directamente en Project y ProjectTask; el modelo tiene siete migraciones.
+No hay tablas Users/Employees ni roles persistidos. La identidad necesaria para el negocio se guarda en Project, ProjectTask y los snapshots de auditoría de CommercialQuotation; el modelo tiene ocho migraciones.
 
 Se usan nombres explícitos `Clients`, `Projects` y `ProjectTasks`, con columnas PascalCase; el SQL PostgreSQL generado utiliza identificadores entre comillas. No se introduce un esquema personalizado.
 
@@ -389,21 +410,21 @@ Se usan nombres explícitos `Clients`, `Projects` y `ProjectTasks`, con columnas
 
 El índice **`UX_ProjectTasks_ProjectId_PrepareQuotation`** es único sobre ProjectId con filtro exacto **`"Type" = 1`**. Impide dos tareas PrepareQuotation para el mismo proyecto, independientemente de área o estado, incluso ante inserciones concurrentes. No se usa UNIQUE(ProjectId, Type): cada filtro limita la regla a su tipo y no impone unicidad a otros tipos futuros. Fluent API utiliza un índice con nombre propio en el modelo para conservar también el índice no único sobre ProjectId. El nombre se comparte entre configuración y detección de conflictos mediante una constante interna de Infrastructure.
 
-`UX_ProjectTasks_ProjectId_ReviewQuotation` aplica la misma garantía a ReviewQuotation con filtro `"Type" = 2`, independientemente del área o estado. Su nombre explícito también se comparte con el detector de conflictos del store de envío a Comercial.
+`UX_ProjectTasks_ProjectId_ReviewQuotation` aplica la misma garantía a ReviewQuotation con filtro `"Type" = 2`, independientemente del área o estado. Su nombre explícito también se comparte con el detector de conflictos del store de envío a Comercial. `UX_ProjectTasks_ProjectId_PresentQuotationToClient` protege la presentación con filtro `"Type" = 3` y comparte su nombre con el store de confirmación comercial.
 
 Los enums de tarea se convierten explícitamente a integer y conservan estos contratos estables:
 
 | Enum | Valores |
 | --- | --- |
 | OperationalArea | Commercial=1, Budgets=2 |
-| ProjectTaskType | PrepareQuotation=1, ReviewQuotation=2 |
+| ProjectTaskType | PrepareQuotation=1, ReviewQuotation=2, PresentQuotationToClient=3 |
 | ProjectTaskStatus | Pending=1, InProgress=2, Completed=3 |
 
 Domain valida los valores; no hay restricciones CHECK ni valores predeterminados de base para estos campos.
 
 ### Cotización y catálogo comercial persistidos
 
-El modelo relacional añade cuatro tablas, sin JSON/JSONB, bytea ni columnas económicas:
+El snapshot histórico de Presupuestos ocupa cuatro tablas, sin JSON/JSONB, bytea ni columnas económicas:
 
 | Tabla/entidad | Campos principales y relación |
 | --- | --- |
@@ -432,6 +453,8 @@ La extracción utiliza PK/FK CatalogItemId y no necesita otra identidad. No hay 
 
 ## Migraciones
 
+`20261014201256_AddCommercialQuotationConfirmation` crea CommercialQuotations y CommercialQuotationItems y el índice parcial único PresentQuotationToClient (`Type = 3`). Conserva las siete migraciones anteriores, sin backfill ni modificaciones a tablas históricas salvo el índice de tareas. Las nuevas FK usan Restrict. Down elimina solo ambas tablas nuevas y ese índice.
+
 `20261014192650_AddCommercialIdentityAssignments` agrega exclusivamente cuatro columnas text nullable: Projects.CreatedByGoogleSubject, CreatedByEmail y CreatedByName, y ProjectTasks.AssignedToGoogleSubject. No tiene defaults, backfill, datos reales ni índices nuevos; mantiene constraints y las seis migraciones anteriores. Down elimina solo esas cuatro columnas. Los proyectos y ReviewQuotation históricos pueden mantener identidad null. Toda creación nueva de Project desde Domain/Application exige Subject; las nuevas ReviewQuotation del envío reciben el Subject configurado. No se inventa identidad histórica.
 
 `20261014141907_AddCommercialQuotationHandoff` agrega únicamente ConfirmedFileStorageKey nullable (`text`), su índice único y `UX_ProjectTasks_ProjectId_ReviewQuotation`, UNIQUE(ProjectId) con filtro `"Type" = 2`. Mantiene el índice de PrepareQuotation y las cinco migraciones anteriores intactas. Su Down revierte exclusivamente estas tres incorporaciones.
@@ -449,8 +472,8 @@ La fábrica `SnG.Control.Api.Persistence.SnGControlDbContextFactory` implementa 
 ```shell
 dotnet ef migrations list --no-connect --project src/Infrastructure --startup-project src/Api -- --environment Development
 dotnet ef migrations has-pending-model-changes --project src/Infrastructure --startup-project src/Api -- --environment Development
-dotnet ef migrations script 0 AddCommercialIdentityAssignments --project src/Infrastructure --startup-project src/Api -- --environment Development
-dotnet ef migrations script AddCommercialQuotationHandoff AddCommercialIdentityAssignments --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script 0 AddCommercialQuotationConfirmation --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script AddCommercialIdentityAssignments AddCommercialQuotationConfirmation --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
 ### Aplicar a la base existente
@@ -500,7 +523,7 @@ Comprobar que el comando termina correctamente y verificar el estado aplicado:
 dotnet ef migrations list --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
-El modelo tiene exactamente siete migraciones, en orden:
+El modelo tiene exactamente ocho migraciones, en orden:
 
 1. `20261013143318_InitialCreate`
 2. `20261013190849_AddProjectTasks`
@@ -509,6 +532,7 @@ El modelo tiene exactamente siete migraciones, en orden:
 5. `20261013220201_AddBudgetQuotationCatalog`
 6. `20261014141907_AddCommercialQuotationHandoff`
 7. `20261014192650_AddCommercialIdentityAssignments`
+8. `20261014201256_AddCommercialQuotationConfirmation`
 
 Cada instalación debe comprobar su historial en `__EFMigrationsHistory` antes de operar. Los comandos de inspección offline no verifican si una base concreta tiene migraciones aplicadas.
 
@@ -533,17 +557,17 @@ dotnet run --project src/Api --launch-profile https
 
 El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `Development`, con redirección HTTP a HTTPS. Detener con `Ctrl+C`. También existe el perfil `http` en 5051, sin puerto HTTPS propio; la redirección puede advertir que no encuentra ese puerto. Se recomienda el perfil `https`.
 
-En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene catorce operaciones de negocio y `/api/auth/me`, quince en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
+En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene diecisiete operaciones de negocio y `/api/auth/me`, dieciocho en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
 
 - `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS, autenticación, autorización y Controllers.
-- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y provider del Jefe Comercial y su política específica, además de los catorce casos de uso, los seis stores, IFileStorage, el parser y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
+- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y provider del Jefe Comercial y su política específica, además de los diecisiete casos de uso, los siete stores, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
 - `appsettings.json`: logging (`Information` general y `Warning` para ASP.NET Core) y `AllowedHosts=*`; no contiene conexiones.
 - `Properties/launchSettings.json`: perfiles/puertos locales y `ASPNETCORE_ENVIRONMENT=Development`.
 - El registro del contexto no ejecuta operaciones de base de datos ni aplica migraciones.
 
 ## Casos de uso y persistencia
 
-El flujo de datos persistidos es `HTTP → Controller → UseCase → Store EF → PostgreSQL`; el preview añade una llamada al parser XLSX después de consultar el workflow. Application está organizada verticalmente en `Features/Clients` y `Features/Projects`, cada una con `Create`, `GetById` y `List`; `Features/ProjectTasks`, con `SendToBudgets`, `ListByArea` y `ListByProject`; y `Features/Budgets`, con `AssignSg`, `PreviewQuotation`, `ConfirmQuotation` y `CommercialHandoff`. Los casos de uso son clases explícitas con `ExecuteAsync`, sin MediatR ni interfaces por caso de uso.
+El flujo de datos persistidos es `HTTP → Controller → UseCase → Store EF → PostgreSQL`; el preview añade una llamada al parser XLSX después de consultar el workflow. Application está organizada verticalmente en `Features/Clients` y `Features/Projects`, cada una con `Create`, `GetById` y `List`; `Features/ProjectTasks`, con `SendToBudgets`, `ListByArea` y `ListByProject`; `Features/CommercialQuotations`, con preview, confirmación y descarga final; y `Features/Budgets`, con `AssignSg`, `PreviewQuotation`, `ConfirmQuotation` y `CommercialHandoff`. Los casos de uso son clases explícitas con `ExecuteAsync`, sin MediatR ni interfaces por caso de uso.
 
 `IClientStore` declara `AddAsync`, `GetByIdAsync`, `ListAsync` y `ExistsAsync`; `IProjectStore` declara los tres primeros. Las interfaces viven junto a su feature en Application y trabajan con entidades del dominio, sin exponer EF, `IQueryable` ni detalles de PostgreSQL.
 
@@ -605,7 +629,10 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 | POST `/api/projects/{id}/budget-quotation/preview` | multipart, un archivo `file` | 200, BudgetQuotationPreviewResponse; 400 archivo inválido; 409 workflow o SG distinto | 404 |
 | POST `/api/projects/{id}/budget-quotation/confirm` | multipart: `file` y JSON `confirmation` | 201, ConfirmedBudgetQuotationResponse; 400 datos inválidos; 409 workflow, SG o confirmación existente | 404 |
 | POST `/api/projects/{id}/send-to-commercial` | Sin body | 200, SendBudgetQuotationToCommercialResponse; 409 si no está listo o ya enviado | 404 |
-| GET `/api/projects/{id}/budget-quotation/commercial-file` | Sin body; política CommercialHead (403 para otra identidad) | 200, XLSX con nombre original; 409 si aún no enviado; 500 si falta el archivo referenciado | 404 |
+| GET `/api/projects/{id}/budget-quotation/commercial-file` | Sin body; CommercialHead | 200, XLSX temporal; 409 antes del envío o después de confirmar Comercial; 500 si falta archivo referenciado | 404 |
+| POST `/api/projects/{id}/commercial-quotation/preview` | multipart: solo `file`; CommercialHead | 200, CommercialQuotationPreviewResponse; 400 archivo/economía inválidos; 409 workflow/SG/estructura | 404 |
+| POST `/api/projects/{id}/commercial-quotation/confirm` | multipart: solo `file`; CommercialHead | 201, CommercialQuotationConfirmationResponse; 400 archivo/economía inválidos; 409 workflow/SG/estructura/creator/duplicado | 404 |
+| GET `/api/projects/{id}/commercial-quotation/file` | Sin body; Jefe o creador por Subject | 200, XLSX exacto; 403 otra identidad; 409 sin confirmación; 500 archivo referenciado ausente | 404 |
 
 `ClientResponse` contiene `id`, `name`, `createdAt` y `updatedAt`. `ProjectResponse` contiene `id`, `clientId`, `name`, `city`, `productLine`, `sgCode`, `createdAt`, `updatedAt` y `createdBy`. Este último contiene `subject`, `email` y `name`, o es null para proyectos legacy; aparece en creación, GET, listado y respuesta de SG. Las fechas son UTC en formato ISO 8601. Las respuestas de proyecto no incluyen el objeto Client completo. `sgCode` es null hasta su primera asignación y después contiene el código normalizado.
 
@@ -617,7 +644,7 @@ Los requests de creación no incluyen `id`, fechas, `sgCode` ni identidad. Creat
 
 ### Contrato de tareas
 
-El envío a Presupuestos no recibe DTO ni body. Devuelve 201 con el DTO creado, sin cabecera Location: no existe GET por Id de tarea. Tampoco existe POST genérico `/api/project-tasks` ni endpoint separado para iniciar tareas; PrepareQuotation se inicia con la primera asignación de SG y ReviewQuotation al enviar a Comercial.
+El envío a Presupuestos no recibe DTO ni body. Devuelve 201 con el DTO creado, sin cabecera Location: no existe GET por Id de tarea. Tampoco existe POST genérico `/api/project-tasks` ni endpoint separado para iniciar tareas; PrepareQuotation se inicia con la primera asignación de SG, ReviewQuotation al enviar a Comercial y PresentQuotationToClient al confirmar la revisión comercial.
 
 Ejemplo de respuesta del envío:
 
@@ -688,7 +715,7 @@ Una corrección devuelve la misma estructura con el SG y UpdatedAt nuevos, conse
 
 **Formato soportado:** extensión `.xlsx` y paquete ZIP/OpenXML de workbook normal, sin VBA. La hoja debe llamarse `COTIZACIÓN`, tolerando espacios exteriores y diferencias de mayúsculas; no se busca una hoja parecida ni se consultan las bases internas. La metadata se toma de C10/C11/C12 (cliente/proyecto/ubicación), I10/I11/I12 (línea cliente/línea producción/elaborado por) y O10 (SG). Los metadatos descriptivos pueden estar vacíos; SG es obligatorio, se recorta, convierte a mayúsculas y exige `SG` + dígitos ASCII, preservando ceros iniciales. Espacios internos, signos o letras adicionales son inválidos. El nombre devuelto elimina componentes de ruta y nunca se usa para abrir un archivo local.
 
-Un encabezado candidato tiene A=ÍTEM/ITEM. Si A de la fila siguiente está vacío se ignora el bloque, incluso si la plantilla vacía utiliza AN/AL abreviados. Para un ítem real se exige además B=UBICACIÓN, C=CONFIGURACIÓN, D=DESCRIPCIÓN (con o sin sus acentos), J=AN (MT), K=AL (MT), L=M2/M², M=CNT, N=VR UNT y O=VR TOTAL. La normalización solo recorta y compara en mayúsculas, sin aproximaciones. N/O se usan exclusivamente para reconocer el encabezado; sus valores económicos no se extraen.
+Un encabezado candidato tiene A=ÍTEM/ITEM. Si A de la fila siguiente está vacío se ignora el bloque, incluso si la plantilla vacía utiliza AN/AL abreviados. Para un ítem real se exige además B=UBICACIÓN, C=CONFIGURACIÓN, D=DESCRIPCIÓN (con o sin sus acentos), J=AN (MT), K=AL (MT), L=M2/M², M=CNT, N=VR UNT y O=VR TOTAL. La normalización solo recorta y compara en mayúsculas, sin aproximaciones. El parser técnico usa N/O exclusivamente para reconocer el encabezado; el parser comercial añade la lectura económica de esas columnas.
 
 Cada bloque termina antes del siguiente encabezado o marcador ADICIONALES, o al final de los datos de la hoja. `sourceRow` es la fila del número, con índice inicial 1. La fila principal proporciona ubicación B, ancho J, alto K, m² L y cantidad M. Dentro del bloque se exigen una sola vez las etiquetas SISTEMA, CRISTAL, ACABADO ALUMINIO, CERRADURA y OBSERVACIONES en C y se leen sus valores de D, independientemente de su orden. Se permiten valores textuales vacíos, incluidas observaciones. PELÍCULA PROTECCIÓN no se exporta.
 
@@ -700,7 +727,7 @@ Las imágenes incrustadas se asocian por la fila superior izquierda de su `OneCe
 
 Se rechazan archivos sin ítems, encabezados reales incompletos, etiquetas requeridas ausentes/repetidas, medidas/cantidades inválidas, cachés requeridas inutilizables y estructuras CONTRATADO/MODIFICADO. La recotización/liquidación identificada como SG780 está fuera del contrato por su **estructura**, sin condiciones por nombre o SG en el código. `.xls`, `.csv`, `.xlsm`, archivos cifrados, corruptos o ilegibles no se admiten. Los errores esperables de ZIP/XML/OpenXML se convierten en errores de archivo sin exponer detalles internos; la cancelación se propaga.
 
-**Carga HTTP:** POST `/api/projects/{id}/budget-quotation/preview`, `multipart/form-data`, exactamente una parte de archivo llamada `file`, sin campos adicionales. `QuotationMultipartReader`, compartido por las dos acciones de `BudgetQuotationController`, usa MultipartReader y buffers en memoria limitados; `DisableFormValueModelBindingAttribute` evita que MVC consuma antes el formulario o lo almacene temporalmente en disco. No recibe JSON con paths, URLs ni varios archivos. El parser también admite streams no seekable y deja abierto el stream del llamador.
+**Carga HTTP:** POST `/api/projects/{id}/budget-quotation/preview`, `multipart/form-data`, exactamente una parte de archivo llamada `file`, sin campos adicionales. `QuotationMultipartReader`, compartido por las cargas de Presupuestos y Comercial, usa MultipartReader y buffers en memoria limitados; `DisableFormValueModelBindingAttribute` evita que MVC consuma antes el formulario o lo almacene temporalmente en disco. No recibe JSON con paths, URLs ni varios archivos. El parser también admite streams no seekable y deja abierto el stream del llamador.
 
 Los límites son técnicos, configurables bajo `BudgetQuotationPreview`, y se validan como positivos al arrancar:
 
@@ -877,8 +904,6 @@ Exigir 201 y comparar extracted/confirmed; una segunda petición debe producir 4
 
 Los tests de confirmación cubren cada campo editable, cambios múltiples, orden invertido, Main/Additional y números repetidos, validaciones de cobertura, JSON estricto, imágenes Stored/Missing/Ambiguous, extensiones seguras, invariantes y metadata EF. Los tests de almacenamiento utilizan directorios temporales propios y comprueban bytes, traversal, no overwrite, cancelación y retirada de temporales. Los tests de compensación utilizan el ChangeTracker y LocalFileStorage reales, con SaveChanges/transacción controlados para provocar fallos en SaveChanges, XLSX, imagen intermedia y commit; cubren además cancelación, constraint específico y resultado incierto de commit. No necesitan PostgreSQL. Infrastructure expone sus miembros internos únicamente al assembly de tests para verificar esa fase de persistencia sin crear un framework de transacciones.
 
-El smoke con PostgreSQL y almacenamiento local verificó preview 200 y confirmación 201 con correcciones de Width, Glass y Quantity. Cada escenario guardó **1 versión, 1 catálogo, 3 ítems y 3 extracciones**, con estados Stored/Missing/Ambiguous y **2 archivos** (XLSX y una imagen), ambos byte por byte iguales a los originales. Dos confirmaciones simultáneas produjeron **1×201 y 1×409**, una sola versión/catálogo y únicamente archivos de la ganadora. Project y tarea permanecieron idénticos. La limpieza eliminó exclusivamente las dos pruebas, restauró el snapshot inicial de todas las tablas y comprobó ausencia de sus carpetas. La migración aplicada y la configuración local se conservan.
-
 ### Envío de Presupuestos a Comercial
 
 POST `/api/projects/{id}/send-to-commercial` requiere autenticación general, sin política CommercialHead, y no recibe body; contenido inesperado produce 400. `SendBudgetQuotationToCommercialUseCase` consulta el estado mediante `IBudgetQuotationCommercialHandoffStore` y obtiene de ICommercialHeadIdentity el Subject que entrega a SendAsync para asignar la tarea. Requiere exactamente una PrepareQuotation en Budgets/InProgress, StartedAt presente y CompletedAt null; versión 1, catálogo con al menos un ítem y una extracción por ítem; original disponible; ausencia de ReviewQuotation y de ConfirmedFileStorageKey. Project inexistente produce 404; estado inválido, envío previo, original ausente o documento incompatible producen 409.
@@ -926,7 +951,52 @@ curl.exe -H "Authorization: Bearer $googleIdToken" -D "<HEADERS_TEMPORALES>" -o 
 
 Verificar estado de ambas tareas, clave relativa, hash del original antes/después, valores corregidos, fórmula/cache, ImageParts y N/O. Repetir GET y comparar bytes, headers y snapshot de DB, incluidas las fechas. Para concurrencia usar otro proyecto sintético confirmado y dos POST simultáneos: exigir 1×200 y 1×409, una PrepareQuotation Completed, una ReviewQuotation InProgress asignada al Subject configurado y un solo confirmed.xlsx. Retirar solo los registros y carpetas creados por la prueba.
 
-Los tests cubren Complete y la clave operativa; precondiciones y SG histórico; cada campo del generador, cambios múltiples, filas/secciones, estilos, fórmulas/cache, shared strings, imágenes/anchors, estructura y celdas protegidas; compensación con fallos de SaveChanges, archivo, commit y cleanup; códigos HTTP, nombre Unicode, bytes exactos y descargas sin cambios. El smoke local con PostgreSQL y filesystem verificó ambos escenarios descritos, incluidas las descargas repetidas y la igualdad SHA-256 del original. La limpieza restauró el snapshot inicial de las siete tablas de negocio y retiró exclusivamente las carpetas sintéticas; el historial de migraciones se verifica por separado.
+Los tests cubren Complete y la clave operativa; precondiciones y SG histórico; cada campo del generador, cambios múltiples, filas/secciones, estilos, fórmulas/cache, shared strings, imágenes/anchors, estructura y celdas protegidas; compensación con fallos de SaveChanges, archivo, commit y cleanup; códigos HTTP, nombre Unicode, bytes exactos y descargas sin cambios.
+
+### Revisión y confirmación comercial
+
+Los POST comerciales reciben **solo una parte file**, reutilizando QuotationMultipartReader y los límites existentes. No hay DTO de correcciones ni precios/totales proporcionados por JSON. Preview responde 200 y no escribe DB, guarda archivos, elimina el temporal ni cambia tareas. Confirmación responde **201 Created**, sin Location artificial: crea una cotización y su archivo, con descarga en la ruta conocida del proyecto.
+
+**Parser:** `ICommercialQuotationParser` es una abstracción específica de Application. `XlsxCommercialQuotationParser` llama primero al IBudgetQuotationParser aprobado para validar paquete, extensión, entradas ZIP, tamaño expandido, estructura, SG, claves y valores técnicos. Solo después abre los mismos bytes en lectura con AutoSave=false para economía. No modifica el parser técnico ni recalcula fórmulas. No guarda nuevas imágenes; las extraídas durante validación permanecen en memoria y los ítems finales enlazan las históricas.
+
+UnitPrice viene de **N{SourceRow}** y TotalPrice de **O{SourceRow}**, también para Additional. ProjectTotal se lee de O en la única fila cuya N, tras Trim y comparación sin distinguir case, dice exactamente VALOR TOTAL y precede al único marcador ADICIONALES de A. Cero o varios totales principales y valores no numéricos producen 400 InvalidEconomics. Un marcador ADICIONALES ausente o ambiguo produce 400 InvalidWorkbook con UnsupportedWorkbookFormat. El total posterior no se agrega ni sustituye al principal. No hay referencias a O169, filas derivadas del número de ítems ni sumas propias.
+
+Los importes usan decimal y CultureInfo.InvariantCulture, leyendo representación OOXML numérica y cached values de fórmulas. Se acepta cero, se rechazan negativos, texto económico y fórmulas sin caché numérica. No se usa double, texto formateado, redondeo a dos decimales, Excel ni LibreOffice. UnitPrice, TotalPrice y ProjectTotal se mapean a **PostgreSQL numeric sin precisión/escala impuestas**. No se calcula precio por cantidad, sumatorias, IVA ni descuentos.
+
+**Matching y diferencias:** CommercialItemKey es Section+SourceRow. Debe coincidir exactamente el conjunto del XLSX con el catálogo; duplicados, claves ausentes o adicionales producen 409 StructuralMismatch con missingItems/unexpectedItems. No hay matching aproximado, por ItemNumber, Location ni orden. Insertar/eliminar ítems o desplazar su estructura no está soportado. Cambiar ItemNumber sí está permitido si conserva la clave.
+
+CommercialTechnicalDifferences compara los once campos de CatalogItemValues: ItemNumber, Location, System, Glass, AluminumFinish, LockType, Observations, Width, Height, SquareMeters y Quantity. Usa igualdad ordinal para textos normalizados por las reglas técnicas existentes y numérica para medidas/cantidad. TechnicalDifference contiene field (enum serializado como string), previousValue y currentValue (representaciones textuales invariantes, también para números). No compara imágenes, Section/SourceRow ni PELÍCULA PROTECCIÓN. No persiste una tabla de diferencias: ambos snapshots permiten reconstruirlas.
+
+**Respuesta de preview:** projectId, projectTotal, items, hasTechnicalDifferences y technicalDifferencesCount. Cada ítem contiene section, sourceRow, commercialCatalogItemId, values con los once campos técnicos, unitPrice, totalPrice y technicalDifferences. El resumen cuenta campos cambiados. No devuelve rutas, claves de almacenamiento, configuración, tokens ni imágenes duplicadas. Los cambios técnicos son informativos y permiten confirmar.
+
+**Workflow:** exige Project existente, una ReviewQuotation Commercial/InProgress con StartedAt y sin CompletedAt, asignada exactamente al Subject del Jefe configurado; versión inicial, catálogo, ítems/extracciones, confirmed.xlsx disponible y coincidencia de Project.SgCode con el SG histórico y el XLSX recibido. Cotización comercial o PresentQuotationToClient existentes producen AlreadyConfirmed/409. La confirmación exige además creador conocido: un legacy sin Subject devuelve ProjectCreatorUnavailable/409; el preview puede funcionar. No hay fallback de asesor.
+
+`ConfirmCommercialQuotationUseCase` vuelve a parsear el archivo mediante la preparación compartida con preview. Construye CommercialQuotation con el actor real de ICurrentUser (Subject requerido, Email/Name snapshots opcionales) y CommercialQuotationItems con valores e importes del XLSX. Los cambios comerciales no sobrescriben CommercialCatalog, CommercialCatalogItem ni CommercialCatalogItemExtraction: esos registros son historia de Presupuestos; CommercialQuotationItem tiene precedencia como realidad comercial vigente después de confirmar.
+
+| Entidad | Datos persistidos |
+| --- | --- |
+| CommercialQuotation | Id, ProjectId, BudgetQuotationVersionId, CommercialCatalogId, OriginalFileName, FileStorageKey, ProjectTotal, ConfirmedAt UTC, ConfirmedByGoogleSubject, ConfirmedByEmail nullable, ConfirmedByName nullable |
+| CommercialQuotationItem | Id, CommercialQuotationId, CommercialCatalogItemId, Section, SourceRow, los once valores técnicos, UnitPrice, TotalPrice |
+
+Las FK son Restrict; no hay cascadas que borren historia. Las entidades mantienen setters privados y constructor privado para EF. Se conservan snapshots del actor sin tokens ni roles. CommercialCatalogItemId permite reutilizar imágenes históricas; no existe nueva columna ni archivo de imagen comercial.
+
+Índices/constraints: **UX_CommercialQuotations_ProjectId** garantiza una cotización inicial por proyecto; FileStorageKey es único. Los ítems son únicos por (CommercialQuotationId, Section, SourceRow) y por (CommercialQuotationId, CommercialCatalogItemId), además de los índices de FK. CHECKs protegen economía no negativa, Subject no vacío, valores técnicos positivos, ItemNumber no vacío, fila positiva y sección válida. **UX_ProjectTasks_ProjectId_PresentQuotationToClient**, UNIQUE(ProjectId) WHERE Type=3, conserva los índices Type=1 y Type=2. Los nombres usados para traducir conflictos son explícitos.
+
+**Transacción y archivos:** EfCommercialQuotationStore genera el plan después del parsing; abre transacción y bloquea Project, tareas y versión inicial mediante FOR UPDATE en ese orden. Revalida workflow y el catálogo usado. Lee y conserva los bytes del temporal antes de modificar archivos. Completa ReviewQuotation sin cambiar StartedAt; crea PresentQuotationToClient=3 en Commercial, le asigna Project.CreatedByGoogleSubject y llama Start inmediatamente. AssignedAt/StartedAt son UTC, CompletedAt null; el inicio marca el Leak Time de presentación. No completa la presentación ni avanza a aprobación o pago.
+
+Orden: limpiar la referencia mediante **BudgetQuotationVersion.ClearConfirmedFileStorageKey()**, agregar cotización/ítems/tarea y un SaveChanges dentro de la transacción; guardar los bytes originales subidos en `projects/{projectId}/commercial-quotations/{commercialQuotationId}/commercial.xlsx`; eliminar físicamente confirmed.xlsx; commit. El XLSX comercial no se regenera, reescribe ni sanea. OriginalFileName se reduce al nombre final y ASP.NET File result serializa Content-Disposition seguro. Original.xlsx e imágenes no reciben escrituras ni borrados.
+
+Ante fallo se intenta rollback. Con rollback confirmado, o antes de haber intentado commit, se restaura el temporal si su eliminación se intentó y se elimina exclusivamente el archivo comercial creado por la operación. La restauración verifica si el temporal ya existe y coincide, sin sobrescribir otro contenido. Se conservan entradas ajenas del ChangeTracker y se restauran/desacoplan las propias. Compensación usa CancellationToken.None. Los errores de rollback, limpieza o restauración se propagan para inspección; no se devuelve éxito. Si se intentó commit y su resultado es incierto porque también falla rollback, se conserva commercial.xlsx y no se altera ciegamente la retención. Un crash puede requerir reconciliación manual: PostgreSQL y filesystem no constituyen una transacción distribuida.
+
+Solo 23505 sobre UX_CommercialQuotations_ProjectId o UX_ProjectTasks_ProjectId_PresentQuotationToClient se traduce a AlreadyConfirmed/409, después de compensar. Otros errores siguen siendo técnicos. Los locks serializan requests y las restricciones DB son la garantía adicional. Dos confirmaciones generan una ganadora y un conflicto, una cotización con sus ítems, una presentación y un archivo final.
+
+**Respuesta 201:** projectId, commercialQuotationId, projectTotal, commercialFileAvailable, reviewTask, presentQuotationToClientTask, hasTechnicalDifferences y technicalDifferencesCount. Las tareas usan el DTO existente con assignedToGoogleSubject y enums como strings. Los listados por proyecto o Commercial/InProgress pueden devolver ReviewQuotation o PresentQuotationToClient según el estado real.
+
+**Descarga final:** DownloadCommercialQuotationFileUseCase autoriza, antes de leer storage, al Subject del Jefe o al creador del Project. Email no participa; otro autenticado recibe 403 y sin autenticación responde 401 mediante la política global. Proyecto inexistente: 404; sin cotización confirmada: 409; archivo referenciado ausente: 500 genérico. GET entrega bytes almacenados y OriginalFileName, sin regeneración ni escrituras. La antigua ruta budget-quotation/commercial-file permanece exclusiva del Jefe, responde 409 al quedar la clave temporal null y nunca sustituye la descarga final. Limpiar esa clave no permite reenviar: ReviewQuotation sigue protegiendo el flujo.
+
+**Validación:** tests sintéticos cubren importes y cachés, cultura invariante, ceros, fracciones y magnitudes grandes; once diferencias independientes y múltiples; claves Main/Additional ausentes/adicionales; workflow, legacy y reparseo; autorización 401/403 por Subject; descarga y contratos; retención real en TemporaryStorage; fallos de SaveChanges, guardado, borrado antes/después, commit, rollback, limpieza y restauración. Los tests HTTP concurrentes usan persistencia simulada serializada y la fase real de archivos del store. El smoke PostgreSQL comprueba además una confirmación ganadora y AlreadyConfirmed, registros/fechas/asignación, importes exactos y retención. Una falla inyectada después del borrado físico del temporal comprobó rollback real y restauración byte por byte. Se retiraron solo IDs sintéticos y se verificaron huellas de los datos preexistentes.
+
+**Corpus local de solo lectura:** 66 XLSX, 62 aceptados por ambos parsers y 4 rechazos ya existentes del parser técnico; 1.038 ítems económicos leídos. Se observaron totales principales en filas 147, 217, 245, 343, 344 y 364. No hubo rechazos económicos adicionales ni se relajó el formato para recotizaciones/CONTRATADO-MODIFICADO. No se copiaron archivos ni datos de clientes al repositorio ni se confirmó un proyecto real.
 
 ### Errores
 
@@ -934,7 +1004,7 @@ Los tests cubren Complete y la clave operativa; precondiciones y SG histórico; 
 - Las invariantes permanecen en Domain. `ApiExceptionHandler` convierte `ArgumentException` y sus derivadas de validación en 400 con un ProblemDetails genérico.
 - Los Controllers convierten los resultados inexistentes en 404 y AlreadySent en 409 con ProblemDetails. Clientes y proyectos utilizan `CreatedAtAction` para los 201, cuya cabecera Location apunta al GET correspondiente; el envío a Presupuestos responde 201 con la tarea y sin Location; el envío a Comercial responde 200 con ambas tareas.
 - El middleware de excepciones está activo también en Development. Los errores inesperados responden 500 con ProblemDetails genérico, sin mensajes de EF/Npgsql, SQL, stack traces ni detalles de configuración. ApiExceptionHandler registra explícitamente estos errores con ILogger, pues .NET 10 puede suprimir el diagnóstico del middleware para excepciones atendidas.
-- Cada store traduce únicamente su conflicto único esperado: los índices PrepareQuotation y ReviewQuotation a AlreadySent/409 y el índice SG a SgCodeAlreadyInUse/409 y el índice de versión de cotización a AlreadyConfirmed/409. Otros errores de persistencia no se confunden con duplicados esperados. Las FK siguen protegiendo la integridad si un cliente o proyecto desaparece externamente entre la comprobación y el guardado; la API no ofrece eliminación.
+- Cada store traduce únicamente sus conflictos únicos esperados: los índices PrepareQuotation y ReviewQuotation a AlreadySent/409, el índice SG a SgCodeAlreadyInUse/409, y los índices de versión de Presupuestos, cotización comercial por proyecto y PresentQuotationToClient a AlreadyConfirmed/409. Otros errores de persistencia no se confunden con duplicados esperados. Las FK siguen protegiendo la integridad si un cliente o proyecto desaparece externamente entre la comprobación y el guardado; la API no ofrece eliminación.
 
 ### Prueba manual
 
@@ -987,11 +1057,7 @@ No hay endpoint de borrado. Para validaciones controladas en una base compartida
 
 La suite sin conexión no sustituye esta comprobación. Crear un cliente y un proyecto nuevos con una marca única, y lanzar dos POST simultáneos al envío de ese proyecto con clientes HTTP reales. Esperar todas las respuestas y comprobar exactamente un 201 y un 409, sin 500. Consultar PostgreSQL con los identificadores de la prueba y verificar una sola fila ProjectTasks con ProjectId del proyecto temporal y Type=1. Si se lanzan más solicitudes, una sola debe crear y todas las demás deben responder 409.
 
-El smoke local por HTTPS contra PostgreSQL cumplió ese resultado: **2 requests concurrentes, 1 respuesta 201, 1 respuesta 409 y 1 fila PrepareQuotation**. También se verificó directamente que el store devuelve false para otro intento, deja la entidad Detached y permite un SaveChanges posterior que escribe cero filas. La limpieza retiró exclusivamente una tarea, un proyecto y un cliente temporales, en ese orden, y comprobó cero filas restantes de la prueba.
-
 Para SG, crear dos proyectos temporales enviados a Presupuestos y elegir un código libre. Lanzar dos PUT simultáneos con ese mismo código. Exigir **1×200 y 1×409**, y consultar la base: solo un proyecto debe tenerlo; el rechazado debe conservar SgCode=null, tarea Pending y StartedAt=null. No basta con comprobar los códigos HTTP.
-
-El smoke de SG validó primera asignación `"  sg0012  "` → SG0012/InProgress, corrección a SG0042 con StartedAt idéntico, y repetición normalizada con respuesta idéntica. La concurrencia entre dos proyectos con SG99001 produjo 1×200, 1×409 y un solo propietario, con rollback completo del rechazado. Dos primeras asignaciones simultáneas al mismo proyecto produjeron 2×200 y el mismo StartedAt. Se comprobó el detach de ambas entidades y cero escrituras posteriores tras un conflicto, y el rechazo del CHECK a escrituras externas inválidas. La ejecución completa retiró sus cuatro tareas, cuatro proyectos y un cliente; las ejecuciones de diagnóstico también limpiaron sus registros. No quedaron datos temporales.
 
 ## Reglas permanentes para continuar
 
@@ -1003,4 +1069,4 @@ El smoke de SG validó primera asignación `"  sg0012  "` → SG0012/InProgress,
 - Validar herramientas, restore, build, tests y migraciones; corregir warnings atribuibles al código sin ocultarlos mediante configuración. Reportar los que legítimamente permanezcan y cualquier supuesto o impedimento.
 - No incluir secretos reales en archivos versionados. No aplicar migraciones automáticamente al arrancar.
 
-Siguen pendientes PresentQuotationToClient, la reasignación de asesor/tareas y, en alcance posterior, la edición de otros campos, eliminación, generación automática de SG, auditoría/historial de cambios SG, nuevas versiones y edición posterior de cotizaciones, procesamiento económico del Excel de Comercial, finalización de ReviewQuotation y devolución de tareas y demás módulos funcionales. El preview XLSX es stateless; la confirmación crea el catálogo base y conserva el documento inicial, sin implementar versión 2 ni edición posterior. Los únicos filtros disponibles son Area+Status para tareas; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation y una sola ReviewQuotation por proyecto.
+Siguen pendientes la aprobación del cliente, anticipo, finalización de PresentQuotationToClient, reasignación de asesor/tareas y, en alcance posterior, la edición de otros campos, eliminación, generación automática de SG, auditoría/historial de cambios SG, nuevas versiones y edición posterior de cotizaciones, revisiones comerciales posteriores, devolución de tareas y demás módulos funcionales. El preview XLSX de Presupuestos es stateless; su confirmación crea el catálogo base y conserva el documento inicial, sin implementar versión 2 ni edición posterior. Los únicos filtros disponibles son Area+Status para tareas; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation, ReviewQuotation y PresentQuotationToClient por proyecto.

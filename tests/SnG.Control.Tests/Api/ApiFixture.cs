@@ -1,4 +1,6 @@
 using SnG.Control.Api.Authorization;
+using SnG.Control.Application.Features.CommercialQuotations;
+using SnG.Control.Domain.Entities;
 using Microsoft.AspNetCore.Builder;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Authentication;
@@ -35,6 +37,7 @@ public class ApiFixture : IAsyncLifetime
     public QuotationConfirmationStoreDouble Confirmations { get; private set; } = null!;
 
     public CommercialHandoffScenario Handoff { get; set; } = new();
+    public CommercialQuotationScenario? Commercial { get; set; }
 
     public async Task InitializeAsync()
     {
@@ -56,7 +59,9 @@ public class ApiFixture : IAsyncLifetime
         builder.Services.RemoveAll<IBudgetQuotationCommercialHandoffStore>();
         builder.Services.RemoveAll<IFileStorage>();
         builder.Services.AddScoped<IBudgetQuotationCommercialHandoffStore>(_ => Handoff);
-        builder.Services.AddScoped<IFileStorage>(_ => Handoff);
+        builder.Services.AddScoped<IFileStorage>(_ => new StorageProxy(Commercial is null ? Handoff : Commercial));
+        builder.Services.RemoveAll<ICommercialQuotationStore>();
+        builder.Services.AddScoped<ICommercialQuotationStore>(_ => new CommercialStoreProxy(Commercial!));
         builder.Services.Configure<FileStorageOptions>(options => options.RootPath = storage.Root);
         builder.Services.RemoveAll<IBudgetQuotationConfirmationStore>();
         Confirmations = new QuotationConfirmationStoreDouble(Projects, Tasks);
@@ -86,5 +91,22 @@ public class ApiFixture : IAsyncLifetime
         Http.Dispose();
         await app.DisposeAsync();
         storage.Dispose();
+        Commercial?.Dispose();
+    }
+
+    // Scopes must not dispose the fixture-owned temporary storage after each HTTP request.
+    private sealed class StorageProxy(IFileStorage inner) : IFileStorage
+    {
+        public Task<byte[]> ReadAsync(string key, CancellationToken token) => inner.ReadAsync(key, token);
+        public Task SaveAsync(string key, ReadOnlyMemory<byte> bytes, CancellationToken token) => inner.SaveAsync(key, bytes, token);
+        public Task DeleteAsync(string key, CancellationToken token) => inner.DeleteAsync(key, token);
+    }
+    private sealed class CommercialStoreProxy(ICommercialQuotationStore inner) : ICommercialQuotationStore
+    {
+        public Task<CommercialQuotationState?> LoadAsync(Guid id, CancellationToken token) => inner.LoadAsync(id, token);
+        public Task<CommercialQuotationFileState?> GetFileAsync(Guid id, CancellationToken token) => inner.GetFileAsync(id, token);
+        public Task<CommercialQuotationConfirmationResult> ConfirmAsync(CommercialQuotationState state, string head, CommercialQuotation quotation,
+            IReadOnlyList<CommercialQuotationItem> items, byte[] bytes, CommercialQuotationPreviewResponse preview, CancellationToken token)
+            => inner.ConfirmAsync(state, head, quotation, items, bytes, preview, token);
     }
 }

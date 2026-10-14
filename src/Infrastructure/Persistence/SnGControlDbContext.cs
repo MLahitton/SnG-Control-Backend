@@ -13,6 +13,8 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
     public DbSet<CommercialCatalog> CommercialCatalogs => Set<CommercialCatalog>();
     public DbSet<CommercialCatalogItem> CommercialCatalogItems => Set<CommercialCatalogItem>();
     public DbSet<CommercialCatalogItemExtraction> CommercialCatalogItemExtractions => Set<CommercialCatalogItemExtraction>();
+    public DbSet<CommercialQuotation> CommercialQuotations => Set<CommercialQuotation>();
+    public DbSet<CommercialQuotationItem> CommercialQuotationItems => Set<CommercialQuotationItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -23,5 +25,7 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
         modelBuilder.ApplyConfiguration(new CommercialCatalogConfiguration());
         modelBuilder.ApplyConfiguration(new CommercialCatalogItemConfiguration());
         modelBuilder.ApplyConfiguration(new CommercialCatalogItemExtractionConfiguration());
+        modelBuilder.ApplyConfiguration(new CommercialQuotationConfiguration());
+        modelBuilder.ApplyConfiguration(new CommercialQuotationItemConfiguration());
     }
 }

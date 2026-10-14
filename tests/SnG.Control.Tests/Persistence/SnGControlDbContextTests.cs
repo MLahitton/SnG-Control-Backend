@@ -135,7 +135,7 @@ public class SnGControlDbContextTests
     {
         using var context = CreateContext();
 
-        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff", "AddCommercialIdentityAssignments" },
+        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff", "AddCommercialIdentityAssignments", "AddCommercialQuotationConfirmation" },
             context.Database.GetMigrations().Select(migration => migration[(migration.IndexOf('_') + 1)..]));
         Assert.False(context.Database.HasPendingModelChanges());
     }
@@ -175,7 +175,9 @@ public class SnGControlDbContextTests
         Assert.Null(foreignKey.DependentToPrincipal);
         Assert.Null(foreignKey.PrincipalToDependent);
         var indexes = entity.GetIndexes().ToArray();
-        Assert.Equal(4, indexes.Length);
+        Assert.Equal(5, indexes.Length);
+        var present = Assert.Single(indexes, index => index.GetDatabaseName() == "UX_ProjectTasks_ProjectId_PresentQuotationToClient");
+        Assert.True(present.IsUnique); Assert.Equal("\"Type\" = 3", present.GetFilter());
         var byProject = Assert.Single(indexes, index => index.GetDatabaseName() == "IX_ProjectTasks_ProjectId");
         Assert.False(byProject.IsUnique);
         Assert.Null(byProject.GetFilter());
@@ -197,6 +199,7 @@ public class SnGControlDbContextTests
     [InlineData(nameof(ProjectTask.Area), OperationalArea.Budgets, 2)]
     [InlineData(nameof(ProjectTask.Type), ProjectTaskType.PrepareQuotation, 1)]
     [InlineData(nameof(ProjectTask.Type), ProjectTaskType.ReviewQuotation, 2)]
+    [InlineData(nameof(ProjectTask.Type), ProjectTaskType.PresentQuotationToClient, 3)]
     [InlineData(nameof(ProjectTask.Status), ProjectTaskStatus.Pending, 1)]
     [InlineData(nameof(ProjectTask.Status), ProjectTaskStatus.InProgress, 2)]
     [InlineData(nameof(ProjectTask.Status), ProjectTaskStatus.Completed, 3)]
