@@ -97,6 +97,7 @@ public class QuotationConfirmationCompensationTests
     }
     private sealed class FailingStorage(string root) : IFileStorage
     {
+        public Task<byte[]> ReadAsync(string key, CancellationToken token) => Inner.ReadAsync(key, token);
         public LocalFileStorage Inner { get; } = new(Options.Create(new FileStorageOptions { RootPath = root }));
         public int FailAt { get; init; }
         public bool Cancel { get; init; }

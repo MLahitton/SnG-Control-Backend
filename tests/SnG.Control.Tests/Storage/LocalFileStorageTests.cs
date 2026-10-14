@@ -18,6 +18,7 @@ public class LocalFileStorageTests
         await storage.SaveAsync(key, bytes, default);
         await storage.SaveAsync("unrelated.bin", new byte[] { 7 }, default);
         Assert.Equal(bytes, await File.ReadAllBytesAsync(Path.Combine(directory.Root, key)));
+        Assert.Equal(bytes, await storage.ReadAsync(key, default));
         await storage.DeleteAsync(key, default); await storage.DeleteAsync(key, default);
         Assert.False(File.Exists(Path.Combine(directory.Root, key)));
         Assert.Equal(new byte[] { 7 }, await File.ReadAllBytesAsync(Path.Combine(directory.Root, "unrelated.bin")));
@@ -44,11 +45,12 @@ public class LocalFileStorageTests
     [InlineData("inside/./file")]
     [InlineData("file:stream")]
     [InlineData("")]
-    public async Task UnsafeKeys_AreRejectedForSaveAndDelete(string key)
+    public async Task UnsafeKeys_AreRejectedForSaveReadAndDelete(string key)
     {
         using var directory = new TemporaryStorage(); var storage = Storage(directory);
         await Assert.ThrowsAsync<IOException>(() => storage.SaveAsync(key, new byte[] { 1 }, default));
         await Assert.ThrowsAsync<IOException>(async () => await storage.DeleteAsync(key, default));
+        await Assert.ThrowsAsync<IOException>(async () => await storage.ReadAsync(key, default));
         Assert.Empty(Directory.GetFiles(directory.Root, "*", SearchOption.AllDirectories));
     }
 

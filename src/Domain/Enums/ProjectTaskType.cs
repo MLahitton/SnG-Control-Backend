@@ -2,5 +2,6 @@ namespace SnG.Control.Domain.Enums;
 
 public enum ProjectTaskType
 {
-    PrepareQuotation = 1
+    PrepareQuotation = 1,
+    ReviewQuotation = 2
 }

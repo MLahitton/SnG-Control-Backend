@@ -49,4 +49,12 @@ public class ProjectTask
         StartedAt = DateTime.UtcNow;
         CompletedAt = null;
     }
+
+    public void Complete()
+    {
+        if (Status != ProjectTaskStatus.InProgress || StartedAt is null || CompletedAt is not null)
+            throw new InvalidOperationException("Only an active, started task can be completed.");
+        Status = ProjectTaskStatus.Completed;
+        CompletedAt = DateTime.UtcNow;
+    }
 }

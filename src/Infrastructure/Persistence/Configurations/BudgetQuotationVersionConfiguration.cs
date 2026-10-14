@@ -16,5 +16,6 @@ public sealed class BudgetQuotationVersionConfiguration : IEntityTypeConfigurati
         builder.HasOne<Project>().WithMany().HasForeignKey(value => value.ProjectId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(value => new { value.ProjectId, value.VersionNumber }).IsUnique().HasDatabaseName(VersionIndexName);
         builder.HasIndex(value => value.OriginalFileStorageKey).IsUnique();
+        builder.HasIndex(value => value.ConfirmedFileStorageKey).IsUnique();
     }
 }

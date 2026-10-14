@@ -27,6 +27,7 @@ public sealed class BudgetQuotationVersion
     public int VersionNumber { get; private set; }
     public string OriginalFileName { get; private set; } = "";
     public string OriginalFileStorageKey { get; private set; } = "";
+    public string? ConfirmedFileStorageKey { get; private set; }
     public string OriginalFileContentType { get; private set; } = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     public string DocumentClientName { get; private set; } = "";
     public string DocumentProjectName { get; private set; } = "";
@@ -36,4 +37,14 @@ public sealed class BudgetQuotationVersion
     public string PreparedBy { get; private set; } = "";
     public string DocumentSgCode { get; private set; } = "";
     public DateTime ConfirmedAt { get; private set; }
+
+    public void SetConfirmedFileStorageKey(string key)
+    {
+        if (ConfirmedFileStorageKey is not null) throw new InvalidOperationException("The operational file is already assigned.");
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        if (key.StartsWith('/') || key.Contains('\\') || key.Contains(':')
+            || key.Split('/').Any(segment => segment is "" or "." or ".." || segment.Any(char.IsControl)))
+            throw new ArgumentException("The operational file key must be relative and safe.", nameof(key));
+        ConfirmedFileStorageKey = key;
+    }
 }

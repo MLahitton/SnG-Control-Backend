@@ -90,7 +90,7 @@ public sealed class XlsxBudgetQuotationParser(IOptions<BudgetQuotationParserOpti
             throw new UnsupportedQuotationException();
         if (workbook.GetPartById(sheetId) is not WorksheetPart worksheet) throw new UnsupportedQuotationException();
         var reader = new QuotationCellReader(workbook);
-        var rows = ReadRows(worksheet, cancellationToken);
+        var rows = QuotationWorksheetLayout.ReadRows(worksheet, cancellationToken);
         Cell? At(int row, string column) => rows.TryGetValue(row, out var cells) ? cells.GetValueOrDefault(column) : null;
         string TextAt(int row, string column) => reader.Text(At(row, column)).Trim();
 
@@ -175,31 +175,6 @@ public sealed class XlsxBudgetQuotationParser(IOptions<BudgetQuotationParserOpti
         }
         if (items.Count == 0) throw new UnsupportedQuotationException();
         return new BudgetQuotationParseResult.Success(document, items, warnings);
-    }
-
-    private static SortedDictionary<int, Dictionary<string, Cell>> ReadRows(WorksheetPart worksheet, CancellationToken cancellationToken)
-    {
-        var result = new SortedDictionary<int, Dictionary<string, Cell>>();
-        var previous = 0;
-        var sheetData = worksheet.Worksheet?.GetFirstChild<SheetData>() ?? throw new UnsupportedQuotationException();
-        foreach (var row in sheetData.Elements<Row>())
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            var rowIndex = checked((int)(row.RowIndex?.Value ?? 0));
-            if (rowIndex <= previous || rowIndex > 1_048_576) throw new UnsupportedQuotationException();
-            previous = rowIndex;
-            var cells = new Dictionary<string, Cell>(StringComparer.Ordinal);
-            foreach (var cell in row.Elements<Cell>())
-            {
-                var reference = cell.CellReference?.Value ?? throw new UnsupportedQuotationException();
-                var split = 0;
-                while (split < reference.Length && reference[split] is >= 'A' and <= 'Z') split++;
-                if (split == 0 || !int.TryParse(reference.AsSpan(split), NumberStyles.None, CultureInfo.InvariantCulture, out var cellRow)
-                    || cellRow != rowIndex || !cells.TryAdd(reference[..split], cell)) throw new UnsupportedQuotationException();
-            }
-            result.Add(rowIndex, cells);
-        }
-        return result;
     }
 
     private static List<(int Row, ImagePart Part)> ReadImages(WorksheetPart worksheet, CancellationToken cancellationToken)

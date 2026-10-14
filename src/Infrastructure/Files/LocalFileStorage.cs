@@ -8,6 +8,14 @@ public sealed class LocalFileStorage(IOptions<FileStorageOptions> options) : IFi
     private readonly string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.Value.RootPath));
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
+    public Task<byte[]> ReadAsync(string storageKey, CancellationToken cancellationToken)
+    {
+        var path = Resolve(storageKey);
+        if (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("Storage file links are not supported.");
+        return File.ReadAllBytesAsync(path, cancellationToken);
+    }
+
     public async Task SaveAsync(string storageKey, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
     {
         var destination = Resolve(storageKey);

@@ -7,6 +7,7 @@ namespace SnG.Control.Infrastructure.Persistence.Configurations;
 public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
 {
     internal const string PrepareQuotationIndexName = "UX_ProjectTasks_ProjectId_PrepareQuotation";
+    internal const string ReviewQuotationIndexName = "UX_ProjectTasks_ProjectId_ReviewQuotation";
 
     public void Configure(EntityTypeBuilder<ProjectTask> builder)
     {
@@ -31,5 +32,7 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
         builder.HasIndex(task => task.ProjectId, PrepareQuotationIndexName)
             .IsUnique()
             .HasFilter("\"Type\" = 1");
+        builder.HasIndex(task => task.ProjectId, ReviewQuotationIndexName)
+            .IsUnique().HasFilter("\"Type\" = 2");
     }
 }

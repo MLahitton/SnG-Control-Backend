@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Builder;
+using SnG.Control.Application.Features.Budgets.CommercialHandoff;
+using SnG.Control.Application.Files;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -28,6 +30,8 @@ public class ApiFixture : IAsyncLifetime
     private readonly TemporaryStorage storage = new();
     public QuotationConfirmationStoreDouble Confirmations { get; private set; } = null!;
 
+    public CommercialHandoffScenario Handoff { get; set; } = new();
+
     public async Task InitializeAsync()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -38,6 +42,10 @@ public class ApiFixture : IAsyncLifetime
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.RemoveAll<IBudgetQuotationCommercialHandoffStore>();
+        builder.Services.RemoveAll<IFileStorage>();
+        builder.Services.AddScoped<IBudgetQuotationCommercialHandoffStore>(_ => Handoff);
+        builder.Services.AddScoped<IFileStorage>(_ => Handoff);
         builder.Services.Configure<FileStorageOptions>(options => options.RootPath = storage.Root);
         builder.Services.RemoveAll<IBudgetQuotationConfirmationStore>();
         Confirmations = new QuotationConfirmationStoreDouble(Projects, Tasks);

@@ -34,6 +34,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("ConfirmedFileStorageKey")
+                        .HasColumnType("text");
+
                     b.Property<string>("DocumentClientName")
                         .IsRequired()
                         .HasColumnType("text");
@@ -77,6 +80,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ConfirmedFileStorageKey")
+                        .IsUnique();
 
                     b.HasIndex("OriginalFileStorageKey")
                         .IsUnique();
@@ -345,6 +351,10 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_ProjectId_PrepareQuotation")
                         .IsUnique()
                         .HasFilter("\"Type\" = 1");
+
+                    b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_ProjectId_ReviewQuotation")
+                        .IsUnique()
+                        .HasFilter("\"Type\" = 2");
 
                     b.ToTable("ProjectTasks", (string)null);
                 });

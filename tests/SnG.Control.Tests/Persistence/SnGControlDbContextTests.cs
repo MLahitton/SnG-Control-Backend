@@ -119,7 +119,7 @@ public class SnGControlDbContextTests
     {
         using var context = CreateContext();
 
-        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog" },
+        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff" },
             context.Database.GetMigrations().Select(migration => migration[(migration.IndexOf('_') + 1)..]));
         Assert.False(context.Database.HasPendingModelChanges());
     }
@@ -159,7 +159,7 @@ public class SnGControlDbContextTests
         Assert.Null(foreignKey.DependentToPrincipal);
         Assert.Null(foreignKey.PrincipalToDependent);
         var indexes = entity.GetIndexes().ToArray();
-        Assert.Equal(3, indexes.Length);
+        Assert.Equal(4, indexes.Length);
         var byProject = Assert.Single(indexes, index => index.GetDatabaseName() == "IX_ProjectTasks_ProjectId");
         Assert.False(byProject.IsUnique);
         Assert.Null(byProject.GetFilter());
@@ -168,7 +168,9 @@ public class SnGControlDbContextTests
         Assert.False(byArea.IsUnique);
         Assert.Null(byArea.GetFilter());
         Assert.Equal(new[] { nameof(ProjectTask.Area), nameof(ProjectTask.Status) }, byArea.Properties.Select(property => property.Name));
-        var unique = Assert.Single(indexes, index => index.IsUnique);
+        var unique = Assert.Single(indexes, index => index.GetDatabaseName() == "UX_ProjectTasks_ProjectId_PrepareQuotation");
+        var review = Assert.Single(indexes, index => index.GetDatabaseName() == "UX_ProjectTasks_ProjectId_ReviewQuotation");
+        Assert.True(review.IsUnique); Assert.Equal("\"Type\" = 2", review.GetFilter());
         Assert.Equal("UX_ProjectTasks_ProjectId_PrepareQuotation", unique.GetDatabaseName());
         Assert.Equal(nameof(ProjectTask.ProjectId), Assert.Single(unique.Properties).Name);
         Assert.Equal("\"Type\" = 1", unique.GetFilter());
@@ -178,6 +180,7 @@ public class SnGControlDbContextTests
     [InlineData(nameof(ProjectTask.Area), OperationalArea.Commercial, 1)]
     [InlineData(nameof(ProjectTask.Area), OperationalArea.Budgets, 2)]
     [InlineData(nameof(ProjectTask.Type), ProjectTaskType.PrepareQuotation, 1)]
+    [InlineData(nameof(ProjectTask.Type), ProjectTaskType.ReviewQuotation, 2)]
     [InlineData(nameof(ProjectTask.Status), ProjectTaskStatus.Pending, 1)]
     [InlineData(nameof(ProjectTask.Status), ProjectTaskStatus.InProgress, 2)]
     [InlineData(nameof(ProjectTask.Status), ProjectTaskStatus.Completed, 3)]
@@ -199,6 +202,17 @@ public class SnGControlDbContextTests
             .Options;
 
         return new SnGControlDbContext(options);
+    }
+
+    [Fact]
+    public void OperationalFileKey_IsNullableTextWithUniqueIndex()
+    {
+        using var context = CreateContext();
+        var version = context.Model.FindEntityType(typeof(BudgetQuotationVersion))!;
+        var key = version.FindProperty(nameof(BudgetQuotationVersion.ConfirmedFileStorageKey))!;
+        Assert.True(key.IsNullable); Assert.Equal("text", key.GetColumnType());
+        var index = Assert.Single(version.GetIndexes(), value => value.GetDatabaseName() == "IX_BudgetQuotationVersions_ConfirmedFileStorageKey");
+        Assert.True(index.IsUnique); Assert.Null(index.GetFilter());
     }
 
     [Fact]

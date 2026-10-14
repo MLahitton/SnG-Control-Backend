@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using SnG.Control.Application.Features.Budgets.CommercialHandoff;
 using Microsoft.Extensions.Options;
 using SnG.Control.Application.Features.Budgets.ConfirmQuotation;
 using SnG.Control.Application.Files;
@@ -35,6 +36,10 @@ public static class DependencyInjection
         services.AddSingleton<IValidateOptions<FileStorageOptions>, FileStorageOptionsValidator>();
         services.AddOptions<FileStorageOptions>().BindConfiguration(FileStorageOptions.SectionName).ValidateOnStart();
         services.AddScoped<IFileStorage, LocalFileStorage>();
+        services.AddScoped<IBudgetQuotationCommercialHandoffStore, EfBudgetQuotationCommercialHandoffStore>();
+        services.AddScoped<IBudgetQuotationWorkbookGenerator, XlsxBudgetQuotationWorkbookGenerator>();
+        services.AddScoped<SendBudgetQuotationToCommercialUseCase>();
+        services.AddScoped<DownloadCommercialQuotationUseCase>();
         services.AddScoped<IBudgetQuotationConfirmationStore, EfBudgetQuotationConfirmationStore>();
         services.AddScoped<ConfirmBudgetQuotationUseCase>();
         services.AddOptions<BudgetQuotationParserOptions>().BindConfiguration(BudgetQuotationParserOptions.SectionName)
