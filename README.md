@@ -6,7 +6,15 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, asignar o corregir su código SG, consultar las tareas por área y estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede obtener un preview técnico de una cotización XLSX estándar y confirmar sus valores corregidos para crear el catálogo comercial base oficial. El preview no persiste; la confirmación conserva datos en PostgreSQL y archivos en almacenamiento local configurado. Una acción posterior envía la cotización a Comercial, genera su Excel operativo y permite descargarlo.
 
-La API requiere una conexión, una carpeta de almacenamiento configurada y todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. No hay interfaz de usuario ni operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa.
+La API requiere configuración de autenticación Google, conexión, carpeta de almacenamiento y todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. No hay interfaz de usuario ni operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa ni acceso a Google.
+
+## Identidad y acceso
+
+Las operaciones de negocio requieren autenticación mediante un ID Token de Google válido para el Client ID configurado. Durante esta fase de desarrollo puede acceder cualquier cuenta Google válida para ese cliente OAuth; no hay restricción por dominio corporativo ni jerarquías o roles específicos.
+
+Google identifica al usuario y SnG Control definirá sus permisos de negocio en fases posteriores. La identidad estable es el **Subject (`sub`)**, no el email. `GET /api/auth/me` devuelve únicamente subject, email y nombre del usuario autenticado; permitirá conocer el Subject que se configurará posteriormente para el Jefe Comercial.
+
+No existe tabla de usuarios y no se almacenan passwords ni tokens. El frontend Google Sign-In todavía no está implementado. Una solicitud sin autenticación o con un token inválido recibe 401; las reglas funcionales existentes siguen vigentes para los usuarios autenticados.
 
 ## Clientes y proyectos
 

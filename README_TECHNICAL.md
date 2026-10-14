@@ -6,7 +6,7 @@ La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web
 
 La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las seis migraciones, desde `InitialCreate` hasta `AddCommercialQuotationHandoff`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
-Application implementa catorce casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel operativo. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. No hay repositorios genéricos, Unit of Work propio, autenticación, autorización ni Docker. La API exige configuración de conexión y almacenamiento, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
+Application implementa catorce casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel operativo. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. La autenticación Google protege las operaciones y `/api/auth/me` consulta la identidad mediante ICurrentUser, sin persistencia ni otro caso de uso de negocio. No hay repositorios genéricos, Unit of Work propio, roles específicos ni Docker. La API exige configuración de autenticación, conexión y almacenamiento, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
 
 ## Requisitos y paquetes
 
@@ -22,6 +22,7 @@ Application implementa catorce casos de uso: crear, obtener por Id y listar clie
 | Infrastructure | DocumentFormat.OpenXml | 3.5.1 | Lectura XLSX, cachés de fórmulas e imágenes con anchors; licencia MIT |
 | Api | Microsoft.EntityFrameworkCore.Design | 10.0.12 | Tooling del startup project; `PrivateAssets=all` |
 | Api | Microsoft.AspNetCore.OpenApi | 10.0.12 | Documento OpenAPI en desarrollo |
+| Api | Microsoft.AspNetCore.Authentication.JwtBearer | 10.0.12 | Validación estándar de ID tokens Google mediante discovery OIDC; alineado con ASP.NET Core |
 | Tests | Microsoft.NET.Test.Sdk | 17.14.1 | Ejecución de tests |
 | Tests | xunit | 2.9.3 | Tests unitarios |
 | Tests | xunit.runner.visualstudio | 3.1.4 | Descubrimiento y ejecución de xUnit |
@@ -40,6 +41,10 @@ dotnet-tools.json
 SnG.Control.sln
 src/
   Api/
+    Authentication/GoogleAuthenticationOptions.cs
+    Authentication/GoogleAuthenticationRegistration.cs
+    Authentication/HttpContextCurrentUser.cs
+    Authentication/BearerSecurityDocumentTransformer.cs
     Program.cs
     DependencyInjection.cs
     Contracts/CreateClientRequest.cs
@@ -52,6 +57,7 @@ src/
     Controllers/ProjectsController.cs
     Controllers/ProjectTasksController.cs
     Controllers/BudgetQuotationController.cs
+    Controllers/AuthController.cs
     Controllers/CommercialHandoffController.cs
     Filters/DisableFormValueModelBindingAttribute.cs
     Errors/ApiExceptionHandler.cs
@@ -59,6 +65,7 @@ src/
     appsettings.json
     Properties/launchSettings.json
   Application/
+    Identity/ICurrentUser.cs
     Files/IFileStorage.cs
     Features/
       Budgets/
@@ -225,6 +232,46 @@ $env:ConnectionStrings__SnGControl = 'Host=<HOST>;Port=<PUERTO>;Database=sng_con
 
 La API rechaza una conexión ausente, vacía o solo whitespace al arrancar, con un mensaje que identifica la clave requerida, sin imprimir su valor. No se presume host, puerto, usuario o contraseña. Tener configuración no demuestra que PostgreSQL esté accesible: la conexión efectiva ocurre al ejecutar una operación de base de datos.
 
+### Autenticación Google
+
+La API recibe `Authorization: Bearer <GOOGLE_ID_TOKEN>` y usa Microsoft.AspNetCore.Authentication.JwtBearer 10.0.12 con discovery OpenID Connect. Google es la autoridad de identidad; la autorización específica de negocio corresponderá a SnG Control. No se usa Google.Apis.Auth ni un validador JWT propio. La librería estándar gestiona discovery, claves públicas y su actualización. Referencias: [validación de ID tokens de Google](https://developers.google.com/identity/sign-in/web/backend-auth) y [JwtBearer en ASP.NET Core](https://learn.microsoft.com/aspnet/core/security/authentication/configure-jwt-bearer-authentication?view=aspnetcore-10.0).
+
+La única opción es `Authentication:Google:ClientId`, vinculada a GoogleAuthenticationOptions y validada al startup: no puede ser null, vacía ni whitespace. Configurar mediante User Secrets en Development o la variable `Authentication__Google__ClientId`. Los valores siguientes son placeholders; no versionar el valor real:
+
+```shell
+dotnet user-secrets set "Authentication:Google:ClientId" "<GOOGLE_OAUTH_CLIENT_ID>" --project src/Api
+```
+
+```powershell
+$env:Authentication__Google__ClientId = '<GOOGLE_OAUTH_CLIENT_ID>'
+```
+
+Este flujo no utiliza ni requiere Client Secret. No se configura un dominio permitido ni CommercialHeadSubject; la identidad del Jefe Comercial se configurará por Subject en un bloque posterior. Cualquier cuenta Google con un ID token válido para este cliente OAuth puede usar las operaciones actuales. No hay usuarios persistidos, passwords, cookies de sesión, roles, refresh tokens ni tokens propios de SnG Control.
+
+Authority es `https://accounts.google.com`; Audience es exclusivamente el ClientId configurado. Se aceptan los issuers oficiales `https://accounts.google.com` y `accounts.google.com`. Permanecen activados ValidateIssuer, ValidateAudience, ValidateLifetime y ValidateIssuerSigningKey; se exige firma RS256 y expiración, con tolerancia de reloj de 60 segundos. La audience no admite una barra final adicional. Discovery exige HTTPS y necesita conectividad a Google cuando obtiene o renueva sus claves; los tests no hacen esas solicitudes.
+
+`MapInboundClaims=false` conserva `sub`, `email`, `name` y `email_verified` originales. OnTokenValidated rechaza un `sub` ausente, vacío o whitespace como fallo de autenticación: produce 401 antes de llegar al Controller. No utiliza email ni NameIdentifier como fallback. Email y name son opcionales; email_verified permanece en ClaimsPrincipal si llegó en el token, sin imponer todavía reglas de dominio o verificación del email.
+
+Application declara `ICurrentUser` con Subject, Email y Name, sin referencias a ASP.NET Core ni ClaimsPrincipal. Api implementa HttpContextCurrentUser mediante IHttpContextAccessor, registrado scoped. Lee exclusivamente `sub` para Subject y exige una identidad autenticada; no genera identificadores ni guarda tokens. `/api/auth/me` devuelve solo esos tres campos, sin ClientId, credenciales ni el resto del JWT.
+
+La FallbackPolicy global exige RequireAuthenticatedUser sin roles ni permisos adicionales; los Controllers no necesitan repetir `[Authorize]`. Program ejecuta UseAuthentication y después UseAuthorization, antes de MapControllers. El manejo global de excepciones permanece intacto. La ausencia de autenticación, tokens inválidos o identidad sin sub producen 401 con challenge Bearer; 403 queda reservado para autorización futura. SaveToken=false e IncludeErrorDetails=false evitan guardar el token en el ticket o divulgar detalles en el challenge. No se registran cabeceras Authorization ni tokens; tampoco se incluyen tokens fallidos en los parámetros de diagnóstico de validación.
+
+**Prueba manual:** con la API iniciada, una petición sin cabecera a `/api/auth/me` debe devolver 401. Cuando se disponga de un ID token Google obtenido legítimamente para el ClientId configurado, ejecutar desde PowerShell; conservar `$googleIdToken` y `$authHeaders` solo durante la sesión local:
+
+```powershell
+$googleIdToken = '<GOOGLE_ID_TOKEN>'
+$authHeaders = @{ Authorization = "Bearer $googleIdToken" }
+Invoke-RestMethod -Headers $authHeaders -Uri 'https://localhost:7265/api/auth/me'
+```
+
+Respuesta sintética ilustrativa:
+
+```json
+{ "subject": "google-test-subject", "email": "test@example.com", "name": "Test User" }
+```
+
+Los ejemplos HTTP de negocio siguientes requieren esas mismas credenciales. El smoke local con la configuración existente verificó 401 en `/api/auth/me`, `/api/clients` y `/api/projects` sin token, y OpenAPI público con esquema Bearer. No escribió datos. El smoke con una cuenta Google real queda pendiente de disponer de su ID token; el frontend Google Sign-In aún no está implementado.
+
 ### Almacenamiento local
 
 La API exige `FileStorage:RootPath` al arrancar. Debe ser una ruta absoluta, no vacía, que exista o pueda crearse. `FileStorageOptionsValidator` valida esa configuración sin revelar el valor en sus mensajes. El usuario del proceso necesita permisos de escritura, rename y eliminación; un fallo posterior de I/O es un error de servidor.
@@ -261,7 +308,9 @@ Los tests normales funcionan sin conexión configurada, sin contraseña y sin Po
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite contiene 460 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+La suite contiene 486 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+
+ApiFixture autentica por defecto mediante el esquema TestIdentity, exclusivo de Tests: sub=google-test-subject, email=test@example.com y name=Test User. Aplica a la identidad sintética la misma regla OnTokenValidated de presencia de sub. Los tests negativos omiten la cabecera o seleccionan una identidad inválida sin cambiar los defaults de otros tests. Los 460 tests funcionales previos conservan sus assertions; no se modifica la configuración productiva para permitir accesos de prueba. Las pruebas del handler JwtBearer real sustituyen discovery por configuración estática únicamente en Tests y verifican 401 para entradas ausentes o inválidas, sin Internet. También se comprueban startup, opciones JWT, política global, claims originales y ausencia de email como fallback.
 
 Los 66 casos de preview usan XLSX anónimos generados en memoria: bloques reales/vacíos, Main/Additional, números repetidos y formatos con ceros, orden documental, etiquetas, fórmulas cacheadas sin cálculo, M2, imágenes por anchor y sus warnings, SG, archivos inválidos y límites técnicos. Application prueba todos los requisitos del workflow con stores cuyas operaciones de escritura fallan si se invocan. Los tests multipart utilizan el parser real y comprueban el contrato completo y sus errores, sin datos reales de clientes.
 
@@ -292,6 +341,8 @@ Los identificadores nacen de `Guid.NewGuid()` en el dominio y se mapean con `Val
 Los proyectos y carpetas bajo `src` se llaman `Api`, `Application`, `Domain` e `Infrastructure`; cada archivo de proyecto tiene el mismo nombre que su carpeta. `RootNamespace` mantiene el prefijo `SnG.Control` en los namespaces del código y de las migraciones. Se utilizan nullable reference types e implicit usings. Las validaciones siguen utilizando `ArgumentNullException`, `ArgumentException` y `ArgumentOutOfRangeException`. Domain no contiene DataAnnotations de persistencia, referencias EF, colecciones de navegación ni dependencias hacia Infrastructure.
 
 ## Tablas y restricciones
+
+La autenticación no modifica este modelo ni agrega tablas Users/Employees, responsables o asignaciones de usuario. Se mantienen exactamente las seis migraciones existentes.
 
 Se usan nombres explícitos `Clients`, `Projects` y `ProjectTasks`, con columnas PascalCase; el SQL PostgreSQL generado utiliza identificadores entre comillas. No se introduce un esquema personalizado.
 
@@ -437,7 +488,7 @@ Revisar la migración y el snapshot: columnas, tipos, nullability, claves, índi
 
 ## Ejecutar la API
 
-Con la conexión configurada y, para persistir datos, las migraciones aplicadas:
+Con ClientId Google, conexión y almacenamiento configurados y, para persistir datos, las migraciones aplicadas:
 
 ```shell
 dotnet dev-certs https --trust
@@ -446,10 +497,10 @@ dotnet run --project src/Api --launch-profile https
 
 El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `Development`, con redirección HTTP a HTTPS. Detener con `Ctrl+C`. También existe el perfil `http` en 5051, sin puerto HTTPS propio; la redirección puede advertir que no encuentra ese puerto. Se recomienda el perfil `https`.
 
-En desarrollo, `GET /openapi/v1.json` publica OpenAPI con las catorce operaciones de negocio. No hay Swagger UI ni Minimal APIs de negocio; `/` devuelve 404. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
+En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene catorce operaciones de negocio y `/api/auth/me`, quince en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
 
-- `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS y Controllers.
-- `DependencyInjection.cs`: `AddApiServices` registra los catorce casos de uso, los seis stores, IFileStorage, el parser y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
+- `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS, autenticación, autorización y Controllers.
+- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback e ICurrentUser, además de los catorce casos de uso, los seis stores, IFileStorage, el parser y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
 - `appsettings.json`: logging (`Information` general y `Warning` para ASP.NET Core) y `AllowedHosts=*`; no contiene conexiones.
 - `Properties/launchSettings.json`: perfiles/puertos locales y `ASPNETCORE_ENVIRONMENT=Development`.
 - El registro del contexto no ejecuta operaciones de base de datos ni aplica migraciones.
@@ -504,6 +555,7 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 
 | Método y ruta | Request | Éxito | Recurso inexistente |
 | --- | --- | --- | --- |
+| GET `/api/auth/me` | Bearer ID token | 200, subject/email/name; 401 sin identidad válida | No aplica |
 | POST `/api/clients` | `name` | 201, ClientResponse y Location | No aplica |
 | GET `/api/clients` | Sin body | 200, colección de ClientResponse | Colección vacía |
 | GET `/api/clients/{id}` | Guid en ruta | 200, ClientResponse | 404 |
@@ -520,6 +572,8 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 | GET `/api/projects/{id}/budget-quotation/commercial-file` | Sin body | 200, XLSX con nombre original; 409 si aún no enviado; 500 si falta el archivo referenciado | 404 |
 
 `ClientResponse` contiene `id`, `name`, `createdAt` y `updatedAt`. `ProjectResponse` contiene `id`, `clientId`, `name`, `city`, `productLine`, `sgCode`, `createdAt` y `updatedAt`. Las fechas son UTC en formato ISO 8601. Las respuestas de proyecto no incluyen el objeto Client completo. `sgCode` es null hasta su primera asignación y después contiene el código normalizado.
+
+Todas estas rutas exigen autenticación. Los códigos funcionales de la tabla se evalúan después de autenticar; sin una identidad válida responden 401 antes del binding y del caso de uso.
 
 Se usa camelCase. `ProductLineJsonConverter` delega la lectura y escritura a `JsonStringEnumConverter<ProductLine>` de System.Text.Json con `allowIntegerValues=false`, y exige un único nombre: rechaza combinaciones separadas por comas que el convertidor estándar puede interpretar como una combinación numérica. Los nombres canónicos devueltos son `Classic`, `Essential`, `Bioconfort` y `Signature`; números JSON, cadenas numéricas, combinaciones y nombres desconocidos producen 400. El almacenamiento sigue siendo integer 1–4. La comparación de nombres no distingue mayúsculas/minúsculas.
 
@@ -669,7 +723,7 @@ El controller valida la carga, luego el caso de uso comprueba proyecto/workflow,
 Ejemplo con un proyecto existente ya habilitado y un XLSX cuyo SG coincide:
 
 ```powershell
-curl.exe -F "file=@<RUTA_XLSX>" "https://localhost:7265/api/projects/<PROJECT_ID>/budget-quotation/preview"
+curl.exe -H "Authorization: Bearer $googleIdToken" -F "file=@<RUTA_XLSX>" "https://localhost:7265/api/projects/<PROJECT_ID>/budget-quotation/preview"
 ```
 
 El preview no guarda archivo, metadata, catálogo ni versión, ni cambia tablas. La persistencia ocurre únicamente mediante confirmación. El smoke local verificó preview 200 con PostgreSQL sobre proyectos sintéticos habilitados antes de confirmar.
@@ -777,7 +831,7 @@ Se conserva también Project.UpdatedAt, SgCode, Name, City y ProductLine. No se 
 **Prueba manual:** con la API iniciada, un proyecto de prueba enviado a Presupuestos y con SG asignado, ejecutar preview, preparar confirmation.json con todos sus ítems y cambiar únicamente los campos editables. Enviar el mismo XLSX junto al JSON:
 
 ```powershell
-curl.exe -F "file=@<XLSX_SINTETICO>" -F "confirmation=@<CONFIRMATION_JSON>;type=application/json" "https://localhost:7265/api/projects/<PROJECT_ID>/budget-quotation/confirm"
+curl.exe -H "Authorization: Bearer $googleIdToken" -F "file=@<XLSX_SINTETICO>" -F "confirmation=@<CONFIRMATION_JSON>;type=application/json" "https://localhost:7265/api/projects/<PROJECT_ID>/budget-quotation/confirm"
 ```
 
 Exigir 201 y comparar extracted/confirmed; una segunda petición debe producir 409. Verificar en PostgreSQL una versión 1, un catálogo y un snapshot por ítem, con claves relativas. En la raíz configurada comparar bytes del XLSX y de imágenes con los enviados. Comprobar que Project y PrepareQuotation conservan todos sus valores. No confirmar masivamente el corpus real.
@@ -827,8 +881,8 @@ Responde 200 con `Content-Type: application/vnd.openxmlformats-officedocument.sp
 
 ```powershell
 $projectUrl = "https://localhost:7265/api/projects/<PROJECT_ID>"
-Invoke-RestMethod -Method Post -Uri "$projectUrl/send-to-commercial"
-curl.exe -D "<HEADERS_TEMPORALES>" -o "<XLSX_DESCARGADO>" "$projectUrl/budget-quotation/commercial-file"
+Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$projectUrl/send-to-commercial"
+curl.exe -H "Authorization: Bearer $googleIdToken" -D "<HEADERS_TEMPORALES>" -o "<XLSX_DESCARGADO>" "$projectUrl/budget-quotation/commercial-file"
 ```
 
 Verificar estado de ambas tareas, clave relativa, hash del original antes/después, valores corregidos, fórmula/cache, ImageParts y N/O. Repetir GET y comparar bytes, headers y snapshot de DB, incluidas las fechas. Para concurrencia usar otro proyecto sintético confirmado y dos POST simultáneos: exigir 1×200 y 1×409, una PrepareQuotation Completed, una ReviewQuotation InProgress y un solo confirmed.xlsx. Retirar solo los registros y carpetas creados por la prueba.
@@ -845,12 +899,12 @@ Los tests cubren Complete y la clave operativa; precondiciones y SG histórico; 
 
 ### Prueba manual
 
-Con la API iniciada por el perfil HTTPS, ejecutar desde PowerShell con datos ficticios:
+Con la API iniciada por el perfil HTTPS y `$authHeaders` definido con un ID token válido según la sección de autenticación, ejecutar desde PowerShell con datos ficticios:
 
 ```powershell
 $baseUrl = 'https://localhost:7265'
 $clientBody = @{ name = 'Cliente Demo' } | ConvertTo-Json
-$client = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/clients" -ContentType 'application/json' -Body $clientBody
+$client = Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$baseUrl/api/clients" -ContentType 'application/json' -Body $clientBody
 
 $projectBody = @{
     clientId = $client.id
@@ -858,32 +912,32 @@ $projectBody = @{
     city = 'Bucaramanga'
     productLine = 'Signature'
 } | ConvertTo-Json
-$project = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/projects" -ContentType 'application/json' -Body $projectBody
+$project = Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$baseUrl/api/projects" -ContentType 'application/json' -Body $projectBody
 
-Invoke-RestMethod "$baseUrl/api/clients/$($client.id)"
-Invoke-RestMethod "$baseUrl/api/projects/$($project.id)"
-Invoke-RestMethod "$baseUrl/api/clients"
-Invoke-RestMethod "$baseUrl/api/projects"
+Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/clients/$($client.id)"
+Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects/$($project.id)"
+Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/clients"
+Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects"
 
 # Debe estar vacío: crear Project no lo envía a Presupuestos.
-Invoke-RestMethod "$baseUrl/api/projects/$($project.id)/tasks"
-$task = Invoke-RestMethod -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
+Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects/$($project.id)/tasks"
+$task = Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
 $task # Budgets / PrepareQuotation / Pending; fechas de inicio y fin nulas.
-Invoke-RestMethod "$baseUrl/api/project-tasks?area=Budgets&status=Pending"
-Invoke-RestMethod "$baseUrl/api/projects/$($project.id)/tasks"
+Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/project-tasks?area=Budgets&status=Pending"
+Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects/$($project.id)/tasks"
 # Este segundo envío debe producir HTTP 409 (Invoke-RestMethod informa el error).
-Invoke-RestMethod -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
+Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
 
 # Usar códigos libres; el sistema no calcula el siguiente SG.
 $sgUrl = "$baseUrl/api/projects/$($project.id)/sg-code"
-$assignment = Invoke-RestMethod -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":" sg0012 "}'
+$assignment = Invoke-RestMethod -Headers $authHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":" sg0012 "}'
 $originalStart = $assignment.prepareQuotationTask.startedAt
-$correction = Invoke-RestMethod -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":"sg0042"}'
-$repeat = Invoke-RestMethod -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":" SG0042 "}'
+$correction = Invoke-RestMethod -Headers $authHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":"sg0042"}'
+$repeat = Invoke-RestMethod -Headers $authHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":" SG0042 "}'
 $originalStart -eq $correction.prepareQuotationTask.startedAt # True
 $originalStart -eq $repeat.prepareQuotationTask.startedAt # True
 $correction.project.updatedAt -eq $repeat.project.updatedAt # True
-Invoke-RestMethod "$baseUrl/api/project-tasks?area=Budgets&status=InProgress"
+Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/project-tasks?area=Budgets&status=InProgress"
 ```
 
 Los POST de creación y el primer envío generan registros reales y responden 201; los GET del ejemplo responden 200. El segundo envío responde 409 sin escribir otra tarea. Un Guid válido inexistente responde 404 al consultar entidades, enviar o consultar su historial. Cambiar `productLine`, `area` o `status` por un número o nombre desconocido, omitir área/estado, dejar `name`/`city` en blanco o enviar `Guid.Empty` como `clientId` produce 400. Un proyecto con cliente inexistente produce 404 sin insertar el proyecto.

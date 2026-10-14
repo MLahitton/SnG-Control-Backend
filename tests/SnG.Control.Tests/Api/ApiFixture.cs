@@ -1,4 +1,7 @@
 using Microsoft.AspNetCore.Builder;
+using System.Net.Http.Headers;
+using Microsoft.AspNetCore.Authentication;
+using SnG.Control.Api.Authentication;
 using SnG.Control.Application.Features.Budgets.CommercialHandoff;
 using SnG.Control.Application.Files;
 using Microsoft.AspNetCore.Hosting;
@@ -42,6 +45,12 @@ public class ApiFixture : IAsyncLifetime
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.Configure<GoogleAuthenticationOptions>(options => options.ClientId = "test-client-id");
+        builder.Services.AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
+            options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName;
+        }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, _ => { });
         builder.Services.RemoveAll<IBudgetQuotationCommercialHandoffStore>();
         builder.Services.RemoveAll<IFileStorage>();
         builder.Services.AddScoped<IBudgetQuotationCommercialHandoffStore>(_ => Handoff);
@@ -60,11 +69,14 @@ public class ApiFixture : IAsyncLifetime
         builder.Services.AddSingleton<IBudgetsWorkflowStore>(new BudgetsWorkflowStoreDouble(Projects, Tasks));
         app = builder.Build();
         app.UseExceptionHandler();
+        app.UseAuthentication();
+        app.UseAuthorization();
         app.MapControllers();
         await app.StartAsync();
         var server = app.Services.GetRequiredService<IServer>();
         var address = server.Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         Http = new HttpClient { BaseAddress = new Uri(address) };
+        Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName, "valid");
     }
 
     public async Task DisposeAsync()
