@@ -1,6 +1,5 @@
 using SnG.Control.Application.Features.Projects;
 using SnG.Control.Application.Features.ProjectTasks;
-using SnG.Control.Domain.Enums;
 
 namespace SnG.Control.Application.Features.Budgets.PreviewQuotation;
 
@@ -10,13 +9,7 @@ public class PreviewBudgetQuotationUseCase(IProjectStore projects, IProjectTaskS
     {
         var project = await projects.GetByIdAsync(projectId, cancellationToken);
         if (project is null) return new PreviewBudgetQuotationResult.ProjectNotFound();
-        var quotations = (await tasks.ListByProjectAsync(projectId, cancellationToken))
-            .Where(task => task.Type == ProjectTaskType.PrepareQuotation).ToArray();
-        if (project.SgCode is null || quotations.Length != 1)
-            return new PreviewBudgetQuotationResult.InvalidWorkflowState();
-        var task = quotations[0];
-        if (task.Area != OperationalArea.Budgets || task.Status != ProjectTaskStatus.InProgress
-            || task.StartedAt is null || task.CompletedAt is not null)
+        if (BudgetQuotationWorkflow.ReadyTask(project, await tasks.ListByProjectAsync(projectId, cancellationToken)) is null)
             return new PreviewBudgetQuotationResult.InvalidWorkflowState();
 
         var result = await parser.ParseAsync(stream, fileName, cancellationToken);
@@ -26,7 +19,7 @@ public class PreviewBudgetQuotationUseCase(IProjectStore projects, IProjectTaskS
         if (!string.Equals(parsed.Document.SgCode, project.SgCode, StringComparison.Ordinal))
             return new PreviewBudgetQuotationResult.SgCodeMismatch();
         return new PreviewBudgetQuotationResult.Success(new BudgetQuotationPreviewResponse(
-            project.Id, project.SgCode, parsed.Document, parsed.Items.Count,
+            project.Id, project.SgCode!, parsed.Document, parsed.Items.Count,
             parsed.Items.Sum(item => (long)item.Quantity), parsed.Items, parsed.Warnings));
     }
 }

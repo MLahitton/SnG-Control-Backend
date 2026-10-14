@@ -4,9 +4,9 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 ## Funcionalidad actualmente implementada
 
-El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, asignar o corregir su código SG, consultar las tareas por área y estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede cargar una cotización XLSX estándar para obtener un preview técnico sin guardar el archivo ni su contenido.
+El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, asignar o corregir su código SG, consultar las tareas por área y estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede obtener un preview técnico de una cotización XLSX estándar y confirmar sus valores corregidos para crear el catálogo comercial base oficial. El preview no persiste; la confirmación conserva datos en PostgreSQL y archivos en almacenamiento local configurado.
 
-La API requiere una conexión configurada y todas las migraciones del repositorio aplicadas para operar. La única modificación disponible es la asignación o corrección del SG con su efecto sobre la tarea de Presupuestos. No hay interfaz de usuario ni operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP y modelo de persistencia sin requerir una base de datos activa.
+La API requiere una conexión, una carpeta de almacenamiento configurada y todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. No hay interfaz de usuario ni operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa.
 
 ## Clientes y proyectos
 
@@ -58,6 +58,7 @@ No se permite asignar SG antes de enviar el proyecto a Presupuestos. Los estados
 7. Cada proyecto solo puede enviarse una vez al flujo inicial de Presupuestos. Un nuevo intento responde conflicto si el proyecto ya tiene esa tarea, cualquiera que sea su estado. La garantía también se mantiene ante solicitudes simultáneas: solo una crea la tarea y las demás responden conflicto. No existe reenvío ni retrabajo en el flujo actual.
 8. Presupuestos asigna manualmente SG y la tarea pasa a En proceso. Puede corregir el código mediante la misma operación sin cambiar la fecha original de inicio.
 9. Presupuestos prepara la cotización fuera de SnG Control, en Excel, y carga el XLSX estándar para revisar su preview técnico. El sistema comprueba el SG y conserva la tarea En proceso.
+10. Presupuestos corrige los valores permitidos y confirma, enviando nuevamente el XLSX y los valores confirmados. El sistema vuelve a interpretar el archivo, valida la correspondencia exacta y crea el catálogo oficial inicial. La tarea continúa En proceso.
 
 Las creaciones de clientes y proyectos devuelven el registro guardado y una referencia para consultarlo; el envío devuelve la tarea creada. Las consultas o envíos sobre proyectos inexistentes, o la creación de un proyecto para un cliente inexistente, responden como recurso no encontrado. Las entradas inválidas se rechazan sin crear registros. El historial de un proyecto existente sin tareas es una colección vacía.
 
@@ -79,13 +80,27 @@ El preview incluye metadatos del documento y los ítems técnicos con ubicación
 
 Las imágenes se extraen en su formato original. Si falta una imagen o hay varias asociables al mismo bloque, ese ítem devuelve imagen vacía y una advertencia identificada por su número y fila. Una estructura o medida que no pueda interpretarse con seguridad causa rechazo del archivo completo.
 
-Los precios de Presupuestos no se devuelven ni constituyen el catálogo económico definitivo; la autoridad económica corresponderá al Excel revisado por Comercial en una fase posterior. Este preview no guarda catálogo, documento, imágenes ni metadatos y no modifica ninguna entidad. La confirmación humana y la persistencia todavía no están implementadas.
+Los precios de Presupuestos no se devuelven ni constituyen el catálogo económico definitivo; la autoridad económica corresponderá al Excel revisado por Comercial en una fase posterior. El preview no guarda catálogo, documento, imágenes ni metadatos y no modifica ninguna entidad. Solo la confirmación convierte los valores revisados en información oficial.
 
 No se admiten `.xls`, `.csv`, `.xlsm`, archivos cifrados/ilegibles ni recotizaciones o liquidaciones con estructura distinta, como bloques CONTRATADO/MODIFICADO. El rechazo depende del contenido, no del nombre del archivo.
 
+## Confirmación y catálogo comercial base
+
+Antes de confirmar se pueden corregir **ItemNumber, Location, System, Glass, AluminumFinish, LockType, Observations, Width, Height, SquareMeters y Quantity**. Los textos se recortan por fuera, conservando su contenido interno; el número de ítem es obligatorio, puede repetirse y no requiere una secuencia. Las medidas y cantidades deben ser positivas y Quantity debe ser entera. Los m² confirmados no se recalculan.
+
+**Section, SourceRow, imagen, metadatos y SG documental no son editables.** Cada corrección debe corresponder a un ítem extraído, mediante Section y SourceRow; no se pueden agregar, omitir ni duplicar ítems. El servidor vuelve a interpretar el XLSX durante la confirmación y obtiene de allí la extracción original. No acepta una extracción declarada por el cliente como autoridad.
+
+Confirmar crea una versión inicial de cotización y un catálogo oficial sin precios. Conserva por separado **lo extraído automáticamente y lo confirmado por Presupuestos**, incluidos los valores que no cambiaron. Main/Additional y el orden documental se mantienen; Quantity sigue agrupada. Las imágenes faltantes o ambiguas permiten confirmar y conservan ese estado, sin inventar un archivo de imagen.
+
+El **Excel original queda intacto** y las imágenes conservan sus bytes originales. Los archivos se guardan fuera de PostgreSQL; la base conserva sus referencias. El SG del documento queda como dato histórico de esa confirmación, aunque después se corrija el SG del proyecto. Las relaciones y el almacenamiento utilizan identificadores internos estables.
+
+Solo se admite una confirmación inicial por proyecto; una segunda produce conflicto, también si ambas se solicitan simultáneamente. No existe versión 2, reemplazo, edición posterior ni borrado del catálogo confirmado. Todavía no hay descarga del XLSX ni servicio HTTP de imágenes.
+
+La confirmación **no completa Presupuestos ni envía el proyecto a Comercial**: PrepareQuotation permanece InProgress, mantiene su fecha original de inicio y no tiene fecha de finalización. Tampoco modifica Project, Client ni sus fechas. Si falla el almacenamiento, se revierte la operación y se intenta retirar exclusivamente los archivos creados por ella; las limitaciones ante interrupciones del proceso se detallan en la guía técnica.
+
 ## Contexto funcional futuro
 
-El contexto conocido contempla procesos comerciales, técnicos, operativos y gerenciales alrededor del proyecto: confirmación y persistencia de cotizaciones, procesamiento económico de Comercial, finalización y devolución de tareas, catálogo comercial, mediciones, Actas de Vanos versionadas, catálogo técnico, pagos, producción, logística y órdenes de producción.
+El contexto conocido contempla procesos comerciales, técnicos, operativos y gerenciales alrededor del proyecto: procesamiento económico de Comercial, finalización y devolución de tareas, evolución del catálogo comercial, nuevas versiones de cotización, mediciones, Actas de Vanos versionadas, catálogo técnico, pagos, producción, logística y órdenes de producción.
 
 Estos módulos no están implementados. Sus reglas y flujos se definirán en sus respectivas fases, sin anticiparlos en el núcleo actual.
 

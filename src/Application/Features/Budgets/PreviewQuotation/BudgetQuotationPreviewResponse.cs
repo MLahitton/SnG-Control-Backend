@@ -1,6 +1,7 @@
+using SnG.Control.Domain.Enums;
 namespace SnG.Control.Application.Features.Budgets.PreviewQuotation;
 
-public enum CommercialItemSection { Main = 1, Additional = 2 }
+
 public enum BudgetQuotationWarningCode { MissingImage = 1, AmbiguousImage = 2 }
 public enum BudgetQuotationFileError { UnreadableWorkbook = 1, UnsupportedWorkbookFormat = 2, InvalidDocumentSgCode = 3, TechnicalLimitExceeded = 4 }
 

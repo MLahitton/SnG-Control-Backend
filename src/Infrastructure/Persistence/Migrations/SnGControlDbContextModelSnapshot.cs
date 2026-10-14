@@ -22,6 +22,75 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.BudgetQuotationVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ClientLine")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DocumentClientName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DocumentLocation")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DocumentProjectName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DocumentSgCode")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginalFileContentType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("OriginalFileStorageKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PreparedBy")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProductionLine")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("VersionNumber")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OriginalFileStorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("ProjectId", "VersionNumber")
+                        .IsUnique()
+                        .HasDatabaseName("UX_BudgetQuotationVersions_ProjectId_VersionNumber");
+
+                    b.ToTable("BudgetQuotationVersions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_BudgetQuotationVersions_VersionNumber", "\"VersionNumber\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.Client", b =>
                 {
                     b.Property<Guid>("Id")
@@ -40,6 +109,163 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("Clients", (string)null);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.CommercialCatalog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("BudgetQuotationVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BudgetQuotationVersionId")
+                        .IsUnique();
+
+                    b.ToTable("CommercialCatalogs", (string)null);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.CommercialCatalogItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AluminumFinish")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("CommercialCatalogId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Glass")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Height")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("ItemNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LockType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Observations")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Section")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("SourceRow")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("SquareMeters")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("System")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Width")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommercialCatalogId");
+
+                    b.HasIndex("CommercialCatalogId", "SourceRow")
+                        .IsUnique();
+
+                    b.ToTable("CommercialCatalogItems", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CommercialCatalogItems_Section", "\"Section\" IN (1, 2)");
+
+                            t.HasCheckConstraint("CK_CommercialCatalogItems_SourceRow", "\"SourceRow\" > 0");
+
+                            t.HasCheckConstraint("CK_CommercialCatalogItems_Values", "\"Width\" > 0 AND \"Height\" > 0 AND \"SquareMeters\" > 0 AND \"Quantity\" > 0 AND length(btrim(\"ItemNumber\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.CommercialCatalogItemExtraction", b =>
+                {
+                    b.Property<Guid>("CatalogItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AluminumFinish")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Glass")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Height")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("ImageContentType")
+                        .HasColumnType("text");
+
+                    b.Property<int>("ImageStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ImageStorageKey")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ItemNumber")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("LockType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Observations")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("SquareMeters")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("System")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Width")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("CatalogItemId");
+
+                    b.HasIndex("ImageStorageKey")
+                        .IsUnique();
+
+                    b.ToTable("CommercialCatalogItemExtractions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_CommercialCatalogItemExtractions_Image", "(\"ImageStatus\" = 1 AND \"ImageStorageKey\" IS NOT NULL AND \"ImageContentType\" IS NOT NULL) OR (\"ImageStatus\" IN (2, 3) AND \"ImageStorageKey\" IS NULL AND \"ImageContentType\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_CommercialCatalogItemExtractions_Values", "\"Width\" > 0 AND \"Height\" > 0 AND \"SquareMeters\" > 0 AND \"Quantity\" > 0 AND length(btrim(\"ItemNumber\")) > 0");
+                        });
                 });
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.Project", b =>
@@ -121,6 +347,42 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         .HasFilter("\"Type\" = 1");
 
                     b.ToTable("ProjectTasks", (string)null);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.BudgetQuotationVersion", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.CommercialCatalog", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.BudgetQuotationVersion", null)
+                        .WithOne()
+                        .HasForeignKey("SnG.Control.Domain.Entities.CommercialCatalog", "BudgetQuotationVersionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.CommercialCatalogItem", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.CommercialCatalog", null)
+                        .WithMany()
+                        .HasForeignKey("CommercialCatalogId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.CommercialCatalogItemExtraction", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.CommercialCatalogItem", null)
+                        .WithOne()
+                        .HasForeignKey("SnG.Control.Domain.Entities.CommercialCatalogItemExtraction", "CatalogItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.Project", b =>

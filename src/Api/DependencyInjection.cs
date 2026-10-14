@@ -1,4 +1,8 @@
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
+using SnG.Control.Application.Features.Budgets.ConfirmQuotation;
+using SnG.Control.Application.Files;
+using SnG.Control.Infrastructure.Files;
 using SnG.Control.Api.Contracts;
 using SnG.Control.Api.Errors;
 using SnG.Control.Application.Features.Budgets;
@@ -28,6 +32,11 @@ public static class DependencyInjection
     {
         services.AddExceptionHandler<ApiExceptionHandler>();
         services.AddProblemDetails();
+        services.AddSingleton<IValidateOptions<FileStorageOptions>, FileStorageOptionsValidator>();
+        services.AddOptions<FileStorageOptions>().BindConfiguration(FileStorageOptions.SectionName).ValidateOnStart();
+        services.AddScoped<IFileStorage, LocalFileStorage>();
+        services.AddScoped<IBudgetQuotationConfirmationStore, EfBudgetQuotationConfirmationStore>();
+        services.AddScoped<ConfirmBudgetQuotationUseCase>();
         services.AddOptions<BudgetQuotationParserOptions>().BindConfiguration(BudgetQuotationParserOptions.SectionName)
             .Validate(options => options.MaxUploadBytes > 0 && options.MaxUncompressedBytes > 0 && options.MaxZipEntries > 0,
                 "Quotation preview technical limits must be positive.").ValidateOnStart();
@@ -37,7 +46,8 @@ public static class DependencyInjection
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<OperationalArea>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<ProjectTaskType>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<ProjectTaskStatus>(allowIntegerValues: false));
-            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<CommercialItemSection>(allowIntegerValues: false));
+            options.JsonSerializerOptions.Converters.Add(new CommercialItemSectionJsonConverter());
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<CatalogItemImageStatus>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<BudgetQuotationWarningCode>(allowIntegerValues: false));
             options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
         });

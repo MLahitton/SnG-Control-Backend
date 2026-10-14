@@ -9,11 +9,19 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
     public DbSet<Client> Clients => Set<Client>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ProjectTask> ProjectTasks => Set<ProjectTask>();
+    public DbSet<BudgetQuotationVersion> BudgetQuotationVersions => Set<BudgetQuotationVersion>();
+    public DbSet<CommercialCatalog> CommercialCatalogs => Set<CommercialCatalog>();
+    public DbSet<CommercialCatalogItem> CommercialCatalogItems => Set<CommercialCatalogItem>();
+    public DbSet<CommercialCatalogItemExtraction> CommercialCatalogItemExtractions => Set<CommercialCatalogItemExtraction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new ClientConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectTaskConfiguration());
+        modelBuilder.ApplyConfiguration(new BudgetQuotationVersionConfiguration());
+        modelBuilder.ApplyConfiguration(new CommercialCatalogConfiguration());
+        modelBuilder.ApplyConfiguration(new CommercialCatalogItemConfiguration());
+        modelBuilder.ApplyConfiguration(new CommercialCatalogItemExtractionConfiguration());
     }
 }

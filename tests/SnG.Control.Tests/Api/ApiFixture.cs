@@ -12,6 +12,9 @@ using SnG.Control.Application.Features.Budgets;
 using SnG.Control.Application.Features.Projects;
 using SnG.Control.Application.Features.ProjectTasks;
 using SnG.Control.Tests.TestDoubles;
+using SnG.Control.Application.Features.Budgets.ConfirmQuotation;
+using SnG.Control.Infrastructure.Files;
+using SnG.Control.Tests.Fixtures;
 
 namespace SnG.Control.Tests.Api;
 
@@ -22,6 +25,8 @@ public class ApiFixture : IAsyncLifetime
     public ClientStoreDouble Clients { get; } = new();
     public ProjectStoreDouble Projects { get; } = new();
     public ProjectTaskStoreDouble Tasks { get; } = new();
+    private readonly TemporaryStorage storage = new();
+    public QuotationConfirmationStoreDouble Confirmations { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -33,6 +38,10 @@ public class ApiFixture : IAsyncLifetime
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.Configure<FileStorageOptions>(options => options.RootPath = storage.Root);
+        builder.Services.RemoveAll<IBudgetQuotationConfirmationStore>();
+        Confirmations = new QuotationConfirmationStoreDouble(Projects, Tasks);
+        builder.Services.AddSingleton<IBudgetQuotationConfirmationStore>(Confirmations);
         builder.Services.RemoveAll<IClientStore>();
         builder.Services.RemoveAll<IProjectStore>();
         builder.Services.RemoveAll<IProjectTaskStore>();
@@ -54,5 +63,6 @@ public class ApiFixture : IAsyncLifetime
     {
         Http.Dispose();
         await app.DisposeAsync();
+        storage.Dispose();
     }
 }

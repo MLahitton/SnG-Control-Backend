@@ -12,7 +12,7 @@ public sealed class QuotationWorkbook
     public static readonly byte[] FirstImage = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=");
     public static readonly byte[] SecondImage = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
     private readonly SortedDictionary<int, Dictionary<string, Cell>> rows = [];
-    private readonly List<(int Row, byte[] Bytes, bool TwoCell)> pictures = [];
+    private readonly List<(int Row, byte[] Bytes, bool TwoCell, string ContentType)> pictures = [];
     public string SheetName { get; set; } = " COTIZACIÓN ";
     public SpreadsheetDocumentType DocumentType { get; set; } = SpreadsheetDocumentType.Workbook;
 
@@ -61,9 +61,9 @@ public sealed class QuotationWorkbook
         return this;
     }
 
-    public QuotationWorkbook Image(int row, byte[]? bytes = null, bool twoCell = false)
+    public QuotationWorkbook Image(int row, byte[]? bytes = null, bool twoCell = false, string contentType = "image/png")
     {
-        pictures.Add((row, bytes ?? FirstImage, twoCell));
+        pictures.Add((row, bytes ?? FirstImage, twoCell, contentType));
         return this;
     }
 
@@ -91,9 +91,9 @@ public sealed class QuotationWorkbook
                 worksheet.Worksheet.Append(new Drawing { Id = worksheet.GetIdOfPart(drawings) });
                 uint id = 1;
                 // Reverse package order to prove row anchors, not ZIP order, determine association.
-                foreach (var (row, bytes, twoCell) in pictures.AsEnumerable().Reverse())
+                foreach (var (row, bytes, twoCell, contentType) in pictures.AsEnumerable().Reverse())
                 {
-                    var image = drawings.AddImagePart(ImagePartType.Png);
+                    var image = drawings.AddImagePart(contentType);
                     using (var input = new MemoryStream(bytes)) image.FeedData(input);
                     var from = new Xdr.FromMarker(new Xdr.ColumnId("3"), new Xdr.ColumnOffset("0"), new Xdr.RowId((row - 1).ToString(CultureInfo.InvariantCulture)), new Xdr.RowOffset("0"));
                     var picture = new Xdr.Picture(new Xdr.NonVisualPictureProperties(new Xdr.NonVisualDrawingProperties { Id = id++, Name = "Synthetic" }, new Xdr.NonVisualPictureDrawingProperties()),
