@@ -63,7 +63,7 @@ public class BudgetQuotationConfirmationHttpTests(ApiFixture fixture) : IClassFi
         if (kind == "duplicate-confirmation") form.Add(new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json"), "confirmation");
         if (kind == "extra") form.Add(new StringContent("extra"), "other");
         using var pathBody = new StringContent("{\"path\":\"https://example.invalid/file.xlsx\"}", Encoding.UTF8, "application/json");
-        using var response = await fixture.Http.PostAsync(Url(scenario), kind == "json-path" ? pathBody : form);
+        using var response = await fixture.BudgetsHttp.PostAsync(Url(scenario), kind == "json-path" ? pathBody : form);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode); Assert.False(fixture.Confirmations.Confirmations.ContainsKey(scenario.Project.Id));
     }
 
@@ -141,7 +141,7 @@ public class BudgetQuotationConfirmationHttpTests(ApiFixture fixture) : IClassFi
         using var form = new MultipartFormDataContent();
         form.Add(new ByteArrayContent(scenario.Bytes), "file", "synthetic.xlsx");
         form.Add(new StringContent(request.ToJsonString(), Encoding.UTF8, "application/json"), "confirmation", "confirmation.json");
-        using var response = await fixture.Http.PostAsync(Url(scenario), form);
+        using var response = await fixture.BudgetsHttp.PostAsync(Url(scenario), form);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
     private static string Url(ConfirmationScenario scenario) => $"/api/projects/{scenario.Project.Id}/budget-quotation/confirm";
@@ -150,6 +150,6 @@ public class BudgetQuotationConfirmationHttpTests(ApiFixture fixture) : IClassFi
         using var form = new MultipartFormDataContent();
         form.Add(new StringContent(json, Encoding.UTF8, "application/json"), "confirmation");
         form.Add(new ByteArrayContent(scenario.Bytes), "file", "synthetic.xlsx");
-        return await fixture.Http.PostAsync(Url(scenario), form);
+        return await fixture.BudgetsHttp.PostAsync(Url(scenario), form);
     }
 }

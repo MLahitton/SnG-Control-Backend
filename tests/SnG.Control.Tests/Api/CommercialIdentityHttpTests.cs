@@ -16,7 +16,7 @@ public class CommercialIdentityHttpTests(ApiFixture fixture) : IClassFixture<Api
     public async Task ConcurrentRequestsAndRetry_KeepOneAssignedReview()
     {
         fixture.Handoff = await CommercialHandoffScenario.CreateAsync(); var id = fixture.Handoff.State!.Project.Id;
-        fixture.Http.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, "other");
+        fixture.Http.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, "budgets");
         var responses = await Task.WhenAll(Enumerable.Range(0, 2).Select(_ => fixture.Http.PostAsync($"/api/projects/{id}/send-to-commercial", null)));
         try
         {
@@ -50,10 +50,10 @@ public class CommercialIdentityHttpTests(ApiFixture fixture) : IClassFixture<Api
     }
 
     [Fact]
-    public async Task OtherUser_CanSendAndHeadCanDownloadWithChangedEmail()
+    public async Task Budgets_CanSendAndHeadCanDownloadWithChangedEmail()
     {
         fixture.Handoff = await CommercialHandoffScenario.CreateAsync(); var id = fixture.Handoff.State!.Project.Id;
-        fixture.Http.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, "other");
+        fixture.Http.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, "budgets");
         using var sent = await fixture.Http.PostAsync($"/api/projects/{id}/send-to-commercial", null);
         Assert.Equal(HttpStatusCode.OK, sent.StatusCode);
         var body = await sent.Content.ReadFromJsonAsync<JsonElement>();

@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
+using SnG.Control.Api.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using SnG.Control.Api.Contracts;
@@ -10,6 +12,9 @@ using SnG.Control.Infrastructure.Quotations;
 namespace SnG.Control.Api.Controllers;
 
 [ApiController]
+[Authorize(Policy = BudgetsAssigneeRequirement.PolicyName)]
+[ProducesResponseType(StatusCodes.Status401Unauthorized)]
+[ProducesResponseType(StatusCodes.Status403Forbidden)]
 [Route("api/projects/{id}/budget-quotation")]
 public class BudgetQuotationController(PreviewBudgetQuotationUseCase preview, ConfirmBudgetQuotationUseCase confirm,
     IOptions<BudgetQuotationParserOptions> options, IOptions<JsonOptions> jsonOptions) : ControllerBase

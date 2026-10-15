@@ -54,11 +54,11 @@ public class NotificationHttpTests
             var send = await fixture.Http.PostAsync($"/api/projects/{project.Id}/send-to-budgets", null); Assert.Equal(HttpStatusCode.Created, send.StatusCode);
             var pending = Assert.Single(fixture.Tasks.Items); Assert.Equal(clock.Now, pending.AssignedAt); Assert.Null(pending.DeadlineAt); Assert.Null(pending.WasOverdue);
             var assigned = Assert.Single(fixture.Tasks.Notifications); Assert.Equal("budgets-test-subject", assigned.RecipientGoogleSubject);
-            Assert.Equal(HttpStatusCode.OK, (await fixture.Http.PutAsJsonAsync($"/api/projects/{project.Id}/sg-code", new { sgCode = "SG90001" })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await fixture.BudgetsHttp.PutAsJsonAsync($"/api/projects/{project.Id}/sg-code", new { sgCode = "SG90001" })).StatusCode);
             var task = Assert.Single(fixture.Tasks.Items); var deadline = task.DeadlineAt; var start = task.StartedAt;
             Assert.Equal(new DateTime(2026, 10, 20, 22, 0, 0, DateTimeKind.Utc), deadline); Assert.False(task.WasOverdue);
             clock.Now = deadline!.Value.AddHours(1);
-            var correction = await fixture.Http.PutAsJsonAsync($"/api/projects/{project.Id}/sg-code", new { sgCode = "SG90002" }); Assert.Equal(HttpStatusCode.OK, correction.StatusCode);
+            var correction = await fixture.BudgetsHttp.PutAsJsonAsync($"/api/projects/{project.Id}/sg-code", new { sgCode = "SG90002" }); Assert.Equal(HttpStatusCode.OK, correction.StatusCode);
             task = Assert.Single(fixture.Tasks.Items); Assert.Equal(deadline, task.DeadlineAt); Assert.Equal(start, task.StartedAt); Assert.False(task.WasOverdue);
             var response = (await fixture.Http.GetFromJsonAsync<JsonElement>($"/api/projects/{project.Id}/tasks"))[0];
             Assert.Equal("Overdue", response.GetProperty("leakTimeStatus").GetString()); Assert.False(task.WasOverdue); Assert.Single(fixture.Tasks.Notifications);

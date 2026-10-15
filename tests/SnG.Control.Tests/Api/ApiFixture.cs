@@ -30,6 +30,8 @@ public class ApiFixture : IAsyncLifetime
 {
     private WebApplication app = null!;
     public HttpClient Http { get; private set; } = null!;
+    public HttpClient BudgetsHttp { get; private set; } = null!;
+    public BudgetsWorkflowStoreDouble BudgetsWorkflow { get; private set; } = null!;
     public ClientStoreDouble Clients { get; } = new();
     public ProjectStoreDouble Projects { get; } = new();
     public ProjectTaskStoreDouble Tasks { get; } = new();
@@ -82,7 +84,8 @@ public class ApiFixture : IAsyncLifetime
         builder.Services.AddSingleton<IClientStore>(Clients);
         builder.Services.AddSingleton<IProjectStore>(Projects);
         builder.Services.AddSingleton<IProjectTaskStore>(Tasks);
-        builder.Services.AddSingleton<IBudgetsWorkflowStore>(new BudgetsWorkflowStoreDouble(Projects, Tasks));
+        BudgetsWorkflow = new(Projects, Tasks);
+        builder.Services.AddSingleton<IBudgetsWorkflowStore>(BudgetsWorkflow);
         app = builder.Build();
         app.UseExceptionHandler();
         app.UseAuthentication();
@@ -92,12 +95,15 @@ public class ApiFixture : IAsyncLifetime
         var server = app.Services.GetRequiredService<IServer>();
         var address = server.Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         Http = new HttpClient { BaseAddress = new Uri(address) };
+        BudgetsHttp = new HttpClient { BaseAddress = new Uri(address) };
+        BudgetsHttp.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName, "budgets");
         Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName, "valid");
     }
 
     public async Task DisposeAsync()
     {
         Http.Dispose();
+        BudgetsHttp.Dispose();
         await app.DisposeAsync();
         storage.Dispose();
         Commercial?.Dispose();

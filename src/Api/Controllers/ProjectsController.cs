@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using SnG.Control.Api.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SnG.Control.Api.Contracts;
 using SnG.Control.Application.Features.Budgets.AssignSg;
@@ -82,6 +84,9 @@ public class ProjectsController(
     }
 
     [HttpPut("{id}/sg-code")]
+    [Authorize(Policy = BudgetsAssigneeRequirement.PolicyName)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<AssignProjectSgCodeResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]

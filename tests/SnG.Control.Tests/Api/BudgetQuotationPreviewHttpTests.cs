@@ -18,7 +18,7 @@ public class BudgetQuotationPreviewHttpTests(ApiFixture fixture) : IClassFixture
         var before = JsonSerializer.Serialize(new { project, task });
         var count = fixture.Tasks.Items.Count;
         using var form = Upload(new QuotationWorkbook().Item().Item(23, "01", additional: true).Build());
-        using var response = await fixture.Http.PostAsync(Url(project.Id), form);
+        using var response = await fixture.BudgetsHttp.PostAsync(Url(project.Id), form);
         Assert.True(response.StatusCode == HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(project.Id, result.GetProperty("projectId").GetGuid()); Assert.Equal("SG0012", result.GetProperty("projectSgCode").GetString());
@@ -38,7 +38,7 @@ public class BudgetQuotationPreviewHttpTests(ApiFixture fixture) : IClassFixture
     public async Task Warnings_AreStructuredAndImageIsNull()
     {
         using var form = Upload(new QuotationWorkbook().Item(image: false).Build());
-        using var response = await fixture.Http.PostAsync(Url(ReadyProject().Id), form);
+        using var response = await fixture.BudgetsHttp.PostAsync(Url(ReadyProject().Id), form);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("MissingImage", json.GetProperty("warnings")[0].GetProperty("code").GetString());
@@ -57,7 +57,7 @@ public class BudgetQuotationPreviewHttpTests(ApiFixture fixture) : IClassFixture
         if (scenario == "not-sent") fixture.Tasks.Items.RemoveAll(task => task.ProjectId == project.Id);
         if (scenario == "pending") { fixture.Tasks.Items.RemoveAll(task => task.ProjectId == project.Id); fixture.Tasks.Items.Add(new ProjectTask(project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation)); }
         using var form = Upload(new QuotationWorkbook(scenario == "sg-mismatch" ? "SG800" : "SG0012").Item().Build());
-        using var response = await fixture.Http.PostAsync(Url(scenario == "missing" ? Guid.NewGuid() : project.Id), form);
+        using var response = await fixture.BudgetsHttp.PostAsync(Url(scenario == "missing" ? Guid.NewGuid() : project.Id), form);
         Assert.Equal(status, (int)response.StatusCode);
     }
 
@@ -80,7 +80,7 @@ public class BudgetQuotationPreviewHttpTests(ApiFixture fixture) : IClassFixture
             "bad-multipart" => new StringContent("broken", Encoding.UTF8, "multipart/form-data"),
             _ => BuildInvalidForm(scenario)
         };
-        using var response = await fixture.Http.PostAsync(Url(project.Id), content);
+        using var response = await fixture.BudgetsHttp.PostAsync(Url(project.Id), content);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync();
         Assert.DoesNotContain("OpenXml", body); Assert.DoesNotContain("Npgsql", body); Assert.DoesNotContain("C:\\", body);

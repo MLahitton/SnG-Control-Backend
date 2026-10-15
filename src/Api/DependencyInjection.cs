@@ -1,6 +1,5 @@
 using SnG.Control.Application.Features.Notifications;
 using SnG.Control.Application.Scheduling;
-using SnG.Control.Application.Identity;
 using SnG.Control.Api.Workers;
 using System.Text.Json.Serialization;
 using SnG.Control.Api.Authentication;
@@ -49,9 +48,7 @@ public static class DependencyInjection
         services.AddScoped<ListPersonalNotificationsUseCase>();
         services.AddScoped<ListProjectNotificationsUseCase>();
         services.AddHostedService<ProjectNotificationBackgroundService>();
-        services.AddOptions<BudgetsAssigneeOptions>().BindConfiguration("Authentication")
-            .Validate(options => !string.IsNullOrWhiteSpace(options.BudgetsAssigneeSubject), "Configure Authentication:BudgetsAssigneeSubject.").ValidateOnStart();
-        services.AddSingleton<IBudgetsAssigneeIdentity, ConfiguredBudgetsAssigneeIdentity>();
+        services.AddBudgetsAssigneeAuthorization();
         services.AddGoogleAuthentication();
         services.AddCommercialHeadAuthorization();
         services.AddScoped<ICommercialQuotationParser, XlsxCommercialQuotationParser>();

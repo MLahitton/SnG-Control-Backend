@@ -314,7 +314,7 @@ Respuesta sintética ilustrativa:
 { "subject": "google-test-subject", "email": "test@example.com", "name": "Test User" }
 ```
 
-Los ejemplos HTTP de negocio requieren un ID token válido; para commercial-file debe pertenecer al Jefe Comercial configurado. No registrar ni compartir tokens en logs o reportes. La validación con Google real requiere un ID token obtenido en el navegador; los tests locales usan exclusivamente identidades sintéticas. La descarga comercial final acepta también al creador original por Subject, aunque su email actual sea diferente.
+Los ejemplos HTTP de negocio requieren un ID token válido; para SG, preview/confirm de la cotización inicial y send-to-commercial debe pertenecer a Presupuestos; para commercial-file debe pertenecer al Jefe Comercial configurado. No registrar ni compartir tokens en logs o reportes. La validación con Google real requiere un ID token obtenido en el navegador; los tests locales usan exclusivamente identidades sintéticas. La descarga comercial final acepta también al creador original por Subject, aunque su email actual sea diferente.
 
 ### Identidad y autorización del Jefe Comercial
 
@@ -330,9 +330,17 @@ Application declara `ICommercialHeadIdentity` con una única propiedad `string S
 
 `CommercialHeadRequirement` y `CommercialHeadAuthorizationHandler` implementan la política **CommercialHead**: identidad autenticada, claim `sub` presente y coincidencia mediante StringComparison.Ordinal con el provider. Email y nombre no autorizan. El handler no consulta DB ni Google. GET `/api/projects/{id}/budget-quotation/commercial-file` y POST `/api/projects/{id}/commercial-quotation/preview` y `/confirm` llevan esta política; se evalúa antes del Controller y de cualquier acceso al archivo. Sin autenticación válida responde 401; con otro Subject, 403; el Jefe Comercial continúa a las reglas 404/409/200/500 existentes.
 
-POST send-to-commercial conserva únicamente la autenticación global: envía trabajo al Jefe, no es una acción exclusiva de él. No hay tabla Users, roles genéricos, allowlist ni modelado de usuarios por área. Cualquier usuario autenticado puede crear Project y queda como creador y asesor comercial responsable; no existe reasignación ni campos ResponsibleCommercial duplicados.
+POST send-to-commercial exige BudgetsAssignee: Presupuestos envía trabajo al Jefe Comercial. No hay tabla Users, roles genéricos, allowlist ni modelado de usuarios por área. Cualquier usuario autenticado puede crear Project y queda como creador y asesor comercial responsable; no existe reasignación ni campos ResponsibleCommercial duplicados.
 
 Para smoke de arranque, si falta la configuración local, puede suministrarse `Authentication__CommercialHeadSubject=google-test-subject` solo al proceso temporal. No persistirlo como identidad real. Comprobar OpenAPI público en Development, 401 en negocio sin token y fallo claro sin la nueva clave. El 403 real requiere un token Google válido de otra identidad; no copiarlo al reporte.
+
+### Autorización de Presupuestos
+
+Presupuestos posee el serial SG. `BudgetsAssigneeRequirement` y `BudgetsAssigneeAuthorizationHandler` implementan la política **BudgetsAssignee** con RequireAuthenticatedUser y comparación exacta StringComparison.Ordinal entre el claim `sub` e `IBudgetsAssigneeIdentity.Subject`. No usa email, NameIdentifier ni fallback. `AddBudgetsAssigneeAuthorization` registra una sola vez BudgetsAssigneeOptions, su validación de startup, ConfiguredBudgetsAssigneeIdentity y el handler.
+
+La política protege PUT `/api/projects/{id}/sg-code`, POST `/api/projects/{id}/budget-quotation/preview`, POST `/api/projects/{id}/budget-quotation/confirm` y POST `/api/projects/{id}/send-to-commercial`. Responde 401 sin autenticación y 403 para otro Subject antes del binding y del caso de uso, sin cambiar SG, tarea, StartedAt, DeadlineAt, WasOverdue ni notificaciones. La identidad configurada conserva los resultados funcionales existentes.
+
+CommercialHead permanece independiente: ser Jefe no concede acceso a Presupuestos. Si ambas claves contienen el mismo Subject, cada política lo autoriza por su propia configuración. Las consultas generales, send-to-budgets y las reglas comerciales de descarga/preview/confirm permanecen iguales; no se agregan Users, roles DB ni jerarquías.
 
 ### Almacenamiento local
 
@@ -372,9 +380,9 @@ Los tests normales funcionan sin conexión configurada, sin contraseña y sin Po
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite contiene 717 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+La suite contiene 752 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
 
-ApiFixture autentica por defecto mediante el esquema TestIdentity, exclusivo de Tests: sub=google-test-subject, email=test@example.com y name=Test User. Aplica a la identidad sintética la misma regla OnTokenValidated de presencia de sub. Los tests negativos omiten la cabecera o seleccionan una identidad inválida sin cambiar los defaults de otros tests. CommercialHeadSubject se configura como google-test-subject únicamente en Tests; other-google-subject prueba el 403 con el mismo email, y el mismo Subject con otro email conserva acceso. No se modifica la configuración productiva para permitir accesos de prueba. Las pruebas del handler JwtBearer real sustituyen discovery por configuración estática únicamente en Tests y verifican 401 para entradas ausentes o inválidas, sin Internet. También se comprueban startup de ambas opciones, opciones JWT, política global y CommercialHead, claims originales, ausencia de email como fallback, snapshots del creador, rechazo de identidad en el body, CreatedBy legacy null mediante materialización real de EF, asignación personal, DTOs y reintentos concurrentes HTTP con doble de persistencia. Los tests de compensación verifican la asignación en el ChangeTracker y un único SaveChanges; los índices y bloqueos PostgreSQL conservan la garantía de concurrencia real.
+ApiFixture autentica por defecto mediante el esquema TestIdentity, exclusivo de Tests: sub=google-test-subject, email=test@example.com y name=Test User. Aplica a la identidad sintética la misma regla OnTokenValidated de presencia de sub. Los tests negativos omiten la cabecera o seleccionan una identidad inválida sin cambiar los defaults de otros tests. BudgetsHttp usa el modo sintético budgets y BudgetsAssigneeSubject=budgets-test-subject, separado del cliente Http general. CommercialHeadSubject se configura como google-test-subject únicamente en Tests; other-google-subject prueba el 403 con el mismo email, y el mismo Subject con otro email conserva acceso. No se modifica la configuración productiva para permitir accesos de prueba. Las pruebas del handler JwtBearer real sustituyen discovery por configuración estática únicamente en Tests y verifican 401 para entradas ausentes o inválidas, sin Internet. También se comprueban startup de las opciones, opciones JWT, política global, CommercialHead y BudgetsAssignee, claims originales, ausencia de email como fallback, snapshots del creador, rechazo de identidad en el body, CreatedBy legacy null mediante materialización real de EF, asignación personal, DTOs y reintentos concurrentes HTTP con doble de persistencia. Los tests de compensación verifican la asignación en el ChangeTracker y un único SaveChanges; los índices y bloqueos PostgreSQL conservan la garantía de concurrencia real.
 
 Los 66 casos de preview usan XLSX anónimos generados en memoria: bloques reales/vacíos, Main/Additional, números repetidos y formatos con ceros, orden documental, etiquetas, fórmulas cacheadas sin cálculo, M2, imágenes por anchor y sus warnings, SG, archivos inválidos y límites técnicos. Application prueba todos los requisitos del workflow con stores cuyas operaciones de escritura fallan si se invocan. Los tests multipart utilizan el parser real y comprueban el contrato completo y sus errores, sin datos reales de clientes.
 
@@ -581,7 +589,7 @@ El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `De
 En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene diecinueve operaciones de negocio y `/api/auth/me`, veinte en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
 
 - `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS, autenticación, autorización y Controllers.
-- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y provider del Jefe Comercial y su política específica, además de los diecinueve casos de uso, los nueve stores, el writer de notificaciones, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
+- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y providers del Jefe Comercial y Presupuestos con sus políticas específicas, además de los diecinueve casos de uso, los nueve stores, el writer de notificaciones, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
 - `appsettings.json`: logging (`Information` general y `Warning` para ASP.NET Core) y `AllowedHosts=*`; no contiene conexiones.
 - `Properties/launchSettings.json`: perfiles/puertos locales y `ASPNETCORE_ENVIRONMENT=Development`.
 - El registro del contexto no aplica migraciones. El worker registrado ejecuta su primer sweep en segundo plano al arrancar.
@@ -648,10 +656,10 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 | POST `/api/projects/{id}/send-to-budgets` | Guid en ruta, sin body | 201, ProjectTaskResponse; 409 si ya enviado | 404 |
 | GET `/api/project-tasks?area=Budgets&status=Pending` | area y status requeridos como nombres | 200, colección de ProjectTaskResponse | Colección vacía |
 | GET `/api/projects/{id}/tasks` | Guid en ruta, sin filtros | 200, colección de ProjectTaskResponse | 404 |
-| PUT `/api/projects/{id}/sg-code` | `sgCode` | 200, AssignProjectSgCodeResponse; 409 por workflow o SG ocupado | 404 |
-| POST `/api/projects/{id}/budget-quotation/preview` | multipart, un archivo `file` | 200, BudgetQuotationPreviewResponse; 400 archivo inválido; 409 workflow o SG distinto | 404 |
-| POST `/api/projects/{id}/budget-quotation/confirm` | multipart: `file` y JSON `confirmation` | 201, ConfirmedBudgetQuotationResponse; 400 datos inválidos; 409 workflow, SG o confirmación existente | 404 |
-| POST `/api/projects/{id}/send-to-commercial` | Sin body | 200, SendBudgetQuotationToCommercialResponse; 409 si no está listo o ya enviado | 404 |
+| PUT `/api/projects/{id}/sg-code` | `sgCode`; BudgetsAssignee | 200, AssignProjectSgCodeResponse; 409 por workflow o SG ocupado | 404 |
+| POST `/api/projects/{id}/budget-quotation/preview` | multipart, un archivo `file`; BudgetsAssignee | 200, BudgetQuotationPreviewResponse; 400 archivo inválido; 409 workflow o SG distinto | 404 |
+| POST `/api/projects/{id}/budget-quotation/confirm` | multipart: `file` y JSON `confirmation`; BudgetsAssignee | 201, ConfirmedBudgetQuotationResponse; 400 datos inválidos; 409 workflow, SG o confirmación existente | 404 |
+| POST `/api/projects/{id}/send-to-commercial` | Sin body; BudgetsAssignee | 200, SendBudgetQuotationToCommercialResponse; 409 si no está listo o ya enviado | 404 |
 | GET `/api/projects/{id}/budget-quotation/commercial-file` | Sin body; CommercialHead | 200, XLSX temporal; 409 antes del envío o después de confirmar Comercial; 500 si falta archivo referenciado | 404 |
 | POST `/api/projects/{id}/commercial-quotation/preview` | multipart: solo `file`; CommercialHead | 200, CommercialQuotationPreviewResponse; 400 archivo/economía inválidos; 409 workflow/SG/estructura | 404 |
 | POST `/api/projects/{id}/commercial-quotation/confirm` | multipart: solo `file`; CommercialHead | 201, CommercialQuotationConfirmationResponse; 400 archivo/economía inválidos; 409 workflow/SG/estructura/creator/duplicado | 404 |
@@ -659,7 +667,7 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 
 `ClientResponse` contiene `id`, `name`, `createdAt` y `updatedAt`. `ProjectResponse` contiene `id`, `clientId`, `name`, `city`, `productLine`, `sgCode`, `createdAt`, `updatedAt` y `createdBy`. Este último contiene `subject`, `email` y `name`, o es null para proyectos legacy; aparece en creación, GET, listado y respuesta de SG. Las fechas son UTC en formato ISO 8601. Las respuestas de proyecto no incluyen el objeto Client completo. `sgCode` es null hasta su primera asignación y después contiene el código normalizado.
 
-Todas estas rutas exigen autenticación. Los códigos funcionales de la tabla se evalúan después de autenticar; sin una identidad válida responden 401 antes del binding y del caso de uso.
+Todas estas rutas exigen autenticación. Los códigos funcionales de la tabla se evalúan después de autenticar y autorizar; una política específica responde 403 si el Subject no coincide; sin una identidad válida responden 401 antes del binding y del caso de uso.
 
 Se usa camelCase. `ProductLineJsonConverter` delega la lectura y escritura a `JsonStringEnumConverter<ProductLine>` de System.Text.Json con `allowIntegerValues=false`, y exige un único nombre: rechaza combinaciones separadas por comas que el convertidor estándar puede interpretar como una combinación numérica. Los nombres canónicos devueltos son `Classic`, `Essential`, `Bioconfort` y `Signature`; números JSON, cadenas numéricas, combinaciones y nombres desconocidos producen 400. El almacenamiento sigue siendo integer 1–4. La comparación de nombres no distingue mayúsculas/minúsculas.
 
@@ -935,7 +943,7 @@ Los tests de confirmación cubren cada campo editable, cambios múltiples, orden
 
 ### Envío de Presupuestos a Comercial
 
-POST `/api/projects/{id}/send-to-commercial` requiere autenticación general, sin política CommercialHead, y no recibe body; contenido inesperado produce 400. `SendBudgetQuotationToCommercialUseCase` consulta el estado mediante `IBudgetQuotationCommercialHandoffStore` y obtiene de ICommercialHeadIdentity el Subject que entrega a SendAsync para asignar la tarea. Requiere exactamente una PrepareQuotation en Budgets/InProgress, StartedAt presente y CompletedAt null; versión 1, catálogo con al menos un ítem y una extracción por ítem; original disponible; ausencia de ReviewQuotation y de ConfirmedFileStorageKey. Project inexistente produce 404; estado inválido, envío previo, original ausente o documento incompatible producen 409.
+POST `/api/projects/{id}/send-to-commercial` requiere la política BudgetsAssignee y no recibe body; contenido inesperado produce 400. `SendBudgetQuotationToCommercialUseCase` consulta el estado mediante `IBudgetQuotationCommercialHandoffStore` y obtiene de ICommercialHeadIdentity el Subject que entrega a SendAsync para asignar la tarea. Requiere exactamente una PrepareQuotation en Budgets/InProgress, StartedAt presente y CompletedAt null; versión 1, catálogo con al menos un ítem y una extracción por ítem; original disponible; ausencia de ReviewQuotation y de ConfirmedFileStorageKey. Project inexistente produce 404; estado inválido, envío previo, original ausente o documento incompatible producen 409.
 
 Project.SgCode debe coincidir ordinalmente con BudgetQuotationVersion.DocumentSgCode. Un cambio posterior a la confirmación produce 409 con `code: SgChangedAfterConfirmation`, también al revalidar dentro de la transacción. No se corrige O10 ni se reconcilia el SG. El endpoint no modifica Project, catálogo, ítems ni extracciones.
 
@@ -970,7 +978,7 @@ GET `/api/projects/{id}/budget-quotation/commercial-file` exige CommercialHead a
 
 Responde 200 con `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`. `File(bytes, contentType, OriginalFileName)` de ASP.NET serializa Content-Disposition de forma segura; filename/filename* representan el nombre original, sin sufijos. Los bytes son exactamente los almacenados. La consulta no guarda DB, no escribe archivos, no cambia fechas/tareas y no incrementa contadores. Puede repetirse sin efectos secundarios.
 
-**Prueba manual:** tras confirmar un XLSX sintético de dos ítems con imágenes, fórmula M2 y precios ficticios, cambiar Width, Glass y Quantity durante esa confirmación. Enviar sin cuerpo con cualquier identidad autenticada y descargar con un token del Jefe Comercial configurado:
+**Prueba manual:** tras confirmar un XLSX sintético de dos ítems con imágenes, fórmula M2 y precios ficticios, cambiar Width, Glass y Quantity durante esa confirmación. Enviar sin cuerpo con un token de Presupuestos y descargar con un token del Jefe Comercial configurado:
 
 ```powershell
 $projectUrl = "https://localhost:7265/api/projects/<PROJECT_ID>"
@@ -1067,11 +1075,13 @@ Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects/$($project.id)/ta
 Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
 
 # Usar códigos libres; el sistema no calcula el siguiente SG.
+# Desde aquí, usar un token de la cuenta de Presupuestos configurada.
+$budgetsHeaders = @{ Authorization = "Bearer <GOOGLE_ID_TOKEN_PRESUPUESTOS>" }
 $sgUrl = "$baseUrl/api/projects/$($project.id)/sg-code"
-$assignment = Invoke-RestMethod -Headers $authHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":" sg0012 "}'
+$assignment = Invoke-RestMethod -Headers $budgetsHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":" sg0012 "}'
 $originalStart = $assignment.prepareQuotationTask.startedAt
-$correction = Invoke-RestMethod -Headers $authHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":"sg0042"}'
-$repeat = Invoke-RestMethod -Headers $authHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":" SG0042 "}'
+$correction = Invoke-RestMethod -Headers $budgetsHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":"sg0042"}'
+$repeat = Invoke-RestMethod -Headers $budgetsHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":" SG0042 "}'
 $originalStart -eq $correction.prepareQuotationTask.startedAt # True
 $originalStart -eq $repeat.prepareQuotationTask.startedAt # True
 $correction.project.updatedAt -eq $repeat.project.updatedAt # True
@@ -1092,7 +1102,7 @@ Para SG, crear dos proyectos temporales enviados a Presupuestos y elegir un cód
 
 ### Configuración y tiempo
 
-`Authentication:BudgetsAssigneeSubject` es requerida mediante BudgetsAssigneeOptions y ValidateOnStart. Null, vacío y whitespace fallan con `Configure Authentication:BudgetsAssigneeSubject.`, sin revelar el valor. ConfiguredBudgetsAssigneeIdentity implementa IBudgetsAssigneeIdentity en Api; Application solo conoce Subject. Es una cadena opaca conservada exactamente: no se recorta, cambia de case ni sustituye por email. Configurar con User Secrets o `Authentication__BudgetsAssigneeSubject`; no versionar el valor real. Los tests usan valores sintéticos. Esta identidad asigna trabajo y recibe avisos; no crea una política de autorización nueva para SG ni otras acciones.
+`Authentication:BudgetsAssigneeSubject` es requerida mediante BudgetsAssigneeOptions y ValidateOnStart. Null, vacío y whitespace fallan con `Configure Authentication:BudgetsAssigneeSubject.`, sin revelar el valor. ConfiguredBudgetsAssigneeIdentity implementa IBudgetsAssigneeIdentity en Api; Application solo conoce Subject. Es una cadena opaca conservada exactamente: no se recorta, cambia de case ni sustituye por email. Configurar con User Secrets o `Authentication__BudgetsAssigneeSubject`; no versionar el valor real. Los tests usan valores sintéticos. Esta identidad también autoriza las operaciones de Presupuestos mediante la política BudgetsAssignee.
 
 ```shell
 dotnet user-secrets set "Authentication:BudgetsAssigneeSubject" "<GOOGLE_SUBJECT_PRESUPUESTOS>" --project src/Api

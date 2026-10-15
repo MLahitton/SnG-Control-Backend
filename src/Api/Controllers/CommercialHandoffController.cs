@@ -10,6 +10,9 @@ namespace SnG.Control.Api.Controllers;
 public class CommercialHandoffController(SendBudgetQuotationToCommercialUseCase send, DownloadCommercialQuotationUseCase download) : ControllerBase
 {
     [HttpPost("send-to-commercial")]
+    [Authorize(Policy = BudgetsAssigneeRequirement.PolicyName)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<SendBudgetQuotationToCommercialResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
