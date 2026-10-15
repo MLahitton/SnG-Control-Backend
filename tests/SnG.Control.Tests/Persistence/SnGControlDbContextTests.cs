@@ -24,7 +24,7 @@ public class SnGControlDbContextTests
     [Theory]
     [InlineData(typeof(Client), "Clients", 4)]
     [InlineData(typeof(Project), "Projects", 11)]
-    [InlineData(typeof(ProjectTask), "ProjectTasks", 9)]
+    [InlineData(typeof(ProjectTask), "ProjectTasks", 11)]
     public void Model_MapsEntitiesWithDomainGeneratedPrimaryKeys(Type entityType, string tableName, int propertyCount)
     {
         using var context = CreateContext();
@@ -135,7 +135,7 @@ public class SnGControlDbContextTests
     {
         using var context = CreateContext();
 
-        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff", "AddCommercialIdentityAssignments", "AddCommercialQuotationConfirmation" },
+        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff", "AddCommercialIdentityAssignments", "AddCommercialQuotationConfirmation", "AddLeakTimesAndNotifications" },
             context.Database.GetMigrations().Select(migration => migration[(migration.IndexOf('_') + 1)..]));
         Assert.False(context.Database.HasPendingModelChanges());
     }
@@ -148,7 +148,7 @@ public class SnGControlDbContextTests
 
         foreach (var property in entity.GetProperties())
         {
-            Assert.Equal(property.Name is nameof(ProjectTask.StartedAt) or nameof(ProjectTask.CompletedAt) or nameof(ProjectTask.AssignedToGoogleSubject), property.IsNullable);
+            Assert.Equal(property.Name is nameof(ProjectTask.StartedAt) or nameof(ProjectTask.CompletedAt) or nameof(ProjectTask.AssignedToGoogleSubject) or nameof(ProjectTask.DeadlineAt) or nameof(ProjectTask.WasOverdue), property.IsNullable);
             Assert.False(property.IsShadowProperty());
             Assert.True(property.PropertyInfo!.SetMethod!.IsPrivate);
             if (property.ClrType == typeof(DateTime) || property.ClrType == typeof(DateTime?))

@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Protocols;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -33,6 +34,8 @@ public class GoogleBearerHttpTests
         });
         builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
+        builder.Services.Configure<BudgetsAssigneeOptions>(options => options.BudgetsAssigneeSubject = "budgets-test-subject");
         builder.Services.Configure<CommercialHeadOptions>(options => options.CommercialHeadSubject = "google-test-subject");
         builder.Services.Configure<GoogleAuthenticationOptions>(options => options.ClientId = "synthetic-client");
         builder.Services.Configure<FileStorageOptions>(options => options.RootPath = directory.Root);

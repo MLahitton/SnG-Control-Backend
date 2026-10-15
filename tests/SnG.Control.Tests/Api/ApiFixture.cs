@@ -33,6 +33,8 @@ public class ApiFixture : IAsyncLifetime
     public ClientStoreDouble Clients { get; } = new();
     public ProjectStoreDouble Projects { get; } = new();
     public ProjectTaskStoreDouble Tasks { get; } = new();
+    public TimeProvider Clock { get; set; } = TimeProvider.System;
+    public NotificationStoreDouble Notifications { get; private set; } = null!;
     private readonly TemporaryStorage storage = new();
     public QuotationConfirmationStoreDouble Confirmations { get; private set; } = null!;
 
@@ -49,6 +51,13 @@ public class ApiFixture : IAsyncLifetime
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
+        builder.Services.AddSingleton(Clock);
+        Tasks.Timing = new(Clock, new());
+        Notifications = new(Projects, Tasks);
+        builder.Services.RemoveAll<SnG.Control.Application.Features.Notifications.IProjectNotificationStore>();
+        builder.Services.AddSingleton<SnG.Control.Application.Features.Notifications.IProjectNotificationStore>(Notifications);
+        builder.Services.Configure<BudgetsAssigneeOptions>(options => options.BudgetsAssigneeSubject = "budgets-test-subject");
         builder.Services.Configure<CommercialHeadOptions>(options => options.CommercialHeadSubject = "google-test-subject");
         builder.Services.Configure<GoogleAuthenticationOptions>(options => options.ClientId = "test-client-id");
         builder.Services.AddAuthentication(options =>

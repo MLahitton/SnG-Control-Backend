@@ -18,7 +18,7 @@ public class ProjectTaskUseCaseTests
         projects.Items.Add(project);
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
-        var send = new SendProjectToBudgetsUseCase(projects, tasks);
+        var send = new SendProjectToBudgetsUseCase(projects, tasks, new IdentityDouble("budgets-test-subject"), TestTiming.Value);
 
         var result = Assert.IsType<SendProjectToBudgetsResult.Created>(await send.ExecuteAsync(project.Id, token));
         var saved = Assert.Single(tasks.Items);
@@ -41,7 +41,7 @@ public class ProjectTaskUseCaseTests
     public async Task Send_MissingProject_DoesNotReadTasksOrWrite()
     {
         var tasks = new ProjectTaskStoreDouble();
-        var result = await new SendProjectToBudgetsUseCase(new ProjectStoreDouble(), tasks)
+        var result = await new SendProjectToBudgetsUseCase(new ProjectStoreDouble(), tasks, new IdentityDouble("budgets-test-subject"), TestTiming.Value)
             .ExecuteAsync(Guid.NewGuid(), CancellationToken.None);
         Assert.IsType<SendProjectToBudgetsResult.ProjectNotFound>(result);
         Assert.Empty(tasks.ReceivedTokens);
@@ -60,7 +60,7 @@ public class ProjectTaskUseCaseTests
         projects.Items.Add(project);
         tasks.Items.Add(StoredTask(project.Id, OperationalArea.Commercial, status));
 
-        var result = await new SendProjectToBudgetsUseCase(projects, tasks).ExecuteAsync(project.Id, CancellationToken.None);
+        var result = await new SendProjectToBudgetsUseCase(projects, tasks, new IdentityDouble("budgets-test-subject"), TestTiming.Value).ExecuteAsync(project.Id, CancellationToken.None);
 
         Assert.IsType<SendProjectToBudgetsResult.AlreadySent>(result);
         Assert.Equal(1, tasks.InsertAttempts);
@@ -81,11 +81,11 @@ public class ProjectTaskUseCaseTests
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
 
-        var byArea = await new ListProjectTasksByAreaUseCase(tasks).ExecuteAsync(
+        var byArea = await new ListProjectTasksByAreaUseCase(tasks, TestTiming.Value).ExecuteAsync(
             OperationalArea.Budgets, ProjectTaskStatus.Pending, token);
         Assert.Equal(pending.Id, Assert.Single(byArea).Id);
 
-        var history = await new ListProjectTasksByProjectUseCase(projects, tasks).ExecuteAsync(project.Id, token);
+        var history = await new ListProjectTasksByProjectUseCase(projects, tasks, TestTiming.Value).ExecuteAsync(project.Id, token);
         Assert.NotNull(history);
         Assert.Equal(2, history.Count);
         Assert.Contains(history, task => task.Id == pending.Id);
@@ -100,13 +100,13 @@ public class ProjectTaskUseCaseTests
         var tasks = new ProjectTaskStoreDouble();
         var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
-        var history = new ListProjectTasksByProjectUseCase(projects, tasks);
+        var history = new ListProjectTasksByProjectUseCase(projects, tasks, TestTiming.Value);
 
         Assert.Empty((await history.ExecuteAsync(project.Id, CancellationToken.None))!);
         var reads = tasks.ReceivedTokens.Count;
         Assert.Null(await history.ExecuteAsync(Guid.NewGuid(), CancellationToken.None));
         Assert.Equal(reads, tasks.ReceivedTokens.Count);
-        Assert.Empty(await new ListProjectTasksByAreaUseCase(tasks).ExecuteAsync(
+        Assert.Empty(await new ListProjectTasksByAreaUseCase(tasks, TestTiming.Value).ExecuteAsync(
             OperationalArea.Budgets, ProjectTaskStatus.Pending, CancellationToken.None));
     }
 
@@ -119,7 +119,7 @@ public class ProjectTaskUseCaseTests
     {
         var tasks = new ProjectTaskStoreDouble();
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            new ListProjectTasksByAreaUseCase(tasks).ExecuteAsync(
+            new ListProjectTasksByAreaUseCase(tasks, TestTiming.Value).ExecuteAsync(
                 (OperationalArea)area, (ProjectTaskStatus)status, CancellationToken.None));
         Assert.Empty(tasks.ReceivedTokens);
     }
@@ -131,7 +131,7 @@ public class ProjectTaskUseCaseTests
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            new SendProjectToBudgetsUseCase(new ProjectStoreDouble(), tasks)
+            new SendProjectToBudgetsUseCase(new ProjectStoreDouble(), tasks, new IdentityDouble("budgets-test-subject"), TestTiming.Value)
                 .ExecuteAsync(Guid.NewGuid(), cancellation.Token));
         Assert.Empty(tasks.ReceivedTokens);
     }

@@ -16,11 +16,14 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
     public DbSet<CommercialQuotation> CommercialQuotations => Set<CommercialQuotation>();
     public DbSet<CommercialQuotationItem> CommercialQuotationItems => Set<CommercialQuotationItem>();
 
+    public DbSet<ProjectNotification> ProjectNotifications => Set<ProjectNotification>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new ClientConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectTaskConfiguration());
+        modelBuilder.ApplyConfiguration(new ProjectNotificationConfiguration());
         modelBuilder.ApplyConfiguration(new BudgetQuotationVersionConfiguration());
         modelBuilder.ApplyConfiguration(new CommercialCatalogConfiguration());
         modelBuilder.ApplyConfiguration(new CommercialCatalogItemConfiguration());

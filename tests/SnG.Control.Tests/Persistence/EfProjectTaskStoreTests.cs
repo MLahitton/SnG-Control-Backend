@@ -18,7 +18,7 @@ public class EfProjectTaskStoreTests
         var task = NewTask();
         using var cancellation = new CancellationTokenSource();
 
-        Assert.True(await new EfProjectTaskStore(context).TryAddPrepareQuotationAsync(task, cancellation.Token));
+        Assert.True(await new EfProjectTaskStore(context, TestTiming.Value, new NotificationWriterDouble(context)).TryAddPrepareQuotationAsync(task, cancellation.Token));
 
         Assert.Equal(1, context.SaveCalls);
         Assert.Equal(cancellation.Token, context.ReceivedToken);
@@ -32,7 +32,7 @@ public class EfProjectTaskStoreTests
         var existing = NewTask();
         context.Attach(existing);
         var task = NewTask();
-        var store = new EfProjectTaskStore(context);
+        var store = new EfProjectTaskStore(context, TestTiming.Value, new NotificationWriterDouble(context));
 
         Assert.False(await store.TryAddPrepareQuotationAsync(task, CancellationToken.None));
 
@@ -57,7 +57,7 @@ public class EfProjectTaskStoreTests
         await using var context = new SaveContext { Failure = failure };
 
         var actual = await Assert.ThrowsAsync<DbUpdateException>(() =>
-            new EfProjectTaskStore(context).TryAddPrepareQuotationAsync(NewTask(), CancellationToken.None));
+            new EfProjectTaskStore(context, TestTiming.Value, new NotificationWriterDouble(context)).TryAddPrepareQuotationAsync(NewTask(), CancellationToken.None));
 
         Assert.Same(failure, actual);
     }
@@ -69,7 +69,7 @@ public class EfProjectTaskStoreTests
         await using var context = new SaveContext { Failure = failure };
 
         var actual = await Assert.ThrowsAsync<DbUpdateException>(() =>
-            new EfProjectTaskStore(context).TryAddPrepareQuotationAsync(NewTask(), CancellationToken.None));
+            new EfProjectTaskStore(context, TestTiming.Value, new NotificationWriterDouble(context)).TryAddPrepareQuotationAsync(NewTask(), CancellationToken.None));
 
         Assert.Same(failure, actual);
     }

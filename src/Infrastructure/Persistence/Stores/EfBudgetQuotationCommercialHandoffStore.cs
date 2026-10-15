@@ -1,3 +1,4 @@
+using SnG.Control.Application.Scheduling;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
@@ -10,7 +11,7 @@ using SnG.Control.Infrastructure.Persistence.Configurations;
 
 namespace SnG.Control.Infrastructure.Persistence.Stores;
 
-public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext context, IFileStorage storage)
+public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext context, IFileStorage storage, TaskTiming timing, EfProjectNotificationWriter notifications)
     : IBudgetQuotationCommercialHandoffStore
 {
     public Task<CommercialHandoffState?> LoadAsync(Guid projectId, CancellationToken cancellationToken) => ReadAsync(projectId, false, cancellationToken);
@@ -55,18 +56,21 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
         context.Attach(budget); context.Attach(version);
         var budgetBefore = context.Entry(budget).CurrentValues.Clone();
         var versionBefore = context.Entry(version).CurrentValues.Clone();
-        var commercial = new ProjectTask(current.Project.Id, OperationalArea.Commercial, ProjectTaskType.ReviewQuotation, commercialHeadSubject);
+        var now = timing.UtcNow;
+        EfProjectNotificationWriter.NotificationWriteSet? notificationChanges = null;
+        var commercial = new ProjectTask(current.Project.Id, OperationalArea.Commercial, ProjectTaskType.ReviewQuotation, commercialHeadSubject, now);
         var key = $"projects/{current.Project.Id:D}/budget-quotations/{version.Id:D}/confirmed.xlsx";
         var created = false;
         var commitStarted = false;
         try
         {
-            budget.Complete(); commercial.Start(); version.SetConfirmedFileStorageKey(key);
+            budget.Complete(now); timing.Start(commercial, now); version.SetConfirmedFileStorageKey(key);
             context.Add(commercial);
             // PostgreSQL stores microseconds. Return exactly the timestamps that will be read back.
             TruncateTimestamp(budget, nameof(ProjectTask.CompletedAt));
             TruncateTimestamp(commercial, nameof(ProjectTask.AssignedAt));
             TruncateTimestamp(commercial, nameof(ProjectTask.StartedAt));
+            notificationChanges = await notifications.StageAsync([budget, commercial], now, cancellationToken);
             await context.SaveChangesAsync(cancellationToken);
             await storage.SaveAsync(key, workbook, cancellationToken);
             created = true;
@@ -84,6 +88,8 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
             if (created && (!commitStarted || rolledBack))
                 try { await storage.DeleteAsync(key, CancellationToken.None); }
                 catch (Exception cleanupFailure) { errors.Add(cleanupFailure); }
+            try { notificationChanges?.RestoreTracking(); }
+            catch (Exception notificationFailure) { errors.Add(notificationFailure); }
             context.Entry(budget).CurrentValues.SetValues(budgetBefore);
             context.Entry(version).CurrentValues.SetValues(versionBefore);
             context.Entry(budget).State = EntityState.Detached;
@@ -110,9 +116,10 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
     private void TruncateTimestamp(ProjectTask task, string property)
     {
         var value = (DateTime)context.Entry(task).Property(property).CurrentValue!;
-        context.Entry(task).Property(property).CurrentValue = new DateTime(value.Ticks - value.Ticks % 10, DateTimeKind.Utc);
+        var ticks = property == nameof(ProjectTask.CompletedAt) && task.DeadlineAt is DateTime deadline && value > deadline
+            ? value.Ticks + (10 - value.Ticks % 10) % 10 : value.Ticks - value.Ticks % 10;
+        context.Entry(task).Property(property).CurrentValue = new DateTime(ticks, DateTimeKind.Utc);
     }
 
-    private static ProjectTaskResponse Response(ProjectTask task) => new(task.Id, task.ProjectId, task.Area, task.Type, task.Status,
-        task.AssignedAt, task.StartedAt, task.CompletedAt, task.AssignedToGoogleSubject);
+    private ProjectTaskResponse Response(ProjectTask task) => ProjectTaskResponse.FromEntity(task, timing);
 }

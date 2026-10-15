@@ -6,6 +6,8 @@ namespace SnG.Control.Tests.TestDoubles;
 
 public class ProjectTaskStoreDouble : IProjectTaskStore
 {
+    public SnG.Control.Application.Scheduling.TaskTiming Timing { get; set; } = TestTiming.Value;
+    public List<ProjectNotification> Notifications { get; } = [];
     public List<ProjectTask> Items { get; } = [];
     public List<CancellationToken> ReceivedTokens { get; } = [];
     public int InsertAttempts { get; private set; }
@@ -20,6 +22,7 @@ public class ProjectTaskStoreDouble : IProjectTaskStore
             return Task.FromResult(false);
         }
         Items.Add(task);
+        Notifications.AddRange(new SnG.Control.Application.Features.Notifications.ProjectNotificationPlanner(Timing).Reconcile(task, [], Timing.UtcNow));
         return Task.FromResult(true);
     }
 

@@ -16,7 +16,7 @@ public class AssignProjectSgCodeUseCaseTests
         var project = AddProject();
         var task = AddTask(project);
         var store = new BudgetsWorkflowStoreDouble(projects, tasks);
-        var useCase = new AssignProjectSgCodeUseCase(store);
+        var useCase = new AssignProjectSgCodeUseCase(store, TestTiming.Value);
         using var cancellation = new CancellationTokenSource();
         var first = Assert.IsType<AssignProjectSgCodeResult.Success>(await useCase.ExecuteAsync(project.Id, " sg0012 ", cancellation.Token)).Response;
         Assert.Equal("SG0012", first.Project.SgCode);
@@ -41,7 +41,7 @@ public class AssignProjectSgCodeUseCaseTests
     public async Task MissingProject_ReturnsNotFoundWithoutSaving()
     {
         var store = new BudgetsWorkflowStoreDouble(projects, tasks);
-        Assert.IsType<AssignProjectSgCodeResult.ProjectNotFound>(await new AssignProjectSgCodeUseCase(store)
+        Assert.IsType<AssignProjectSgCodeResult.ProjectNotFound>(await new AssignProjectSgCodeUseCase(store, TestTiming.Value)
             .ExecuteAsync(Guid.NewGuid(), "SG1", CancellationToken.None));
         Assert.Equal(0, store.SaveCalls);
     }
@@ -51,7 +51,7 @@ public class AssignProjectSgCodeUseCaseTests
     {
         var project = AddProject();
         var store = new BudgetsWorkflowStoreDouble(projects, tasks);
-        Assert.IsType<AssignProjectSgCodeResult.ProjectNotSentToBudgets>(await new AssignProjectSgCodeUseCase(store)
+        Assert.IsType<AssignProjectSgCodeResult.ProjectNotSentToBudgets>(await new AssignProjectSgCodeUseCase(store, TestTiming.Value)
             .ExecuteAsync(project.Id, "SG1", CancellationToken.None));
         Assert.Equal(0, store.SaveCalls);
         Assert.Empty(tasks.Items);
@@ -72,7 +72,7 @@ public class AssignProjectSgCodeUseCaseTests
         else if (status == ProjectTaskStatus.Completed)
             typeof(ProjectTask).GetProperty(nameof(ProjectTask.Status))!.SetValue(task, status);
         var store = new BudgetsWorkflowStoreDouble(projects, tasks);
-        Assert.IsType<AssignProjectSgCodeResult.InvalidWorkflowState>(await new AssignProjectSgCodeUseCase(store)
+        Assert.IsType<AssignProjectSgCodeResult.InvalidWorkflowState>(await new AssignProjectSgCodeUseCase(store, TestTiming.Value)
             .ExecuteAsync(project.Id, "SG2", CancellationToken.None));
         Assert.Equal(0, store.SaveCalls);
         Assert.Equal(hasSg ? "SG1" : null, project.SgCode);
@@ -85,7 +85,7 @@ public class AssignProjectSgCodeUseCaseTests
         var project = AddProject();
         var task = AddTask(project);
         var store = new BudgetsWorkflowStoreDouble(projects, tasks) { RejectSave = true };
-        Assert.IsType<AssignProjectSgCodeResult.SgCodeAlreadyInUse>(await new AssignProjectSgCodeUseCase(store)
+        Assert.IsType<AssignProjectSgCodeResult.SgCodeAlreadyInUse>(await new AssignProjectSgCodeUseCase(store, TestTiming.Value)
             .ExecuteAsync(project.Id, "SG1", CancellationToken.None));
         Assert.Equal(1, store.SaveCalls);
         Assert.Null(Assert.Single(projects.Items).SgCode);
@@ -99,7 +99,7 @@ public class AssignProjectSgCodeUseCaseTests
         var project = AddProject();
         var task = AddTask(project);
         var store = new BudgetsWorkflowStoreDouble(projects, tasks);
-        await Assert.ThrowsAsync<ArgumentException>(() => new AssignProjectSgCodeUseCase(store)
+        await Assert.ThrowsAsync<ArgumentException>(() => new AssignProjectSgCodeUseCase(store, TestTiming.Value)
             .ExecuteAsync(project.Id, "SG-1", CancellationToken.None));
         Assert.Equal(0, store.SaveCalls);
         Assert.Equal(ProjectTaskStatus.Pending, task.Status);
@@ -111,7 +111,7 @@ public class AssignProjectSgCodeUseCaseTests
         var store = new BudgetsWorkflowStoreDouble(projects, tasks);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new AssignProjectSgCodeUseCase(store)
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new AssignProjectSgCodeUseCase(store, TestTiming.Value)
             .ExecuteAsync(Guid.NewGuid(), "SG1", cancellation.Token));
         Assert.Equal(0, store.SaveCalls);
     }

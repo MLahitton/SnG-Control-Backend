@@ -1,3 +1,4 @@
+using SnG.Control.Application.Scheduling;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
@@ -10,7 +11,7 @@ using SnG.Control.Infrastructure.Persistence.Configurations;
 
 namespace SnG.Control.Infrastructure.Persistence.Stores;
 
-public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFileStorage storage) : ICommercialQuotationStore
+public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFileStorage storage, TaskTiming timing, EfProjectNotificationWriter notifications) : ICommercialQuotationStore
 {
     public Task<CommercialQuotationState?> LoadAsync(Guid projectId, CancellationToken token) => ReadAsync(projectId, false, token);
 
@@ -58,18 +59,23 @@ public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFil
         var review = state.Tasks.Single(t => t.Type == ProjectTaskType.ReviewQuotation);
         context.Attach(review); context.Attach(version);
         var reviewBefore = context.Entry(review).CurrentValues.Clone(); var versionBefore = context.Entry(version).CurrentValues.Clone();
-        var present = new ProjectTask(state.Project.Id, OperationalArea.Commercial, ProjectTaskType.PresentQuotationToClient, state.Project.CreatedByGoogleSubject!);
+        var now = timing.UtcNow;
+        EfProjectNotificationWriter.NotificationWriteSet? notificationChanges = null;
+        var present = new ProjectTask(state.Project.Id, OperationalArea.Commercial, ProjectTaskType.PresentQuotationToClient, state.Project.CreatedByGoogleSubject!, now);
         var saved = false; var deleteAttempted = false; var commitStarted = false;
         try
         {
-            review.Complete(); present.Start();
+            review.Complete(now); timing.Start(present, now);
             foreach (var (task, property) in new[] { (review, nameof(ProjectTask.CompletedAt)), (present, nameof(ProjectTask.AssignedAt)), (present, nameof(ProjectTask.StartedAt)) })
             {
                 var time = (DateTime)context.Entry(task).Property(property).CurrentValue!;
-                context.Entry(task).Property(property).CurrentValue = new DateTime(time.Ticks - time.Ticks % 10, DateTimeKind.Utc);
+                var ticks = property == nameof(ProjectTask.CompletedAt) && task.DeadlineAt is DateTime deadline && time > deadline
+                    ? time.Ticks + (10 - time.Ticks % 10) % 10 : time.Ticks - time.Ticks % 10;
+                context.Entry(task).Property(property).CurrentValue = new DateTime(ticks, DateTimeKind.Utc);
             }
             version.ClearConfirmedFileStorageKey();
             context.Add(quotation); context.AddRange(items); context.Add(present);
+            notificationChanges = await notifications.StageAsync([review, present], now, token);
             await context.SaveChangesAsync(token);
             await storage.SaveAsync(quotation.FileStorageKey, bytes, token); saved = true;
             deleteAttempted = true; await storage.DeleteAsync(temporaryKey, token);
@@ -92,6 +98,8 @@ public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFil
                     try { await storage.DeleteAsync(quotation.FileStorageKey, CancellationToken.None); }
                     catch (Exception cleanupFailure) { errors.Add(cleanupFailure); }
             }
+            try { notificationChanges?.RestoreTracking(); }
+            catch (Exception notificationFailure) { errors.Add(notificationFailure); }
             context.Entry(review).CurrentValues.SetValues(reviewBefore); context.Entry(version).CurrentValues.SetValues(versionBefore);
             foreach (var entity in items.Cast<object>().Concat([quotation, present, review, version])) context.Entry(entity).State = EntityState.Detached;
             if (errors.Count > 0) throw new AggregateException("Commercial confirmation failed; file/database state requires inspection.", new[] { failure }.Concat(errors));
@@ -118,6 +126,5 @@ public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFil
         var project = await context.Projects.AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, token);
         return project is null ? null : new(project, await context.CommercialQuotations.AsNoTracking().SingleOrDefaultAsync(q => q.ProjectId == id, token));
     }
-    private static ProjectTaskResponse Response(ProjectTask task) => new(task.Id, task.ProjectId, task.Area, task.Type, task.Status,
-        task.AssignedAt, task.StartedAt, task.CompletedAt, task.AssignedToGoogleSubject);
+    private ProjectTaskResponse Response(ProjectTask task) => ProjectTaskResponse.FromEntity(task, timing);
 }

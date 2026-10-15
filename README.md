@@ -6,7 +6,7 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, asignar o corregir su código SG, consultar las tareas por área y estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede obtener un preview técnico de una cotización XLSX estándar y confirmar sus valores corregidos para crear el catálogo comercial base oficial. El preview no persiste; la confirmación conserva datos en PostgreSQL y archivos en almacenamiento local configurado. Una acción posterior envía la cotización a Comercial y genera su Excel operativo temporal. El Jefe Comercial puede subir su revisión, consultar importes y diferencias técnicas y confirmar el archivo final, iniciando la presentación al cliente.
 
-La API requiere configuración de autenticación Google, Subject del Jefe Comercial, conexión y carpeta de almacenamiento, además de todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. Este repositorio contiene solo el backend; no ofrece operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa ni acceso a Google.
+La API requiere configuración de autenticación Google, identidades del Jefe Comercial y de la cuenta compartida de Presupuestos, conexión y carpeta de almacenamiento, además de todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. Este repositorio contiene solo el backend; no ofrece operaciones de eliminación. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa ni acceso a Google.
 
 ## Identidad y acceso
 
@@ -51,7 +51,7 @@ Se eliminan los espacios exteriores y se convierte la entrada a mayúsculas. El 
 
 Un SG solo puede pertenecer a un proyecto, también ante solicitudes simultáneas. La primera asignación cambia la tarea de Presupuestos de **Pendiente** a **En proceso** y fija su fecha de inicio en UTC. El código y el inicio de la tarea se guardan juntos: si el código ya pertenece a otro proyecto, no se guarda ninguno de esos cambios.
 
-Mientras su tarea siga En proceso, Presupuestos puede corregir el SG. La corrección conserva exactamente la fecha original de inicio y no crea ni reinicia tareas. Reenviar el mismo valor normalizado tampoco cambia la fecha de actualización del proyecto. La fecha de finalización permanece vacía.
+Mientras su tarea siga En proceso, Presupuestos puede corregir el SG. La corrección conserva exactamente el inicio, el deadline y el historial de atraso; no crea ni reinicia tareas. Reenviar el mismo valor normalizado tampoco cambia la fecha de actualización del proyecto. La fecha de finalización permanece vacía.
 
 No se permite asignar SG antes de enviar el proyecto a Presupuestos. Los estados inconsistentes y las tareas completadas producen un conflicto; no se reparan automáticamente.
 
@@ -79,7 +79,7 @@ Los identificadores, las fechas, el código SG y la identidad del creador no pue
 
 ## Tareas de las áreas
 
-Una **ProjectTask** representa trabajo asignado a un área y pertenece a un proyecto: **Project 1 → N ProjectTask**. Registra el área, tipo de trabajo, estado, fechas de asignación, inicio y finalización y `AssignedToGoogleSubject` opcional. PrepareQuotation sigue asignada solo por área, con Subject null; las nuevas ReviewQuotation se asignan al Jefe Comercial. Las tareas históricas pueden mantener Subject null. No existe reasignación genérica. PrepareQuotation nace Pendiente, con inicio y finalización vacíos; ReviewQuotation se inicia inmediatamente al enviar a Comercial.
+Una **ProjectTask** representa trabajo asignado a un área y pertenece a un proyecto: **Project 1 → N ProjectTask**. Registra el área, tipo de trabajo, estado, fechas de asignación, inicio y finalización y `AssignedToGoogleSubject` opcional. PrepareQuotation se asigna a la cuenta Google compartida de Presupuestos; ReviewQuotation al Jefe Comercial y PresentQuotationToClient al creador del proyecto. Las tareas históricas pueden mantener Subject null. No existe reasignación genérica. PrepareQuotation nace Pendiente, con inicio y finalización vacíos; ReviewQuotation se inicia inmediatamente al enviar a Comercial.
 
 El contrato contempla Comercial (`Commercial`) y Presupuestos (`Budgets`), y estados Pendiente (`Pending`), En proceso (`InProgress`) y Completado (`Completed`). El envío crea una tarea Pendiente y la primera asignación de SG la inicia. No hay una acción separada para iniciar tareas. No se permite crear tareas arbitrarias ni devolverlas. El envío a Comercial completa PrepareQuotation e inicia ReviewQuotation; el preview y la confirmación de Presupuestos no cambian el estado de su tarea. La confirmación comercial completa ReviewQuotation y crea/inicia PresentQuotationToClient para el creador original.
 
@@ -117,7 +117,7 @@ La confirmación **no completa Presupuestos ni envía el proyecto a Comercial**:
 
 El sistema genera `confirmed.xlsx` a partir del original y aplica los once valores técnicos oficiales, ubicando cada ítem por su sección y fila fuente. Conserva formato, estructura, fórmulas, imágenes, metadatos y SG documental. No procesa precios ni modifica las columnas económicas o PELÍCULA PROTECCIÓN. Los m² oficiales permanecen en el catálogo; cuando una celda contiene fórmula, conserva la fórmula y su valor almacenado se actualiza con lo confirmado. Excel puede recalcularla al abrir el documento.
 
-`original.xlsx` permanece intacto como evidencia histórica. `confirmed.xlsx` es el archivo operativo para Comercial. El envío completa **PrepareQuotation** conservando sus fechas de asignación e inicio, y crea **ReviewQuotation** de Comercial asignada personalmente al Jefe Comercial y directamente **InProgress**, con StartedAt UTC y sin fecha de finalización. Ese StartedAt será la base del Leak Time de Comercial; todavía no hay SLA ni alertas. Project, catálogo y extracciones conservan sus datos.
+`original.xlsx` permanece intacto como evidencia histórica. `confirmed.xlsx` es el archivo operativo para Comercial. El envío completa **PrepareQuotation** conservando sus fechas de asignación e inicio, y crea **ReviewQuotation** de Comercial asignada personalmente al Jefe Comercial y directamente **InProgress**, con StartedAt UTC y sin fecha de finalización. Ese StartedAt inicia el plazo de cinco días laborales de revisión y sus avisos operativos. Project, catálogo y extracciones conservan sus datos.
 
 La descarga, exclusiva del Jefe Comercial, usa exactamente el nombre original del archivo, sin sufijos. Las descargas repetidas entregan los mismos bytes almacenados y no regeneran el Excel ni cambian el workflow. Después de confirmar la revisión comercial, el temporal deja de estar disponible y su ruta responde conflicto; la descarga final tiene una ruta y autorización distintas.
 
@@ -134,6 +134,22 @@ La confirmación crea CommercialQuotation y CommercialQuotationItem como **reali
 La operación completa ReviewQuotation, preserva su inicio y crea/inicia una única PresentQuotationToClient para el Subject del creador original. Un proyecto histórico sin creador puede tener preview, pero confirmar responde **409 ProjectCreatorUnavailable**: no se inventa asesor. No existe reasignación. Solo se admite una confirmación comercial inicial; solicitudes repetidas o concurrentes no crean otra cotización ni otra tarea.
 
 Al terminar, permanecen **original.xlsx, commercial.xlsx y las imágenes históricas**. confirmed.xlsx se elimina físicamente y su referencia queda null. Ante fallos se revierte DB y se compensan los archivos cuando el resultado es conocido; una interrupción o commit incierto puede requerir inspección administrativa, como detalla la guía técnica. La descarga final está disponible para el Jefe Comercial y el creador del proyecto y no cambia estado ni archivos.
+
+## Plazos laborales y notificaciones
+
+Preparar cotización, revisar cotización y presentar al cliente tienen **cinco días laborales**. Para Steel & Glass cuentan lunes a sábado; no cuentan domingos ni festivos nacionales de Colombia. El día de inicio se excluye: se cuenta desde el siguiente día laboral y se vence el quinto día a las **17:00 de Colombia**, usando America/Bogota. Por ejemplo, una tarea iniciada el 14/10/2026 vence el 20/10/2026 a las 17:00; el sábado 17 cuenta.
+
+El deadline se guarda al iniciar y queda congelado. Consultas, reinicios, correcciones de SG y cambios futuros de política no lo recalculan. Enviar a Presupuestos asigna inmediatamente a su cuenta Google compartida y genera un aviso, pero conserva la tarea Pending sin deadline: su plazo comienza únicamente con el primer SG. ReviewQuotation y PresentQuotationToClient se asignan e inician en sus transiciones actuales.
+
+Cada aviso se dirige exclusivamente al asignado. Se registra la asignación, un recordatorio dos días laborales antes a las 08:00, otro el día del vencimiento a las 08:00 y un único aviso de atraso después del deadline. Completar exactamente en el deadline cuenta como cumplimiento. WasOverdue conserva si hubo atraso alguna vez y nunca vuelve a false; una tarea legacy sin seguimiento conserva deadline y cumplimiento desconocidos, sin reconstrucción ficticia.
+
+Al completar tarde, el aviso de atraso se resuelve con la fecha de finalización, pero permanece en el historial. Si el worker aún no lo había generado, la finalización deja igualmente la evidencia resuelta. No se generan recordatorios posteriores a la terminación ni se borran avisos históricos.
+
+Se pueden consultar las notificaciones personales y el historial cronológico completo por proyecto. Son registros internos: no hay leído/no leído, contador de campana, email, WhatsApp, SMS ni push. La asignación identifica al destinatario; no agrega restricciones nuevas a las acciones generales del proyecto.
+
+El worker comprueba las tareas al arrancar y aproximadamente cada minuto. Tras una interrupción recupera asignaciones faltantes y únicamente el hito temporal más relevante que corresponda en ese momento, sin duplicados ni acumulación de recordatorios superados. ScheduledAt conserva cuándo correspondía el aviso y CreatedAt cuándo se generó. Si el proceso está detenido, los avisos se retrasan hasta su recuperación.
+
+La reasignación queda para un alcance futuro: deberá conservar historia, emitir una nueva asignación y reiniciar los cinco días para el nuevo responsable. Actualmente no existe operación de reasignación.
 
 ## Contexto funcional futuro
 

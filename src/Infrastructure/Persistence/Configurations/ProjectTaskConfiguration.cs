@@ -13,6 +13,8 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
     public void Configure(EntityTypeBuilder<ProjectTask> builder)
     {
         builder.ToTable("ProjectTasks");
+        builder.Property(task => task.DeadlineAt).HasColumnType("timestamp with time zone");
+        builder.Property(task => task.WasOverdue);
         builder.HasKey(task => task.Id);
         builder.Property(task => task.Id).ValueGeneratedNever();
         builder.Property(task => task.ProjectId).IsRequired();

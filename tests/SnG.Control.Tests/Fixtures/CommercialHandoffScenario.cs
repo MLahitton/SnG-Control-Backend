@@ -68,5 +68,5 @@ public sealed class CommercialHandoffScenario : IBudgetQuotationCommercialHandof
         token.ThrowIfCancellationRequested(); SavedKeys.Add(key); Files.Add(key, bytes.ToArray()); return Task.CompletedTask;
     }
     public Task DeleteAsync(string key, CancellationToken token) { Files.Remove(key); return Task.CompletedTask; }
-    private static ProjectTaskResponse Response(ProjectTask task) => new(task.Id, task.ProjectId, task.Area, task.Type, task.Status, task.AssignedAt, task.StartedAt, task.CompletedAt, task.AssignedToGoogleSubject);
+    private static ProjectTaskResponse Response(ProjectTask task) => ProjectTaskResponse.FromEntity(task, TestTiming.Value);
 }

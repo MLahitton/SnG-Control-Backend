@@ -1,8 +1,9 @@
+using SnG.Control.Application.Scheduling;
 using SnG.Control.Application.Features.Projects;
 
 namespace SnG.Control.Application.Features.ProjectTasks.ListByProject;
 
-public class ListProjectTasksByProjectUseCase(IProjectStore projects, IProjectTaskStore tasks)
+public class ListProjectTasksByProjectUseCase(IProjectStore projects, IProjectTaskStore tasks, TaskTiming timing)
 {
     public async Task<IReadOnlyList<ProjectTaskResponse>?> ExecuteAsync(Guid projectId, CancellationToken cancellationToken)
     {
@@ -12,6 +13,6 @@ public class ListProjectTasksByProjectUseCase(IProjectStore projects, IProjectTa
         }
 
         var entities = await tasks.ListByProjectAsync(projectId, cancellationToken);
-        return entities.Select(ProjectTaskResponse.FromEntity).ToArray();
+        return entities.Select(task => ProjectTaskResponse.FromEntity(task, timing)).ToArray();
     }
 }

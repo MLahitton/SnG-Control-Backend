@@ -1,3 +1,7 @@
+using SnG.Control.Application.Features.Notifications;
+using SnG.Control.Application.Scheduling;
+using SnG.Control.Application.Identity;
+using SnG.Control.Api.Workers;
 using System.Text.Json.Serialization;
 using SnG.Control.Api.Authentication;
 using SnG.Control.Application.Features.CommercialQuotations;
@@ -34,6 +38,20 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApiServices(this IServiceCollection services)
     {
+        services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<ColombiaBusinessCalendar>();
+        services.AddSingleton<TaskTiming>();
+        services.AddScoped<ProjectNotificationPlanner>();
+        services.AddScoped<EfProjectNotificationWriter>();
+        services.AddScoped<IProjectNotificationStore, EfProjectNotificationStore>();
+        services.AddScoped<IProjectNotificationSweepStore, EfProjectNotificationSweepStore>();
+        services.AddScoped<ProjectNotificationSweepService>();
+        services.AddScoped<ListPersonalNotificationsUseCase>();
+        services.AddScoped<ListProjectNotificationsUseCase>();
+        services.AddHostedService<ProjectNotificationBackgroundService>();
+        services.AddOptions<BudgetsAssigneeOptions>().BindConfiguration("Authentication")
+            .Validate(options => !string.IsNullOrWhiteSpace(options.BudgetsAssigneeSubject), "Configure Authentication:BudgetsAssigneeSubject.").ValidateOnStart();
+        services.AddSingleton<IBudgetsAssigneeIdentity, ConfiguredBudgetsAssigneeIdentity>();
         services.AddGoogleAuthentication();
         services.AddCommercialHeadAuthorization();
         services.AddScoped<ICommercialQuotationParser, XlsxCommercialQuotationParser>();
@@ -57,6 +75,9 @@ public static class DependencyInjection
                 "Quotation preview technical limits must be positive.").ValidateOnStart();
         services.AddControllers().AddJsonOptions(options =>
         {
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<NotificationKind>(allowIntegerValues: false));
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<NotificationState>(allowIntegerValues: false));
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<LeakTimeStatus>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new ProductLineJsonConverter());
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<OperationalArea>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<ProjectTaskType>(allowIntegerValues: false));

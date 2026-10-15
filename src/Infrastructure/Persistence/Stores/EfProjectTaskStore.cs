@@ -1,3 +1,4 @@
+using SnG.Control.Application.Scheduling;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using SnG.Control.Application.Features.ProjectTasks;
@@ -7,11 +8,12 @@ using SnG.Control.Infrastructure.Persistence.Configurations;
 
 namespace SnG.Control.Infrastructure.Persistence.Stores;
 
-public class EfProjectTaskStore(SnGControlDbContext context) : IProjectTaskStore
+public class EfProjectTaskStore(SnGControlDbContext context, TaskTiming timing, EfProjectNotificationWriter notifications) : IProjectTaskStore
 {
     public async Task<bool> TryAddPrepareQuotationAsync(ProjectTask task, CancellationToken cancellationToken)
     {
         await context.ProjectTasks.AddAsync(task, cancellationToken);
+        var changes = await notifications.StageAsync([task], timing.UtcNow, cancellationToken);
         try
         {
             await context.SaveChangesAsync(cancellationToken);
@@ -23,6 +25,7 @@ public class EfProjectTaskStore(SnGControlDbContext context) : IProjectTaskStore
             ConstraintName: ProjectTaskConfiguration.PrepareQuotationIndexName
         })
         {
+            changes.RestoreTracking();
             context.Entry(task).State = EntityState.Detached;
             return false;
         }

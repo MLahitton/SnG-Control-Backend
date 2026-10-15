@@ -24,7 +24,7 @@ public sealed class ConfirmationScenario
         Task = new ProjectTask(Project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation); Task.Start(); Tasks.Items.Add(Task);
         Store = new(Projects, Tasks);
         Preview = new(Projects, Tasks, new XlsxBudgetQuotationParser(Options.Create(new BudgetQuotationParserOptions())));
-        UseCase = new(Preview, Store);
+        UseCase = new(Preview, Store, TestTiming.Value);
     }
     public async Task<ConfirmBudgetQuotationRequest> RequestAsync()
     {

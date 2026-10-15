@@ -27,7 +27,7 @@ public class CommercialHandoffCompensationTests
         await using var db = new SaveContext { Failure = phase == "save" ? new DbUpdateException("Synthetic") : null };
         var unrelated = new Client("Unrelated"); db.Attach(unrelated);
         await using var transaction = new TransactionDouble { FailCommit = phase is "commit" or "cleanup" or "uncertain", FailRollback = phase == "uncertain" };
-        var operation = new EfBudgetQuotationCommercialHandoffStore(db, storage).PersistAsync(state, new byte[] { 1, 2 }, transaction, "google-test-subject", default);
+        var operation = new EfBudgetQuotationCommercialHandoffStore(db, storage, TestTiming.Value, new NotificationWriterDouble(db)).PersistAsync(state, new byte[] { 1, 2 }, transaction, "google-test-subject", default);
         if (phase == "cancel") await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
         else if (phase is "cleanup" or "uncertain") await Assert.ThrowsAsync<AggregateException>(() => operation);
         else await Assert.ThrowsAsync<InvalidOperationException>(() => operation);
@@ -48,7 +48,7 @@ public class CommercialHandoffCompensationTests
         var scenario = await CommercialHandoffScenario.CreateAsync(); using var directory = new TemporaryStorage(); var storage = new FailingStorage(directory.Root);
         await using var db = new SaveContext { Failure = new DbUpdateException("Synthetic", new PostgresException("Synthetic", "ERROR", "ERROR", code, constraintName: constraint)) };
         await using var transaction = new TransactionDouble();
-        var operation = new EfBudgetQuotationCommercialHandoffStore(db, storage).PersistAsync(scenario.State!, new byte[] { 1 }, transaction, "google-test-subject", default);
+        var operation = new EfBudgetQuotationCommercialHandoffStore(db, storage, TestTiming.Value, new NotificationWriterDouble(db)).PersistAsync(scenario.State!, new byte[] { 1 }, transaction, "google-test-subject", default);
         if (conflict) Assert.Equal(CommercialHandoffStatus.AlreadySent, (await operation).Status);
         else await Assert.ThrowsAsync<InvalidOperationException>(() => operation);
         Assert.Equal(0, storage.SaveCalls); Assert.True(transaction.RolledBack); Assert.Empty(db.ChangeTracker.Entries());
@@ -64,7 +64,7 @@ public class CommercialHandoffCompensationTests
         {
             Assert.Equal(1, db.SaveCalls); Assert.True(File.Exists(Path.Combine(directory.Root, state.Version!.ConfirmedFileStorageKey!)));
         }};
-        var result = await new EfBudgetQuotationCommercialHandoffStore(db, storage).PersistAsync(state, new byte[] { 1, 2 }, transaction, "google-test-subject", default);
+        var result = await new EfBudgetQuotationCommercialHandoffStore(db, storage, TestTiming.Value, new NotificationWriterDouble(db)).PersistAsync(state, new byte[] { 1, 2 }, transaction, "google-test-subject", default);
         Assert.Equal(CommercialHandoffStatus.Sent, result.Status); Assert.True(transaction.Committed);
         var storedReview = Assert.Single(db.ChangeTracker.Entries<ProjectTask>(), entry => entry.Entity.Type == ProjectTaskType.ReviewQuotation).Entity;
         Assert.Equal("google-test-subject", storedReview.AssignedToGoogleSubject);

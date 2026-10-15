@@ -53,7 +53,7 @@ public sealed class CommercialQuotationScenario : ICommercialQuotationStore, IFi
             var status = State!.Validate(headSubject, true);
             if (status != CommercialQuotationStatus.Success) return new(status);
             using var db = new SaveContext(); using var transaction = new TransactionDouble();
-            var result = await new EfCommercialQuotationStore(db, this).PersistAsync(State, quotation, items, bytes, preview, transaction, token);
+            var result = await new EfCommercialQuotationStore(db, this, TestTiming.Value, new NotificationWriterDouble(db)).PersistAsync(State, quotation, items, bytes, preview, transaction, token);
             if (result.Status == CommercialQuotationStatus.Success)
             {
                 var present = db.ChangeTracker.Entries<ProjectTask>().Single(e => e.Entity.Type == ProjectTaskType.PresentQuotationToClient).Entity;

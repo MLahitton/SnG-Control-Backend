@@ -1,8 +1,9 @@
+using SnG.Control.Application.Scheduling;
 using SnG.Control.Domain.Enums;
 
 namespace SnG.Control.Application.Features.ProjectTasks.ListByArea;
 
-public class ListProjectTasksByAreaUseCase(IProjectTaskStore tasks)
+public class ListProjectTasksByAreaUseCase(IProjectTaskStore tasks, TaskTiming timing)
 {
     public async Task<IReadOnlyList<ProjectTaskResponse>> ExecuteAsync(
         OperationalArea area, ProjectTaskStatus status, CancellationToken cancellationToken)
@@ -17,6 +18,6 @@ public class ListProjectTasksByAreaUseCase(IProjectTaskStore tasks)
         }
 
         var entities = await tasks.ListByAreaAsync(area, status, cancellationToken);
-        return entities.Select(ProjectTaskResponse.FromEntity).ToArray();
+        return entities.Select(task => ProjectTaskResponse.FromEntity(task, timing)).ToArray();
     }
 }

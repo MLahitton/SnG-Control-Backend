@@ -1,3 +1,4 @@
+using SnG.Control.Application.Scheduling;
 using SnG.Control.Application.Features.Budgets.PreviewQuotation;
 using SnG.Control.Application.Features.ProjectTasks;
 using SnG.Control.Domain.Entities;
@@ -6,7 +7,7 @@ using SnG.Control.Domain.ValueObjects;
 
 namespace SnG.Control.Application.Features.Budgets.ConfirmQuotation;
 
-public sealed class ConfirmBudgetQuotationUseCase(PreviewBudgetQuotationUseCase preview, IBudgetQuotationConfirmationStore store)
+public sealed class ConfirmBudgetQuotationUseCase(PreviewBudgetQuotationUseCase preview, IBudgetQuotationConfirmationStore store, TaskTiming timing)
 {
     public async Task<ConfirmBudgetQuotationResult> ExecuteAsync(Guid projectId, byte[] original, string fileName,
         ConfirmBudgetQuotationRequest confirmation, CancellationToken cancellationToken)
@@ -75,6 +76,6 @@ public sealed class ConfirmBudgetQuotationUseCase(PreviewBudgetQuotationUseCase 
         var saved = await store.ConfirmAsync(new BudgetQuotationConfirmation(version, catalog, items, snapshots, files), cancellationToken);
         if (saved.Status != QuotationConfirmationStatus.Created) return new(saved.Status);
         return new(QuotationConfirmationStatus.Created, new ConfirmedBudgetQuotationResponse(version.Id, 1, catalog.Id, projectId,
-            version.ConfirmedAt, document, items.Count, items.Sum(item => (long)item.Quantity), responses, ProjectTaskResponse.FromEntity(saved.Task!)));
+            version.ConfirmedAt, document, items.Count, items.Sum(item => (long)item.Quantity), responses, ProjectTaskResponse.FromEntity(saved.Task!, timing)));
     }
 }

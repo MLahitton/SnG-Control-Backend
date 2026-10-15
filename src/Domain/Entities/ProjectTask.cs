@@ -4,7 +4,8 @@ namespace SnG.Control.Domain.Entities;
 
 public class ProjectTask
 {
-    public ProjectTask(Guid projectId, OperationalArea area, ProjectTaskType type, string? assignedToGoogleSubject = null)
+    private ProjectTask() { }
+    public ProjectTask(Guid projectId, OperationalArea area, ProjectTaskType type, string? assignedToGoogleSubject = null, DateTime? assignedAtUtc = null)
     {
         if (projectId == Guid.Empty)
         {
@@ -26,7 +27,8 @@ public class ProjectTask
         Area = area;
         Type = type;
         Status = ProjectTaskStatus.Pending;
-        AssignedAt = DateTime.UtcNow;
+        AssignedAt = assignedAtUtc ?? DateTime.UtcNow;
+        RequireUtc(AssignedAt);
         StartedAt = null;
         CompletedAt = null;
     }
@@ -40,24 +42,42 @@ public class ProjectTask
     public DateTime AssignedAt { get; private set; }
     public DateTime? StartedAt { get; private set; }
     public DateTime? CompletedAt { get; private set; }
+    public DateTime? DeadlineAt { get; private set; }
+    public bool? WasOverdue { get; private set; }
 
-    public void Start()
+    public void Start(DateTime startedAtUtc, DateTime deadlineAtUtc)
     {
-        if (Status != ProjectTaskStatus.Pending)
+        RequireUtc(startedAtUtc); RequireUtc(deadlineAtUtc);
+        if (deadlineAtUtc <= startedAtUtc) throw new ArgumentException("Deadline must follow task start.", nameof(deadlineAtUtc));
+        if (Status != ProjectTaskStatus.Pending || StartedAt is not null || CompletedAt is not null || DeadlineAt is not null || WasOverdue is not null)
         {
             throw new InvalidOperationException("Only a pending task can be started.");
         }
 
         Status = ProjectTaskStatus.InProgress;
-        StartedAt = DateTime.UtcNow;
+        StartedAt = startedAtUtc;
+        DeadlineAt = deadlineAtUtc;
+        WasOverdue = false;
         CompletedAt = null;
     }
 
-    public void Complete()
+    public void Complete(DateTime completedAtUtc)
     {
+        RequireUtc(completedAtUtc);
         if (Status != ProjectTaskStatus.InProgress || StartedAt is null || CompletedAt is not null)
             throw new InvalidOperationException("Only an active, started task can be completed.");
+        if (completedAtUtc < StartedAt) throw new ArgumentException("Completion cannot precede start.", nameof(completedAtUtc));
         Status = ProjectTaskStatus.Completed;
-        CompletedAt = DateTime.UtcNow;
+        CompletedAt = completedAtUtc;
+        if (DeadlineAt is DateTime deadline) WasOverdue = WasOverdue == true || completedAtUtc > deadline;
     }
+
+    public void DetectOverdue(DateTime nowUtc)
+    {
+        RequireUtc(nowUtc);
+        if (Status == ProjectTaskStatus.InProgress && DeadlineAt is DateTime deadline && nowUtc > deadline) WasOverdue = true;
+    }
+
+    private static void RequireUtc(DateTime value)
+    { if (value.Kind != DateTimeKind.Utc) throw new ArgumentException("An explicit UTC instant is required."); }
 }

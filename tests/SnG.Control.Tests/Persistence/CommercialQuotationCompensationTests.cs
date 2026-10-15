@@ -27,7 +27,7 @@ public class CommercialQuotationCompensationTests
         var unrelated = new Client("Synthetic unrelated"); db.Attach(unrelated);
         using var transaction = new CommercialQuotationScenario.TransactionDouble { FailCommit = phase is "commit" or "cleanup" or "restore" or "uncertain", FailRollback = phase is "rollback" or "uncertain" };
         var storage = new FailureStorage(scenario, phase);
-        var operation = new EfCommercialQuotationStore(db, storage).PersistAsync(state, quotation, items, scenario.Bytes, preview, transaction, default);
+        var operation = new EfCommercialQuotationStore(db, storage, TestTiming.Value, new NotificationWriterDouble(db)).PersistAsync(state, quotation, items, scenario.Bytes, preview, transaction, default);
         if (phase is "cleanup" or "restore" or "rollback" or "uncertain") await Assert.ThrowsAsync<AggregateException>(() => operation);
         else if (phase == "cancel") await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
         else await Assert.ThrowsAsync<InvalidOperationException>(() => operation);
@@ -53,7 +53,7 @@ public class CommercialQuotationCompensationTests
         var quotation = new CommercialQuotation(state.Project.Id, state.Version!.Id, state.Catalog!.Id, "test.xlsx", 1, "google-test-subject", null, null);
         using var db = new CommercialQuotationScenario.SaveContext { Failure = new DbUpdateException("Synthetic", new PostgresException("Synthetic", "ERROR", "ERROR", sqlState, constraintName: constraint)) };
         using var transaction = new CommercialQuotationScenario.TransactionDouble();
-        var task = new EfCommercialQuotationStore(db, scenario).PersistAsync(state, quotation, [], scenario.Bytes, preview, transaction, default);
+        var task = new EfCommercialQuotationStore(db, scenario, TestTiming.Value, new NotificationWriterDouble(db)).PersistAsync(state, quotation, [], scenario.Bytes, preview, transaction, default);
         if (expected) Assert.Equal(CommercialQuotationStatus.AlreadyConfirmed, (await task).Status);
         else await Assert.ThrowsAsync<InvalidOperationException>(() => task);
         Assert.True(transaction.RolledBack); Assert.Equal(0, scenario.SaveCalls); Assert.Equal(0, scenario.DeleteCalls); Assert.Empty(db.ChangeTracker.Entries());

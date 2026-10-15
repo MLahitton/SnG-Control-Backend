@@ -467,6 +467,70 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectNotification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RecipientGoogleSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ScheduledAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("State")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ProjectNotifications_EventKey");
+
+                    b.HasIndex("ProjectTaskId");
+
+                    b.HasIndex("ProjectId", "CreatedAt");
+
+                    b.HasIndex("RecipientGoogleSubject", "CreatedAt");
+
+                    b.ToTable("ProjectNotifications", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProjectNotifications_Kind", "\"Kind\" IN (1, 2, 3, 4)");
+
+                            t.HasCheckConstraint("CK_ProjectNotifications_State", "(\"Kind\" <> 4 AND \"State\" = 1 AND \"ResolvedAt\" IS NULL) OR (\"Kind\" = 4 AND ((\"State\" = 2 AND \"ResolvedAt\" IS NULL) OR (\"State\" = 3 AND \"ResolvedAt\" IS NOT NULL)))");
+
+                            t.HasCheckConstraint("CK_ProjectNotifications_Text", "length(btrim(\"RecipientGoogleSubject\")) > 0 AND length(btrim(\"Title\")) > 0 AND length(btrim(\"Message\")) > 0 AND length(btrim(\"EventKey\")) > 0");
+                        });
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectTask", b =>
                 {
                     b.Property<Guid>("Id")
@@ -484,6 +548,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DeadlineAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
@@ -495,6 +562,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("Type")
                         .HasColumnType("integer");
+
+                    b.Property<bool?>("WasOverdue")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 
@@ -594,6 +664,21 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasOne("SnG.Control.Domain.Entities.Client", null)
                         .WithMany()
                         .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectNotification", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

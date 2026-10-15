@@ -4,9 +4,9 @@
 
 La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web API con Controllers tradicionales y Clean Architecture. El núcleo de negocio contiene `Client`, `Project`, `ProjectTask`, la versión de cotización de Presupuestos, el catálogo base histórico y la cotización comercial confirmada con sus ítems; sus reglas se describen en [README.md](README.md).
 
-La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las ocho migraciones, desde `InitialCreate` hasta `AddCommercialQuotationConfirmation`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
+La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las nueve migraciones, desde `InitialCreate` hasta `AddLeakTimesAndNotifications`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
-Application implementa diecisiete casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel temporal; obtener preview comercial, confirmar su revisión y descargar el XLSX comercial final. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. La autenticación Google protege las operaciones y `/api/auth/me` consulta la identidad mediante ICurrentUser, sin persistencia ni otro caso de uso de negocio. No hay repositorios genéricos, Unit of Work propio, roles específicos ni Docker. La API exige configuración de autenticación, conexión y almacenamiento, pero no aplica migraciones ni abre una conexión a la base durante el arranque.
+Application implementa diecinueve casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel temporal; obtener preview comercial, confirmar su revisión y descargar el XLSX comercial final; listar notificaciones personales y el historial por proyecto. ProjectNotificationSweepService coordina adicionalmente una iteración recuperable. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. La autenticación Google protege las operaciones y `/api/auth/me` consulta la identidad mediante ICurrentUser, sin persistencia ni otro caso de uso de negocio. No hay repositorios genéricos, Unit of Work propio, roles específicos ni Docker. La API exige configuración de autenticación, conexión y almacenamiento, y no aplica migraciones al arrancar. El worker inicia una consulta de notificaciones en segundo plano; una falla de DB se registra por tipo y se reintenta sin detener la API.
 
 ## Requisitos y paquetes
 
@@ -45,6 +45,8 @@ src/
     Authentication/GoogleAuthenticationRegistration.cs
     Authentication/HttpContextCurrentUser.cs
     Authentication/BearerSecurityDocumentTransformer.cs
+    Authorization/BudgetsAssigneeOptions.cs
+    Workers/ProjectNotificationBackgroundService.cs
     Authorization/CommercialHeadOptions.cs
     Authorization/ConfiguredCommercialHeadIdentity.cs
     Authorization/CommercialHeadRequirement.cs
@@ -59,6 +61,7 @@ src/
     Contracts/QuotationMultipartReader.cs
     Controllers/ClientsController.cs
     Controllers/ProjectsController.cs
+    Controllers/NotificationsController.cs
     Controllers/ProjectTasksController.cs
     Controllers/BudgetQuotationController.cs
     Controllers/AuthController.cs
@@ -70,10 +73,16 @@ src/
     appsettings.json
     Properties/launchSettings.json
   Application/
+    Scheduling/ColombiaBusinessCalendar.cs
+    Scheduling/TaskTiming.cs
+    Identity/IBudgetsAssigneeIdentity.cs
     Identity/ICurrentUser.cs
     Identity/ICommercialHeadIdentity.cs
     Files/IFileStorage.cs
     Features/
+      Notifications/NotificationContracts.cs
+      Notifications/NotificationUseCases.cs
+      Notifications/ProjectNotificationPlanner.cs
       CommercialQuotations/
         CommercialQuotationContracts.cs
         ICommercialQuotationStore.cs
@@ -120,6 +129,9 @@ src/
   Domain/
     Entities/Client.cs
     Entities/Project.cs
+    Entities/ProjectNotification.cs
+    Enums/NotificationKind.cs
+    Enums/NotificationState.cs
     Entities/ProjectTask.cs
     Entities/BudgetQuotationVersion.cs
     Entities/CommercialCatalog.cs
@@ -150,6 +162,10 @@ src/
       SnGControlDbContext.cs
       Stores/EfClientStore.cs
       Stores/EfProjectStore.cs
+      Stores/EfProjectNotificationStore.cs
+      Stores/EfProjectNotificationSweepStore.cs
+      Stores/EfProjectNotificationWriter.cs
+      Configurations/ProjectNotificationConfiguration.cs
       Stores/EfProjectTaskStore.cs
       Stores/EfBudgetsWorkflowStore.cs
       Stores/EfBudgetQuotationConfirmationStore.cs
@@ -181,6 +197,8 @@ src/
         20261014192650_AddCommercialIdentityAssignments.Designer.cs
         20261014201256_AddCommercialQuotationConfirmation.cs
         20261014201256_AddCommercialQuotationConfirmation.Designer.cs
+        20261015141208_AddLeakTimesAndNotifications.cs
+        20261015141208_AddLeakTimesAndNotifications.Designer.cs
         SnGControlDbContextModelSnapshot.cs
 tests/
   SnG.Control.Tests/
@@ -210,7 +228,7 @@ tests/
 | Proyecto | Responsabilidad actual |
 | --- | --- |
 | Domain | Entidades e invariantes, sin dependencias de persistencia o HTTP. |
-| Application | Diecisiete casos de uso, respuestas e interfaces específicas de parsing, archivos y persistencia. |
+| Application | Diecinueve casos de uso, respuestas e interfaces específicas de parsing, archivos y persistencia. |
 | Infrastructure | Contexto EF, stores PostgreSQL, configuraciones Fluent API, migraciones, parser/generador XLSX y almacenamiento local. |
 | Api | Contratos HTTP, Controllers, manejo de errores y composition root. Incluye la fábrica del tooling del startup project. |
 | Tests | Tests de dominio, casos de uso, HTTP y metadata/SQL del proveedor real, sin conexión PostgreSQL. |
@@ -354,7 +372,7 @@ Los tests normales funcionan sin conexión configurada, sin contraseña y sin Po
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite contiene 632 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+La suite contiene 717 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
 
 ApiFixture autentica por defecto mediante el esquema TestIdentity, exclusivo de Tests: sub=google-test-subject, email=test@example.com y name=Test User. Aplica a la identidad sintética la misma regla OnTokenValidated de presencia de sub. Los tests negativos omiten la cabecera o seleccionan una identidad inválida sin cambiar los defaults de otros tests. CommercialHeadSubject se configura como google-test-subject únicamente en Tests; other-google-subject prueba el 403 con el mismo email, y el mismo Subject con otro email conserva acceso. No se modifica la configuración productiva para permitir accesos de prueba. Las pruebas del handler JwtBearer real sustituyen discovery por configuración estática únicamente en Tests y verifican 401 para entradas ausentes o inválidas, sin Internet. También se comprueban startup de ambas opciones, opciones JWT, política global y CommercialHead, claims originales, ausencia de email como fallback, snapshots del creador, rechazo de identidad en el body, CreatedBy legacy null mediante materialización real de EF, asignación personal, DTOs y reintentos concurrentes HTTP con doble de persistencia. Los tests de compensación verifican la asignación en el ChangeTracker y un único SaveChanges; los índices y bloqueos PostgreSQL conservan la garantía de concurrencia real.
 
@@ -374,13 +392,13 @@ Los artefactos de compilación y `TestResults` están excluidos por `.gitignore`
 
 ## Contexto y materialización
 
-`SnGControlDbContext` está en `SnG.Control.Infrastructure.Persistence`. Recibe `DbContextOptions<SnGControlDbContext>`, expone nueve DbSets: `Clients`, `Projects`, `ProjectTasks`, `BudgetQuotationVersions`, `CommercialCatalogs`, `CommercialCatalogItems`, `CommercialCatalogItemExtractions`, `CommercialQuotations` y `CommercialQuotationItems`. Aplica explícitamente las nueve configuraciones IEntityTypeConfiguration correspondientes.
+`SnGControlDbContext` está en `SnG.Control.Infrastructure.Persistence`. Recibe `DbContextOptions<SnGControlDbContext>`, expone diez DbSets: `Clients`, `Projects`, `ProjectTasks`, `BudgetQuotationVersions`, `CommercialCatalogs`, `CommercialCatalogItems`, `CommercialCatalogItemExtractions`, `CommercialQuotations`, `CommercialQuotationItems` y `ProjectNotifications`. Aplica explícitamente las diez configuraciones IEntityTypeConfiguration correspondientes.
 
-Las propiedades tienen setters privados. EF enlaza constructores y restaura los valores persistidos. Project y las seis entidades de cotización/catálogo tienen constructor privado sin parámetros reservado para materialización; Client y ProjectTask usan constructor enlazado. El constructor público de Project exige CreatedByGoogleSubject no vacío, mientras EF puede materializar proyectos históricos con los tres campos de creador null. Los tests compilan consultas de los nueve DbSets y prueban esa materialización con IStructuralTypeMaterializerSource, sin conexión.
+Las propiedades tienen setters privados. EF enlaza constructores y restaura los valores persistidos. Project y las seis entidades de cotización/catálogo tienen constructor privado sin parámetros reservado para materialización; ProjectTask y ProjectNotification también tienen constructor privado para EF; Client usa constructor enlazado. El constructor público de Project exige CreatedByGoogleSubject no vacío, mientras EF puede materializar proyectos históricos con los tres campos de creador null. Los tests compilan consultas de los diez DbSets y prueban esa materialización con IStructuralTypeMaterializerSource, sin conexión.
 
 Los identificadores nacen de `Guid.NewGuid()` en el dominio y se mapean con `ValueGeneratedNever()`: no hay generación de UUID en PostgreSQL. Las fechas son `DateTime` UTC; `CreatedAt` y `UpdatedAt` coinciden al crear clientes o proyectos. Los timestamps e identificadores almacenados se conservan al materializar entidades; no hay mecanismo automático de actualización de fechas.
 
-`ProjectTask(projectId, area, type, assignedToGoogleSubject = null)` exige un ProjectId no vacío y enums definidos. Genera Id y AssignedAt UTC; fija Status=Pending y StartedAt/CompletedAt=null. Start solo acepta Pending, cambia a InProgress, fija StartedAt UTC y deja CompletedAt=null; rechaza InProgress y Completed sin reiniciar fechas. Complete exige InProgress, StartedAt presente y CompletedAt null; cambia a Completed y fija CompletedAt UTC preservando AssignedAt y StartedAt. No hay Return/Cancel ni endpoint genérico de finalización. Sus nueve propiedades tienen setters privados. AssignedToGoogleSubject admite null; un valor no null debe ser no vacío y se conserva exactamente. PrepareQuotation se crea sin asignación personal y el envío a Comercial asigna las nuevas ReviewQuotation al Subject configurado. `Project` no tiene estado global ni colección Tasks.
+`ProjectTask(projectId, area, type, assignedToGoogleSubject = null, assignedAtUtc = null)` exige un ProjectId no vacío y enums definidos. Genera Id; los flujos pasan AssignedAt UTC desde TimeProvider. El constructor conserva la fecha actual como compatibilidad si no se proporciona. Fija Status=Pending y StartedAt/CompletedAt/DeadlineAt/WasOverdue=null. Start(startedAtUtc, deadlineAtUtc) exige UTC, deadline posterior y ausencia de inicio, fin o seguimiento previos; cambia a InProgress, fija ambas fechas y WasOverdue=false; rechaza InProgress y Completed sin reiniciar fechas. Complete(completedAtUtc) exige UTC, InProgress, StartedAt presente, fin no anterior al inicio y CompletedAt null; cambia a Completed, conserva AssignedAt/StartedAt/DeadlineAt y actualiza WasOverdue sin revertir true. No hay Return/Cancel ni endpoint genérico de finalización. Sus once propiedades tienen setters privados. AssignedToGoogleSubject admite null; un valor no null debe ser no vacío y se conserva exactamente. PrepareQuotation se crea asignada a BudgetsAssigneeSubject y el envío a Comercial asigna las nuevas ReviewQuotation al Subject configurado. `Project` no tiene estado global ni colección Tasks.
 
 `Project.SetSgCode` rechaza null/vacío/whitespace, aplica Trim y ToUpperInvariant y exige SG seguido de al menos un dígito ASCII. La validación recorre los caracteres, equivalente a `^SG[0-9]+$` sobre la entrada normalizada completa; no acepta dígitos Unicode ni caracteres adicionales. Conserva ceros iniciales. Si el valor es distinto, modifica SgCode y UpdatedAt UTC; si es igual no modifica nada. CreatedAt permanece intacto y no existe generación de consecutivos.
 
@@ -388,7 +406,7 @@ Los proyectos y carpetas bajo `src` se llaman `Api`, `Application`, `Domain` e `
 
 ## Tablas y restricciones
 
-No hay tablas Users/Employees ni roles persistidos. La identidad necesaria para el negocio se guarda en Project, ProjectTask y los snapshots de auditoría de CommercialQuotation; el modelo tiene ocho migraciones.
+No hay tablas Users/Employees ni roles persistidos. La identidad necesaria para el negocio se guarda en Project, ProjectTask y los snapshots de auditoría de CommercialQuotation; el modelo tiene nueve migraciones.
 
 Se usan nombres explícitos `Clients`, `Projects` y `ProjectTasks`, con columnas PascalCase; el SQL PostgreSQL generado utiliza identificadores entre comillas. No se introduce un esquema personalizado.
 
@@ -396,7 +414,7 @@ Se usan nombres explícitos `Clients`, `Projects` y `ProjectTasks`, con columnas
 | --- | --- | --- |
 | Clients | `Id`: uuid; `Name`: text; `CreatedAt`, `UpdatedAt`: timestamp with time zone | Todas NOT NULL |
 | Projects | `Id`, `ClientId`: uuid; `Name`, `City`, `SgCode`, `CreatedByGoogleSubject`, `CreatedByEmail`, `CreatedByName`: text; `ProductLine`: integer; `CreatedAt`, `UpdatedAt`: timestamp with time zone | `SgCode` y los tres campos CreatedBy admiten NULL para compatibilidad histórica |
-| ProjectTasks | `Id`, `ProjectId`: uuid; `AssignedToGoogleSubject`: text; `Area`, `Type`, `Status`: integer; `AssignedAt`, `StartedAt`, `CompletedAt`: timestamp with time zone | `StartedAt`, `CompletedAt` y `AssignedToGoogleSubject` admiten NULL |
+| ProjectTasks | `Id`, `ProjectId`: uuid; `AssignedToGoogleSubject`: text; `Area`, `Type`, `Status`: integer; `AssignedAt`, `StartedAt`, `CompletedAt`, `DeadlineAt`: timestamp with time zone; `WasOverdue`: boolean | `StartedAt`, `CompletedAt`, `DeadlineAt`, `WasOverdue` y `AssignedToGoogleSubject` admiten NULL |
 
 - `PK_Clients` sobre `Clients.Id` y `PK_Projects` sobre `Projects.Id`.
 - `FK_Projects_Clients_ClientId`: `Projects.ClientId` referencia `Clients.Id`, relación 1:N sin navegaciones, con `ON DELETE RESTRICT`. No se eliminan proyectos en cascada.
@@ -453,6 +471,8 @@ La extracción utiliza PK/FK CatalogItemId y no necesita otra identidad. No hay 
 
 ## Migraciones
 
+`20261015141208_AddLeakTimesAndNotifications` agrega DeadlineAt (`timestamp with time zone`) y WasOverdue (`boolean`) nullable a ProjectTasks, sin defaults ni backfill. Crea ProjectNotifications, sus restricciones y cuatro índices. Las ocho migraciones anteriores permanecen intactas. Down elimina exclusivamente la tabla nueva y ambas columnas.
+
 `20261014201256_AddCommercialQuotationConfirmation` crea CommercialQuotations y CommercialQuotationItems y el índice parcial único PresentQuotationToClient (`Type = 3`). Conserva las siete migraciones anteriores, sin backfill ni modificaciones a tablas históricas salvo el índice de tareas. Las nuevas FK usan Restrict. Down elimina solo ambas tablas nuevas y ese índice.
 
 `20261014192650_AddCommercialIdentityAssignments` agrega exclusivamente cuatro columnas text nullable: Projects.CreatedByGoogleSubject, CreatedByEmail y CreatedByName, y ProjectTasks.AssignedToGoogleSubject. No tiene defaults, backfill, datos reales ni índices nuevos; mantiene constraints y las seis migraciones anteriores. Down elimina solo esas cuatro columnas. Los proyectos y ReviewQuotation históricos pueden mantener identidad null. Toda creación nueva de Project desde Domain/Application exige Subject; las nuevas ReviewQuotation del envío reciben el Subject configurado. No se inventa identidad histórica.
@@ -472,8 +492,8 @@ La fábrica `SnG.Control.Api.Persistence.SnGControlDbContextFactory` implementa 
 ```shell
 dotnet ef migrations list --no-connect --project src/Infrastructure --startup-project src/Api -- --environment Development
 dotnet ef migrations has-pending-model-changes --project src/Infrastructure --startup-project src/Api -- --environment Development
-dotnet ef migrations script 0 AddCommercialQuotationConfirmation --project src/Infrastructure --startup-project src/Api -- --environment Development
-dotnet ef migrations script AddCommercialIdentityAssignments AddCommercialQuotationConfirmation --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script 0 AddLeakTimesAndNotifications --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script AddCommercialQuotationConfirmation AddLeakTimesAndNotifications --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
 ### Aplicar a la base existente
@@ -523,7 +543,7 @@ Comprobar que el comando termina correctamente y verificar el estado aplicado:
 dotnet ef migrations list --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
-El modelo tiene exactamente ocho migraciones, en orden:
+El modelo tiene exactamente nueve migraciones, en orden:
 
 1. `20261013143318_InitialCreate`
 2. `20261013190849_AddProjectTasks`
@@ -533,6 +553,7 @@ El modelo tiene exactamente ocho migraciones, en orden:
 6. `20261014141907_AddCommercialQuotationHandoff`
 7. `20261014192650_AddCommercialIdentityAssignments`
 8. `20261014201256_AddCommercialQuotationConfirmation`
+9. `20261015141208_AddLeakTimesAndNotifications`
 
 Cada instalación debe comprobar su historial en `__EFMigrationsHistory` antes de operar. Los comandos de inspección offline no verifican si una base concreta tiene migraciones aplicadas.
 
@@ -548,7 +569,7 @@ Revisar la migración y el snapshot: columnas, tipos, nullability, claves, índi
 
 ## Ejecutar la API
 
-Con ClientId Google, CommercialHeadSubject, conexión y almacenamiento configurados y, para persistir datos, las migraciones aplicadas:
+Con ClientId Google, CommercialHeadSubject, BudgetsAssigneeSubject, conexión y almacenamiento configurados y, para persistir datos, las migraciones aplicadas:
 
 ```shell
 dotnet dev-certs https --trust
@@ -557,13 +578,13 @@ dotnet run --project src/Api --launch-profile https
 
 El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `Development`, con redirección HTTP a HTTPS. Detener con `Ctrl+C`. También existe el perfil `http` en 5051, sin puerto HTTPS propio; la redirección puede advertir que no encuentra ese puerto. Se recomienda el perfil `https`.
 
-En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene diecisiete operaciones de negocio y `/api/auth/me`, dieciocho en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
+En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene diecinueve operaciones de negocio y `/api/auth/me`, veinte en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
 
 - `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS, autenticación, autorización y Controllers.
-- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y provider del Jefe Comercial y su política específica, además de los diecisiete casos de uso, los siete stores, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
+- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y provider del Jefe Comercial y su política específica, además de los diecinueve casos de uso, los nueve stores, el writer de notificaciones, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
 - `appsettings.json`: logging (`Information` general y `Warning` para ASP.NET Core) y `AllowedHosts=*`; no contiene conexiones.
 - `Properties/launchSettings.json`: perfiles/puertos locales y `ASPNETCORE_ENVIRONMENT=Development`.
-- El registro del contexto no ejecuta operaciones de base de datos ni aplica migraciones.
+- El registro del contexto no aplica migraciones. El worker registrado ejecuta su primer sweep en segundo plano al arrancar.
 
 ## Casos de uso y persistencia
 
@@ -615,6 +636,8 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 
 | Método y ruta | Request | Éxito | Recurso inexistente |
 | --- | --- | --- | --- |
+| GET `/api/notifications` | Sin parámetros; identidad autenticada | 200, notificaciones personales recientes primero; 400 si envía query | No aplica |
+| GET `/api/projects/{id}/notifications` | Guid en ruta | 200, historial cronológico completo | 404 |
 | GET `/api/auth/me` | Bearer ID token | 200, subject/email/name; 401 sin identidad válida | No aplica |
 | POST `/api/clients` | `name` | 201, ClientResponse y Location | No aplica |
 | GET `/api/clients` | Sin body | 200, colección de ClientResponse | Colección vacía |
@@ -658,11 +681,14 @@ Ejemplo de respuesta del envío:
   "assignedAt": "2026-10-13T19:00:00Z",
   "startedAt": null,
   "completedAt": null,
-  "assignedToGoogleSubject": null
+  "assignedToGoogleSubject": "<BUDGETS_SUBJECT>",
+  "deadlineAt": null,
+  "wasOverdue": null,
+  "leakTimeStatus": "NotStarted"
 }
 ```
 
-`ProjectTaskResponse` expone exactamente estos nueve campos, sin objetos Client/Project incrustados, nombres duplicados ni SG. Los tres enums se serializan mediante JsonStringEnumConverter con valores numéricos deshabilitados.
+`ProjectTaskResponse` expone exactamente estos doce campos, sin objetos Client/Project incrustados, nombres duplicados ni SG. Los cuatro enums se serializan mediante JsonStringEnumConverter con valores numéricos deshabilitados.
 
 El GET por área acepta los nombres definidos Commercial/Budgets y Pending/InProgress/Completed, sin distinguir mayúsculas. Ambos parámetros son obligatorios; valores ausentes, vacíos, numéricos, combinados con comas o desconocidos producen 400. La validación de nombres se realiza explícitamente en el Controller porque el binding ordinario de enums también admite números. El envío crea Budgets/Pending; la primera asignación de SG permite consultar esa tarea como Budgets/InProgress. El envío a Comercial completa PrepareQuotation y crea ReviewQuotation en Commercial/InProgress. El historial devuelve `[]` para un proyecto existente sin tareas.
 
@@ -698,12 +724,15 @@ Devuelve 200 con `AssignProjectSgCodeResponse`:
     "assignedAt": "2026-10-13T19:30:00Z",
     "startedAt": "2026-10-13T20:00:00Z",
     "completedAt": null,
-    "assignedToGoogleSubject": null
+    "assignedToGoogleSubject": "<BUDGETS_SUBJECT>",
+    "deadlineAt": "2026-10-19T22:00:00Z",
+    "wasOverdue": false,
+    "leakTimeStatus": "OnTrack"
   }
 }
 ```
 
-Una corrección devuelve la misma estructura con el SG y UpdatedAt nuevos, conservando StartedAt exactamente. Un reenvío del mismo valor normalizado conserva también UpdatedAt. No se acepta null para borrar SG ni campos desconocidos. El endpoint responde 400 por request/formato inválido; 404 si no existe Project; 409 si no fue enviado, el workflow es inconsistente/no soportado o el SG está ocupado. No hay endpoints separados para corregir o iniciar.
+Una corrección devuelve la misma estructura con el SG y UpdatedAt nuevos, conservando StartedAt, DeadlineAt y WasOverdue exactamente. Un reenvío del mismo valor normalizado conserva también UpdatedAt. No se acepta null para borrar SG ni campos desconocidos. El endpoint responde 400 por request/formato inválido; 404 si no existe Project; 409 si no fue enviado, el workflow es inconsistente/no soportado o el SG está ocupado. No hay endpoints separados para corregir o iniciar.
 
 ### Preview técnico de cotización XLSX
 
@@ -878,7 +907,7 @@ Comprueba si existe versión 1 para responder pronto 409; esa consulta no sustit
 
 Si falla SaveChanges, una escritura o un commit que pueda revertirse, hace rollback y elimina exclusivamente las claves cuyo SaveAsync terminó correctamente en esa operación. Usa CancellationToken.None para compensar aunque el request haya sido cancelado y continúa intentando las otras eliminaciones si una falla. Desacopla únicamente sus entidades, sin limpiar entradas ajenas del ChangeTracker. Un error de compensación se propaga como error de servidor y requiere inspección; no se informa éxito.
 
-PostgreSQL y filesystem no comparten una transacción distribuida. Un crash entre escritura y commit puede dejar archivos huérfanos. Si COMMIT pierde su respuesta y el rollback también falla, el resultado puede ser incierto: se conservan los archivos para no borrar los que quizá respaldan registros ya confirmados, y se responde error. No hay cleaner en background ni recuperación automática. La revisión administrativa debe comparar claves/identificadores de esa operación antes de eliminar archivos; nunca realizar una limpieza global. Los backups/restores de DB y archivos también deben coordinarse.
+PostgreSQL y filesystem no comparten una transacción distribuida. Un crash entre escritura y commit puede dejar archivos huérfanos. Si COMMIT pierde su respuesta y el rollback también falla, el resultado puede ser incierto: se conservan los archivos para no borrar los que quizá respaldan registros ya confirmados, y se responde error. No hay cleaner ni recuperación automática de archivos; el worker de notificaciones no reconcilia filesystem. La revisión administrativa debe comparar claves/identificadores de esa operación antes de eliminar archivos; nunca realizar una limpieza global. Los backups/restores de DB y archivos también deben coordinarse.
 
 La concurrencia se resuelve mediante **UX_BudgetQuotationVersions_ProjectId_VersionNumber**. Solo DbUpdateException con PostgresException, SQLSTATE `23505` (`UniqueViolation`) y ese nombre exacto se convierte en AlreadyConfirmed/409, después de rollback/compensación. Otras restricciones o errores no se confunden con una segunda confirmación. Al ejecutar SaveChanges antes de escribir archivos, la operación perdedora no llega a crear sus archivos. Una confirmación posterior no reemplaza la existente ni crea versión 2.
 
@@ -927,13 +956,13 @@ Las etiquetas se localizan dentro del bloque, sin asumir offsets. No se modifica
 
 El generador cierra y reabre el resultado en modo lectura para validar valores, fórmulas y estilos de destino. Compara byte por byte todas las entradas ZIP salvo workbook.xml y la hoja editada: incluye ImageParts, drawings, anchors, relaciones, shared strings, estilos y otras hojas. Conserva hojas/orden, nombres definidos, merges, dimensiones y metadata. No exige igualdad binaria del ZIP completo. Una discrepancia impide almacenar el resultado.
 
-**Persistencia:** `EfBudgetQuotationCommercialHandoffStore` abre la transacción después de generar y validar el archivo. Bloquea Project, tareas del proyecto y versión 1 con `FOR UPDATE`, en ese orden, y vuelve a comprobar estado, SG y datos usados para generar. Project se lee sin tracking. Completa PrepareQuotation, crea ReviewQuotation de Commercial con AssignedToGoogleSubject del Jefe configurado e invoca Start inmediatamente; asocia la clave mediante `BudgetQuotationVersion.SetConfirmedFileStorageKey`, que admite una única asignación relativa segura. Guarda las tres entidades, incluida la asignación personal, con un SaveChanges, escribe el archivo y confirma la transacción. Los timestamps modificados se ajustan a microsegundos de PostgreSQL; AssignedAt y StartedAt de Presupuestos permanecen intactos.
+**Persistencia:** `EfBudgetQuotationCommercialHandoffStore` abre la transacción después de generar y validar el archivo. Bloquea Project, tareas del proyecto y versión 1 con `FOR UPDATE`, en ese orden, y vuelve a comprobar estado, SG y datos usados para generar. Project se lee sin tracking. Completa PrepareQuotation, crea ReviewQuotation de Commercial con AssignedToGoogleSubject del Jefe configurado e invoca Start inmediatamente; asocia la clave mediante `BudgetQuotationVersion.SetConfirmedFileStorageKey`, que admite una única asignación relativa segura. Guarda tareas, versión y notificaciones de la transición con un SaveChanges, escribe el archivo y confirma la transacción. Los timestamps modificados se ajustan a microsegundos de PostgreSQL; AssignedAt y StartedAt de Presupuestos permanecen intactos.
 
 Clave operativa: `projects/{projectId}/budget-quotations/{quotationVersionId}/confirmed.xlsx`. La original y las imágenes no reciben escrituras ni eliminaciones en este flujo. `ConfirmedFileStorageKey` es nullable antes del envío, con índice único que admite múltiples null. El índice parcial `UX_ProjectTasks_ProjectId_ReviewQuotation` impide dos tareas ReviewQuotation por proyecto. Solo SQLSTATE 23505 con ese nombre exacto se convierte en AlreadySent/409; otras violaciones se propagan como errores inesperados. Dos envíos simultáneos producen un 200 y un 409, con una única tarea y archivo operativos.
 
 Si falla SaveChanges no se escribe archivo; si falla el guardado se revierte DB; si falla el commit con rollback confirmado se elimina exclusivamente el confirmed.xlsx creado por esa operación. Se restauran y desacoplan las entidades afectadas, preservando otras entradas del contexto. La compensación usa CancellationToken.None. Un fallo de limpieza se propaga como error técnico; un commit incierto conserva el archivo si tampoco puede confirmarse el rollback. Se mantienen las limitaciones DB/filesystem descritas para la confirmación: no hay transacción distribuida ni recuperación automática tras un crash.
 
-**Respuesta 200:** `projectId`, `budgetTask`, `commercialTask`, `quotationVersionId`, `commercialCatalogId` y `commercialFileAvailable: true`. Las tareas usan ProjectTaskResponse: Presupuestos Completed con CompletedAt UTC y assignedToGoogleSubject null; Comercial ReviewQuotation/InProgress con StartedAt UTC, CompletedAt null y assignedToGoogleSubject configurado. Los listados por área/proyecto también reflejan esta asignación o null histórico. StartedAt de Comercial es la base futura del Leak Time; no existen SLA ni alertas. La respuesta no expone StorageKey ni rutas físicas.
+**Respuesta 200:** `projectId`, `budgetTask`, `commercialTask`, `quotationVersionId`, `commercialCatalogId` y `commercialFileAvailable: true`. Las tareas usan ProjectTaskResponse: Presupuestos Completed con CompletedAt UTC y su asignado de Presupuestos (null solo si legacy); Comercial ReviewQuotation/InProgress con StartedAt UTC, CompletedAt null y assignedToGoogleSubject configurado. Los listados por área/proyecto también reflejan esta asignación o null histórico. ReviewQuotation inicia su deadline de cinco días y registra TaskAssigned. La finalización de Presupuestos conserva WasOverdue y resuelve o crea/resuelve el aviso de atraso cuando corresponde. La respuesta no expone StorageKey ni rutas físicas.
 
 ### Descarga del Excel operativo
 
@@ -982,7 +1011,7 @@ Las FK son Restrict; no hay cascadas que borren historia. Las entidades mantiene
 
 Índices/constraints: **UX_CommercialQuotations_ProjectId** garantiza una cotización inicial por proyecto; FileStorageKey es único. Los ítems son únicos por (CommercialQuotationId, Section, SourceRow) y por (CommercialQuotationId, CommercialCatalogItemId), además de los índices de FK. CHECKs protegen economía no negativa, Subject no vacío, valores técnicos positivos, ItemNumber no vacío, fila positiva y sección válida. **UX_ProjectTasks_ProjectId_PresentQuotationToClient**, UNIQUE(ProjectId) WHERE Type=3, conserva los índices Type=1 y Type=2. Los nombres usados para traducir conflictos son explícitos.
 
-**Transacción y archivos:** EfCommercialQuotationStore genera el plan después del parsing; abre transacción y bloquea Project, tareas y versión inicial mediante FOR UPDATE en ese orden. Revalida workflow y el catálogo usado. Lee y conserva los bytes del temporal antes de modificar archivos. Completa ReviewQuotation sin cambiar StartedAt; crea PresentQuotationToClient=3 en Commercial, le asigna Project.CreatedByGoogleSubject y llama Start inmediatamente. AssignedAt/StartedAt son UTC, CompletedAt null; el inicio marca el Leak Time de presentación. No completa la presentación ni avanza a aprobación o pago.
+**Transacción y archivos:** EfCommercialQuotationStore genera el plan después del parsing; abre transacción y bloquea Project, tareas y versión inicial mediante FOR UPDATE en ese orden. Revalida workflow y el catálogo usado. Lee y conserva los bytes del temporal antes de modificar archivos. Completa ReviewQuotation sin cambiar StartedAt; crea PresentQuotationToClient=3 en Commercial, le asigna Project.CreatedByGoogleSubject y llama Start inmediatamente. AssignedAt/StartedAt son UTC, CompletedAt null, DeadlineAt calculado una vez y WasOverdue=false; registra TaskAssigned y resuelve el atraso de ReviewQuotation en la misma transacción. No completa la presentación ni avanza a aprobación o pago.
 
 Orden: limpiar la referencia mediante **BudgetQuotationVersion.ClearConfirmedFileStorageKey()**, agregar cotización/ítems/tarea y un SaveChanges dentro de la transacción; guardar los bytes originales subidos en `projects/{projectId}/commercial-quotations/{commercialQuotationId}/commercial.xlsx`; eliminar físicamente confirmed.xlsx; commit. El XLSX comercial no se regenera, reescribe ni sanea. OriginalFileName se reduce al nombre final y ASP.NET File result serializa Content-Disposition seguro. Original.xlsx e imágenes no reciben escrituras ni borrados.
 
@@ -1051,13 +1080,87 @@ Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/project-tasks?area=Budgets
 
 Los POST de creación y el primer envío generan registros reales y responden 201; los GET del ejemplo responden 200. El segundo envío responde 409 sin escribir otra tarea. Un Guid válido inexistente responde 404 al consultar entidades, enviar o consultar su historial. Cambiar `productLine`, `area` o `status` por un número o nombre desconocido, omitir área/estado, dejar `name`/`city` en blanco o enviar `Guid.Empty` como `clientId` produce 400. Un proyecto con cliente inexistente produce 404 sin insertar el proyecto.
 
-No hay endpoint de borrado. Para validaciones controladas en una base compartida, identificar los registros de prueba con una marca única y retirar exclusivamente esos registros mediante una operación administrativa segura, primero ProjectTasks, después Projects y finalmente Clients. No modificar datos ajenos a la prueba.
+No hay endpoint de borrado. Para validaciones controladas en una base compartida, identificar los registros de prueba con una marca única y retirar exclusivamente esos registros mediante una operación administrativa segura, primero las ProjectNotifications de la prueba, después ProjectTasks, Projects y finalmente Clients; si la prueba incluye cotizaciones, retirar previamente sus registros dependientes en orden de FK. No modificar datos ajenos a la prueba.
 
 ### Validación de concurrencia real
 
 La suite sin conexión no sustituye esta comprobación. Crear un cliente y un proyecto nuevos con una marca única, y lanzar dos POST simultáneos al envío de ese proyecto con clientes HTTP reales. Esperar todas las respuestas y comprobar exactamente un 201 y un 409, sin 500. Consultar PostgreSQL con los identificadores de la prueba y verificar una sola fila ProjectTasks con ProjectId del proyecto temporal y Type=1. Si se lanzan más solicitudes, una sola debe crear y todas las demás deben responder 409.
 
 Para SG, crear dos proyectos temporales enviados a Presupuestos y elegir un código libre. Lanzar dos PUT simultáneos con ese mismo código. Exigir **1×200 y 1×409**, y consultar la base: solo un proyecto debe tenerlo; el rechazado debe conservar SgCode=null, tarea Pending y StartedAt=null. No basta con comprobar los códigos HTTP.
+
+## Leak Time, calendario y notificaciones
+
+### Configuración y tiempo
+
+`Authentication:BudgetsAssigneeSubject` es requerida mediante BudgetsAssigneeOptions y ValidateOnStart. Null, vacío y whitespace fallan con `Configure Authentication:BudgetsAssigneeSubject.`, sin revelar el valor. ConfiguredBudgetsAssigneeIdentity implementa IBudgetsAssigneeIdentity en Api; Application solo conoce Subject. Es una cadena opaca conservada exactamente: no se recorta, cambia de case ni sustituye por email. Configurar con User Secrets o `Authentication__BudgetsAssigneeSubject`; no versionar el valor real. Los tests usan valores sintéticos. Esta identidad asigna trabajo y recibe avisos; no crea una política de autorización nueva para SG ni otras acciones.
+
+```shell
+dotnet user-secrets set "Authentication:BudgetsAssigneeSubject" "<GOOGLE_SUBJECT_PRESUPUESTOS>" --project src/Api
+```
+
+TaskTiming recibe TimeProvider (TimeProvider.System en producción) y ColombiaBusinessCalendar. El calendario convierte instantes UTC mediante TimeZoneInfo.FindSystemTimeZoneById("America/Bogota"), trabaja con DateOnly local y convierte horas empresariales a UTC; no depende de la zona del servidor ni usa un offset fijo. No hay paquetes, APIs o conectividad para festivos. Las pruebas utilizan un TimeProvider controlado sin paquetes adicionales.
+
+La política declara por separado cinco días para PrepareQuotation=1, ReviewQuotation=2 y PresentQuotationToClient=3. Un tipo sin política falla explícitamente. Se excluye el día inicial, se avanza por lunes a sábado que no sean festivos y se fija el quinto día a las 17:00 locales. Iniciar el 14/10/2026 produce **20/10/2026 17:00 America/Bogota = 22:00 UTC**. DeadlineAt queda persistido y congelado; no se recalcula al leer, corregir SG, reiniciar o ejecutar el worker.
+
+ColombiaBusinessCalendar deriva los festivos fijos, los trasladados al lunes y los dependientes de Pascua conforme al [artículo 1 de la Ley 51 de 1983](https://www.funcionpublica.gov.co/eva/gestornormativo/norma.php?i=4954). EasterSunday usa el algoritmo gregoriano Meeus/Jones/Butcher: Jueves/Viernes Santo son Pascua−3/−2; Ascensión, Corpus Christi y Sagrado Corazón se calculan con +39/+60/+68 y se trasladan al lunes cuando corresponda. Los fijos sin traslado son 1 de enero, 1 de mayo, 20 de julio, 7 de agosto, 8 y 25 de diciembre; los trasladados son 6 de enero, 19 de marzo, 29 de junio, 15 de agosto, 12 de octubre, 1 y 11 de noviembre.
+
+Desde 2026 incluye además el 9 de julio, trasladado al lunes por el [artículo 6 de la Ley 2578 de 2026](https://lector.ramajudicial.gov.co/SIDN/NORMATIVA/TEXTOS_COMPLETOS/7_LEYES/LEYES%202026/Ley%202578%20de%202026.pdf); en 2026 se observa el 13 de julio. No se aplica retroactivamente a años anteriores. Se prueban las 19 fechas observadas de 2026. No hay calendarios regionales, cierres internos ni excepciones manuales.
+
+### Estado persistido y proyección
+
+ProjectTask incorpora DeadlineAt nullable y WasOverdue nullable. Pending nuevo tiene ambos null; Start exige instantes UTC explícitos y fija false. DetectOverdue marca true solo si InProgress y now > DeadlineAt. Complete usa un instante explícito: <= deadline cumple, > deadline incumple y true nunca vuelve a false. Si el reloj se corrige hacia atrás después de detectar atraso, se conserva true y ResolvedAt registra el CompletedAt real, aunque quede antes de ScheduledAt; no se inventa una fecha posterior. Las tareas legacy sin deadline permanecen desconocidas, incluso al completarse. No hay backfill ni cálculo retroactivo durante la migración.
+
+Las comparaciones usan el reloj sin redondearlo antes de evaluar los límites. PostgreSQL conserva microsegundos: las transiciones existentes ajustan sus timestamps; una finalización estrictamente posterior al deadline se lleva al siguiente microsegundo representable si hace falta, para no convertirla en igualdad al persistir. El resto conserva el ajuste de precisión existente. AssignedAt se suministra desde el reloj a los tres flujos de asignación.
+
+ProjectTaskResponse conserva sus nueve campos previos y agrega deadlineAt, wasOverdue y leakTimeStatus. El último no se persiste y se serializa como string:
+
+| Estado | Regla |
+| --- | --- |
+| NotStarted | Pending sin deadline |
+| UntrackedLegacy | InProgress/Completed sin deadline o cumplimiento desconocido |
+| OnTrack | InProgress antes del umbral de aviso previo |
+| DueSoon | Desde dos días laborales antes a las 08:00, hasta antes del día de vencimiento |
+| DueToday | Día local de vencimiento, hasta el deadline inclusive |
+| Overdue | InProgress y now > DeadlineAt |
+| CompletedOnTime / CompletedLate | Completed según WasOverdue false / true |
+
+GET no persiste WasOverdue ni genera notificaciones. Por eso puede mostrar Overdue antes de que el próximo sweep haya persistido true. DueToday se muestra desde el inicio del día; su notificación se genera desde las 08:00.
+
+### Entidad, eventos y trazabilidad
+
+ProjectNotification tiene doce columnas explícitas: Id, ProjectId, ProjectTaskId, RecipientGoogleSubject, Kind, State, Title, Message, ScheduledAt, CreatedAt, ResolvedAt y EventKey. Guid generados por Domain; textos text; Kind/State integer; fechas timestamp with time zone. Solo ResolvedAt admite null. FK a Project y ProjectTask con Restrict. CHECKs validan textos no vacíos, Kind válido y coherencia entre tipo, estado y resolución. No hay Users, roles, tokens ni campos leído/no leído.
+
+NotificationKind: TaskAssigned=1, DueInTwoBusinessDays=2, DueToday=3, Overdue=4. NotificationState: Informational=1, Active=2, Resolved=3. Solo Overdue puede estar Active/Resolved; los demás son Informational. Los títulos se declaran para cada tipo de tarea y evento en lenguaje operativo, sin nombres técnicos. Message remite al detalle del proyecto sin inventar contexto.
+
+EventKey combina TaskId, Kind, SHA-256 del Subject exacto y AssignedAt a precisión de microsegundos. Ese instante identifica el ciclo actual; la futura reasignación podrá distinguir otro ciclo sin borrar historia. El hash evita introducir el Subject literal en la clave, pero no reemplaza la autorización. EventKey no se devuelve por HTTP. La unicidad real es **UX_ProjectNotifications_EventKey**; los otros índices son RecipientGoogleSubject+CreatedAt, ProjectId+CreatedAt y ProjectTaskId.
+
+ScheduledAt es el instante empresarial; CreatedAt el momento de generación del registro. TaskAssigned usa AssignedAt como ScheduledAt y se inserta en la misma operación/transacción que la nueva tarea, incluso Pending. Los avisos temporales usan exclusivamente el deadline almacenado: dos días laborales hacia atrás a las 08:00, el día de vencimiento a las 08:00 y atraso solo después de DeadlineAt. Overdue conserva DeadlineAt como ScheduledAt. Un deadline de martes genera el recordatorio previo el sábado, si no hay festivos intermedios.
+
+Al completar tarde, se resuelve Overdue existente con ResolvedAt=CompletedAt; si falta, se crea ya resuelto. Se preservan título, mensaje, destinatario, ScheduledAt y CreatedAt de avisos existentes. No se borran notificaciones ni se generan recordatorios para tareas ya completadas. EfProjectNotificationWriter prepara cambios dentro del DbContext de la transición sin guardar ni confirmar por separado. Sus snapshots restauran tracking y valores originales ante rollback; los registros nuevos se desacoplan. Las estrategias de archivos conservan su compensación y tratamiento de commit incierto.
+
+### Worker y recuperación
+
+ProjectNotificationBackgroundService ejecuta un sweep inmediato y usa PeriodicTimer de un minuto con TimeProvider. Crea un scope por iteración, respeta cancelación y registra únicamente el tipo de excepción de un fallo; el siguiente intervalo reintenta sin tumbar la API. ProjectNotificationSweepService captura ahora desde el reloj y delega una iteración; ProjectNotificationPlanner contiene las reglas determinísticas reutilizadas por workflow y sweep.
+
+EfProjectNotificationSweepStore consulta tareas relevantes en lotes de hasta 200 con avance por Id. Pending/InProgress con asignado recuperan TaskAssigned faltante. InProgress con deadline permite detectar avisos/atraso, aunque falte asignado; en ese caso puede guardar WasOverdue pero no inventa destinatario. Completed solo entra para evidencia tardía faltante o Overdue activo pendiente de resolver. No recorre todo el historial en memoria ni genera asignaciones para legacy Completed.
+
+Cada lote abre transacción, bloquea Projects por Id y luego tareas por Id, siguiendo el orden del workflow, carga las notificaciones del lote juntas y revalida los estados actuales. No hay una consulta por tarea. Bloqueos más índice único permiten varias instancias; únicamente SQLSTATE 23505 con UX_ProjectNotifications_EventKey se trata como carrera conocida, revierte el lote y permite reconciliar en el siguiente sweep. Otros errores llegan al supervisor del worker para registro y reintento. No hay Redis, broker, Hangfire ni transacción distribuida.
+
+Tras downtime se crea **solo el hito temporal actualmente más relevante**: Overdue tiene prioridad, después DueToday y después DueInTwoBusinessDays. No se reconstruyen avisos menos relevantes omitidos ni se eliminan los que sí fueron emitidos. La recuperación de TaskAssigned es independiente e idempotente. Un aviso previsto a las 08:00 generado a las 09:20 conserva ambos instantes.
+
+Si el proceso está detenido no emite avisos. En Cloud Run u otro hosting con scale-to-zero será necesario mantener una instancia activa con CPU disponible o ejecutar el sweep mediante un scheduler externo. El servicio permite esa integración futura; no se implementa Cloud Scheduler ni otro canal en este alcance.
+
+### API y validación
+
+GET /api/notifications usa exclusivamente ICurrentUser.Subject, ordena CreatedAt descendente e Id como desempate y rechaza cualquier query parameter con 400. GET /api/projects/{id}/notifications exige autenticación general, responde 404 si no existe el proyecto y devuelve todo su historial por CreatedAt ascendente con Id como desempate. No agrega una matriz de permisos por área. Sin autenticación ambas rutas responden 401.
+
+ProjectNotificationResponse contiene id, projectId, projectTaskId, recipientGoogleSubject, taskType, kind, state, title, message, scheduledAt, createdAt, resolvedAt y deadlineAt. Incluye Informational, Active y Resolved; omite EventKey y cualquier configuración o credencial. Las consultas filtran y ordenan en SQL antes de construir los DTO.
+
+La suite prueba calendario, límites exactos, políticas, deadlines congelados, proyección sin escritura, recuperación normal/tardía, concurrencia simulada, permisos/contratos HTTP y validación de configuración. El worker se prueba con un temporizador controlado, sin esperar minutos. Los tests HTTP remueven el worker real. La compensación verifica restauración de Overdue Active después de un rollback posterior a SaveChanges, además de los tests de archivos existentes.
+
+El smoke PostgreSQL aplica la novena migración sin backfill, compara huellas de datos anteriores y ejecuta asignación, primer SG, sweeps concurrentes, recuperación, queries, resolución e índice único en un esquema sintético aislado. Retira ese esquema al finalizar y verifica que los datos preexistentes no cambiaron. Los tests normales y el runtime del calendario no necesitan Internet. Los parsers XLSX permanecen intactos.
+
+La regla futura de reasignación conserva historia, emite otro TaskAssigned y reinicia cinco días desde el siguiente laboral para el nuevo destinatario. No existe endpoint ni implementación de reasignación, resolución manual, read/unread o canales externos.
 
 ## Reglas permanentes para continuar
 
@@ -1069,4 +1172,4 @@ Para SG, crear dos proyectos temporales enviados a Presupuestos y elegir un cód
 - Validar herramientas, restore, build, tests y migraciones; corregir warnings atribuibles al código sin ocultarlos mediante configuración. Reportar los que legítimamente permanezcan y cualquier supuesto o impedimento.
 - No incluir secretos reales en archivos versionados. No aplicar migraciones automáticamente al arrancar.
 
-Siguen pendientes la aprobación del cliente, anticipo, finalización de PresentQuotationToClient, reasignación de asesor/tareas y, en alcance posterior, la edición de otros campos, eliminación, generación automática de SG, auditoría/historial de cambios SG, nuevas versiones y edición posterior de cotizaciones, revisiones comerciales posteriores, devolución de tareas y demás módulos funcionales. El preview XLSX de Presupuestos es stateless; su confirmación crea el catálogo base y conserva el documento inicial, sin implementar versión 2 ni edición posterior. Los únicos filtros disponibles son Area+Status para tareas; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation, ReviewQuotation y PresentQuotationToClient por proyecto.
+Siguen pendientes la aprobación del cliente, anticipo, finalización de PresentQuotationToClient, reasignación de asesor/tareas y, en alcance posterior, la edición de otros campos, eliminación, generación automática de SG, auditoría/historial de cambios SG, nuevas versiones y edición posterior de cotizaciones, revisiones comerciales posteriores, devolución de tareas y demás módulos funcionales. El preview XLSX de Presupuestos es stateless; su confirmación crea el catálogo base y conserva el documento inicial, sin implementar versión 2 ni edición posterior. Los filtros de tareas son Area+Status; notificaciones personales se filtran exclusivamente por la identidad autenticada; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation, ReviewQuotation y PresentQuotationToClient por proyecto.
