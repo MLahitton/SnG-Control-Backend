@@ -24,13 +24,14 @@ public class AuthenticationHttpTests(ApiFixture fixture) : IClassFixture<ApiFixt
     }
 
     [Fact]
-    public async Task Me_ReturnsOnlySubjectEmailAndName()
+    public async Task Me_ReturnsProfileAndManagementFlag()
     {
         using var response = await fixture.Http.GetAsync("/api/auth/me");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var user = json.RootElement;
-        Assert.Equal(new[] { "subject", "email", "name" }, user.EnumerateObject().Select(property => property.Name));
+        Assert.False(user.GetProperty("isManagement").GetBoolean());
+        Assert.Equal(new[] { "subject", "email", "name", "isManagement" }, user.EnumerateObject().Select(property => property.Name));
         Assert.Equal("google-test-subject", user.GetProperty("subject").GetString());
         Assert.Equal("test@example.com", user.GetProperty("email").GetString());
         Assert.Equal("Test User", user.GetProperty("name").GetString());

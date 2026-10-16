@@ -34,6 +34,7 @@ public class GoogleBearerHttpTests
         });
         builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.Configure<ManagementOptions>(options => options.ManagementSubject = "management-test-subject");
         builder.Services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
         builder.Services.Configure<BudgetsAssigneeOptions>(options => options.BudgetsAssigneeSubject = "budgets-test-subject");
         builder.Services.Configure<CommercialHeadOptions>(options => options.CommercialHeadSubject = "google-test-subject");

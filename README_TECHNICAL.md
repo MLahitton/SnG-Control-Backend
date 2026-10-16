@@ -6,7 +6,7 @@ La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web
 
 La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las diez migraciones, desde `InitialCreate` hasta `AddProjectDocumentsAndHandoff`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
-Application implementa diecinueve casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel temporal; obtener preview comercial, confirmar su revisión y descargar el XLSX comercial final; listar notificaciones personales y el historial por proyecto. ProjectNotificationSweepService coordina adicionalmente una iteración recuperable. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. La autenticación Google protege las operaciones y `/api/auth/me` consulta la identidad mediante ICurrentUser, sin persistencia ni otro caso de uso de negocio. No hay repositorios genéricos, Unit of Work propio, roles específicos ni Docker. La API exige configuración de autenticación, conexión y almacenamiento, y no aplica migraciones al arrancar. El worker inicia una consulta de notificaciones en segundo plano; una falla de DB se registra por tipo y se reintenta sin detener la API.
+Application implementa veintiún casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel temporal; obtener preview comercial, confirmar su revisión y descargar el XLSX comercial final; listar notificaciones personales y el historial por proyecto; obtener el resumen gerencial y listar la operación completa. ProjectDocumentService coordina las operaciones documentales. ProjectNotificationSweepService coordina adicionalmente una iteración recuperable. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. La autenticación Google protege las operaciones y `/api/auth/me` consulta la identidad mediante ICurrentUser e IManagementIdentity, sin persistencia ni otro caso de uso de negocio. No hay repositorios genéricos, Unit of Work propio, roles específicos ni Docker. La API exige configuración de autenticación, conexión y almacenamiento, y no aplica migraciones al arrancar. El worker inicia una consulta de notificaciones en segundo plano; una falla de DB se registra por tipo y se reintenta sin detener la API.
 
 ## Requisitos y paquetes
 
@@ -45,6 +45,9 @@ src/
     Authentication/GoogleAuthenticationRegistration.cs
     Authentication/HttpContextCurrentUser.cs
     Authentication/BearerSecurityDocumentTransformer.cs
+    Authorization/ManagementOptions.cs
+    Authorization/ManagementRequirement.cs
+    Authorization/ManagementRegistration.cs
     Authorization/BudgetsAssigneeOptions.cs
     Workers/ProjectNotificationBackgroundService.cs
     Authorization/CommercialHeadOptions.cs
@@ -67,6 +70,7 @@ src/
     Contracts/ProjectDocumentMultipartReader.cs
     Controllers/BudgetQuotationController.cs
     Controllers/AuthController.cs
+    Controllers/ManagementController.cs
     Controllers/CommercialHandoffController.cs
     Controllers/CommercialQuotationController.cs
     Filters/DisableFormValueModelBindingAttribute.cs
@@ -79,10 +83,14 @@ src/
     Scheduling/TaskTiming.cs
     Identity/IBudgetsAssigneeIdentity.cs
     Identity/ICurrentUser.cs
+    Identity/IManagementIdentity.cs
     Identity/ICommercialHeadIdentity.cs
     Files/IFileStorage.cs
     Files/IStreamingFileStorage.cs
     Features/
+      Management/ManagementContracts.cs
+      Management/GetManagementOverviewUseCase.cs
+      Management/ListManagementTasksUseCase.cs
       Notifications/NotificationContracts.cs
       Notifications/NotificationUseCases.cs
       Notifications/ProjectNotificationPlanner.cs
@@ -175,6 +183,7 @@ src/
       Stores/EfProjectNotificationWriter.cs
       Configurations/ProjectNotificationConfiguration.cs
       Stores/EfProjectTaskStore.cs
+      Stores/EfManagementReadStore.cs
       Stores/EfBudgetsWorkflowStore.cs
       Stores/EfBudgetQuotationConfirmationStore.cs
       Stores/EfBudgetQuotationCommercialHandoffStore.cs
@@ -306,7 +315,7 @@ Authority es `https://accounts.google.com`; Audience es exclusivamente el Client
 
 `MapInboundClaims=false` conserva `sub`, `email`, `name` y `email_verified` originales. OnTokenValidated rechaza un `sub` ausente, vacío o whitespace como fallo de autenticación: produce 401 antes de llegar al Controller. No utiliza email ni NameIdentifier como fallback. Email y name son opcionales; email_verified permanece en ClaimsPrincipal si llegó en el token, sin imponer todavía reglas de dominio o verificación del email.
 
-Application declara `ICurrentUser` con Subject, Email y Name, sin referencias a ASP.NET Core ni ClaimsPrincipal. Api implementa HttpContextCurrentUser mediante IHttpContextAccessor, registrado scoped. Lee exclusivamente `sub` para Subject y exige una identidad autenticada; no genera identificadores ni guarda tokens. `/api/auth/me` devuelve solo esos tres campos, sin ClientId, credenciales ni el resto del JWT.
+Application declara `ICurrentUser` con Subject, Email y Name, sin referencias a ASP.NET Core ni ClaimsPrincipal. Api implementa HttpContextCurrentUser mediante IHttpContextAccessor, registrado scoped. Lee exclusivamente `sub` para Subject y exige una identidad autenticada; no genera identificadores ni guarda tokens. `/api/auth/me` conserva esos tres campos y agrega `isManagement`, comparando Subject con IManagementIdentity mediante StringComparison.Ordinal. No devuelve ClientId, credenciales, roles ni el resto del JWT.
 
 La FallbackPolicy global exige RequireAuthenticatedUser sin roles ni permisos adicionales; los Controllers no necesitan repetir `[Authorize]`. Program ejecuta UseAuthentication y después UseAuthorization, antes de MapControllers. El manejo global de excepciones permanece intacto. La ausencia de autenticación, tokens inválidos o identidad sin sub producen 401 con challenge Bearer; commercial-file responde 403 si el usuario está autenticado pero su Subject no coincide con el Jefe Comercial. SaveToken=false e IncludeErrorDetails=false evitan guardar el token en el ticket o divulgar detalles en el challenge. No se registran cabeceras Authorization ni tokens; tampoco se incluyen tokens fallidos en los parámetros de diagnóstico de validación.
 
@@ -390,7 +399,7 @@ Los tests normales funcionan sin conexión configurada, sin contraseña y sin Po
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite contiene 810 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+La suite contiene 845 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
 
 ApiFixture autentica por defecto mediante el esquema TestIdentity, exclusivo de Tests: sub=google-test-subject, email=test@example.com y name=Test User. Aplica a la identidad sintética la misma regla OnTokenValidated de presencia de sub. Los tests negativos omiten la cabecera o seleccionan una identidad inválida sin cambiar los defaults de otros tests. BudgetsHttp usa el modo sintético budgets y BudgetsAssigneeSubject=budgets-test-subject, separado del cliente Http general. CommercialHeadSubject se configura como google-test-subject únicamente en Tests; other-google-subject prueba el 403 con el mismo email, y el mismo Subject con otro email conserva acceso. No se modifica la configuración productiva para permitir accesos de prueba. Las pruebas del handler JwtBearer real sustituyen discovery por configuración estática únicamente en Tests y verifican 401 para entradas ausentes o inválidas, sin Internet. También se comprueban startup de las opciones, opciones JWT, política global, CommercialHead y BudgetsAssignee, claims originales, ausencia de email como fallback, snapshots del creador, rechazo de identidad en el body, CreatedBy legacy null mediante materialización real de EF, asignación personal, DTOs y reintentos concurrentes HTTP con doble de persistencia. Los tests de compensación verifican la asignación en el ChangeTracker y un único SaveChanges; los índices y bloqueos PostgreSQL conservan la garantía de concurrencia real.
 
@@ -590,7 +599,7 @@ Revisar la migración y el snapshot: columnas, tipos, nullability, claves, índi
 
 ## Ejecutar la API
 
-Con ClientId Google, CommercialHeadSubject, BudgetsAssigneeSubject, conexión y almacenamiento configurados y, para persistir datos, las migraciones aplicadas:
+Con ClientId Google, CommercialHeadSubject, BudgetsAssigneeSubject, ManagementSubject, conexión y almacenamiento configurados y, para persistir datos, las migraciones aplicadas:
 
 ```shell
 dotnet dev-certs https --trust
@@ -599,10 +608,10 @@ dotnet run --project src/Api --launch-profile https
 
 El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `Development`, con redirección HTTP a HTTPS. Detener con `Ctrl+C`. También existe el perfil `http` en 5051, sin puerto HTTPS propio; la redirección puede advertir que no encuentra ese puerto. Se recomienda el perfil `https`.
 
-En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene veinticinco operaciones de negocio y `/api/auth/me`, veintiséis en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
+En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene veintisiete operaciones de negocio y `/api/auth/me`, veintiocho en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
 
 - `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS, autenticación, autorización y Controllers.
-- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y providers del Jefe Comercial y Presupuestos con sus políticas específicas, además de los diecinueve casos de uso, los diez stores, el writer de notificaciones, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
+- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y providers del Jefe Comercial, Presupuestos y Gerencia con sus políticas específicas, además de los veintiún casos de uso, los once stores, el writer de notificaciones, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
 - `appsettings.json`: logging (`Information` general y `Warning` para ASP.NET Core) y `AllowedHosts=*`; no contiene conexiones.
 - `Properties/launchSettings.json`: perfiles/puertos locales y `ASPNETCORE_ENVIRONMENT=Development`.
 - El registro del contexto no aplica migraciones. El worker registrado ejecuta su primer sweep en segundo plano al arrancar.
@@ -633,7 +642,7 @@ PostgreSQL conserva el índice único parcial de PrepareQuotation y la unicidad 
 
 `Features/ProjectDocuments` contiene los contratos y ProjectDocumentService/ProjectDocumentAccess; Api implementa ProjectDocumentsController y ProjectDocumentMultipartReader. EfProjectDocumentStore coordina la persistencia y LocalFileStorage implementa streaming. Los parsers de cotizaciones permanecen independientes.
 
-La comparación de identidades es exacta con StringComparison.Ordinal sobre Google `sub`. Creador/responsable y CommercialHead pueden modificar y consultar; BudgetsAssignee solo puede consultar/descargar cuando existe PrepareQuotation, incluso legacy o Completed. Los demás reciben 403. Para un proyecto legacy sin creador, el Jefe conserva acceso. Upload comprueba existencia y autorización antes de leer el body, y revalida bajo el lock transaccional.
+La comparación de identidades es exacta con StringComparison.Ordinal sobre Google `sub`. Creador/responsable y CommercialHead pueden modificar y consultar; BudgetsAssignee solo puede consultar/descargar cuando existe PrepareQuotation, incluso legacy o Completed. Management puede consultar y descargar en cualquier proyecto, antes o después del handoff, incluyendo históricos y snapshot si existe. No interviene en CanModify; sin otra identidad autorizada, canModify/canRemove/canSendToBudgets son false. Los demás reciben 403. Para un proyecto legacy sin creador, el Jefe conserva acceso. Upload comprueba existencia y autorización antes de leer el body, y revalida bajo el lock transaccional.
 
 | Operación | Contrato / resultado |
 | --- | --- |
@@ -691,6 +700,34 @@ Los errores usan ProblemDetails con code: 400 InvalidDocumentBatch; 403 Document
 
 Los tests sintéticos cubren autorización antes de consumir body, límites exactos con streams generados, atomicidad/compensación, replacements, históricos, notificaciones, archivos/ZIP y modelo EF. El smoke PostgreSQL se ejecuta en un esquema temporal separado, aplica las diez migraciones allí y comprueba carreras reales; elimina únicamente su esquema/archivos y verifica que datos e historial de migraciones de public permanezcan iguales. No requiere ni modifica el corpus XLSX.
 
+## Consultas gerenciales
+
+`Authentication:ManagementSubject` es obligatoria al startup mediante ManagementOptions, BindConfiguration("Authentication") y ValidateOnStart. Null, vacío o whitespace producen únicamente `Configure Authentication:ManagementSubject.`. ConfiguredManagementIdentity implementa IManagementIdentity en Api; Application solo conoce Subject. La policy `Management` exige autenticación y claim `sub` exactamente igual con StringComparison.Ordinal; no recorta, normaliza ni usa email/nombre como fallback.
+
+```powershell
+dotnet user-secrets set "Authentication:ManagementSubject" "<GOOGLE_SUBJECT_GERENCIA>" --project src/Api
+```
+
+La alternativa de entorno es `Authentication__ManagementSubject`. No versionar Subjects reales. `GET /api/auth/me` devuelve subject, email, name e isManagement; una cuenta normal tiene false. ManagementController aplica la policy a ambos endpoints gerenciales: 401 sin autenticación, 403 con otro Subject y 200 con coincidencia exacta, independientemente del email.
+
+`GET /api/management/overview` devuelve:
+
+- `totalProjects`: todos los proyectos persistidos, incluso sin tareas; no hay ProjectStatus, ActiveProjects, CompletedProjects ni CriticalProjects.
+- `tasks`: pending, inProgress, completed.
+- `leakTime`: notStarted, onTrack, dueSoon, dueToday, overdue, completedOnTime, completedLate, untrackedLegacy.
+- `areas`: únicamente áreas representadas en tareas; cada fila contiene area, pending, inProgress, completed, overdue, dueToday, dueSoon. Enums como texto canónico, sin labels traducidos.
+- `attention`: total completo y hasta `AttentionItemLimit = 10` items. Incluye exclusivamente Overdue → DueToday → DueSoon, ordenados dentro de la prioridad por DeadlineAt ascendente, ProjectName ordinal y TaskId. Cada item contiene taskId, projectId, projectName, clientName, sgCode nullable, area, taskType, taskStatus, leakTimeStatus, deadlineAt y startedAt.
+
+`GET /api/management/tasks` devuelve todas las tareas actuales e históricas, sin filtros ni paginación. Cada fila contiene taskId, projectId, projectName, clientId, clientName, sgCode nullable, city, productLine, area, type, status, assignedAt, startedAt, completedAt, deadlineAt, wasOverdue nullable y leakTimeStatus. Ninguno de los DTO gerenciales expone Subjects ni claves de almacenamiento.
+
+La lista ordena primero las no completadas: Overdue → DueToday → DueSoon → OnTrack → NotStarted → UntrackedLegacy; después DeadlineAt ascendente, null al final. Las completadas quedan detrás: CompletedLate → CompletedOnTime → UntrackedLegacy, con CompletedAt descendente dentro de cada grupo. ProjectName ordinal y TaskId resuelven empates. Las fechas son UTC y los valores legacy desconocidos siguen siendo null.
+
+ListManagementTasksUseCase captura un único instante de TaskTiming.UtcNow para proyectar cada respuesta mediante `TaskTiming.Status(task, now)`. GetManagementOverviewUseCase reutiliza esa proyección. No se recalculan deadlines ni se persiste WasOverdue al consultar. IManagementReadStore solo declara CountProjectsAsync y ListTasksAsync; EfManagementReadStore utiliza un COUNT de Projects y una consulta con joins ProjectTasks → Projects → Clients, todas AsNoTracking, sin consultas por tarea. La lista requiere una consulta y el resumen dos. Los casos de uso no guardan entidades, archivos ni notificaciones.
+
+La lectura documental transversal vive en ProjectDocumentAccess, sin cambiar CanModify ni la autorización existente de creador/Jefe/Presupuestos. Una cuenta exclusivamente Management no puede subir, reemplazar, quitar, enviar a Presupuestos, asignar SG ni confirmar cotizaciones. Si comparte Subject con otra identidad autorizada conserva esos permisos. Las reglas de archivos XLSX comerciales permanecen en sus políticas existentes. Gerencia reutiliza GET /api/projects, /api/projects/{id}, /api/projects/{id}/tasks y /api/projects/{id}/notifications; no hay /management/projects. `/api/notifications` sigue limitado al destinatario actual.
+
+Esta funcionalidad no cambia el modelo EF ni crea migraciones. Las pruebas usan identidades sintéticas y reloj controlado; verifican autorización, contratos HTTP/OpenAPI, conteos, orden, joins sin N+1, lectura documental antes/después del handoff y ausencia de mutaciones. No incluye frontend ni SnG Intelligence.
+
 ## Contrato HTTP actual
 
 ### Asignación y corrección de SG
@@ -717,9 +754,11 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 
 | Método y ruta | Request | Éxito | Recurso inexistente |
 | --- | --- | --- | --- |
+| GET `/api/management/overview` | Policy Management, sin parámetros | 200, ManagementOverviewResponse; 401/403 según identidad | No aplica |
+| GET `/api/management/tasks` | Policy Management, sin filtros ni paginación | 200, colección de ManagementTaskResponse; 401/403 según identidad | Colección vacía |
 | GET `/api/notifications` | Sin parámetros; identidad autenticada | 200, notificaciones personales recientes primero; 400 si envía query | No aplica |
 | GET `/api/projects/{id}/notifications` | Guid en ruta | 200, historial cronológico completo | 404 |
-| GET `/api/auth/me` | Bearer ID token | 200, subject/email/name; 401 sin identidad válida | No aplica |
+| GET `/api/auth/me` | Bearer ID token | 200, subject/email/name/isManagement; 401 sin identidad válida | No aplica |
 | POST `/api/clients` | `name` | 201, ClientResponse y Location | No aplica |
 | GET `/api/clients` | Sin body | 200, colección de ClientResponse | Colección vacía |
 | GET `/api/clients/{id}` | Guid en ruta | 200, ClientResponse | 404 |

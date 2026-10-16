@@ -1,4 +1,5 @@
 using SnG.Control.Application.Features.ProjectDocuments;
+using SnG.Control.Application.Features.Management;
 using SnG.Control.Application.Scheduling;
 using SnG.Control.Api.Authorization;
 using SnG.Control.Application.Features.CommercialQuotations;
@@ -38,6 +39,7 @@ public class ApiFixture : IAsyncLifetime
     public ProjectStoreDouble Projects { get; } = new();
     public ProjectTaskStoreDouble Tasks { get; } = new();
     public DocumentDatabaseDouble Documents { get; private set; } = null!;
+    public ManagementReadStoreDouble Management { get; private set; } = null!;
     public TimeProvider Clock { get; set; } = TimeProvider.System;
     public NotificationStoreDouble Notifications { get; private set; } = null!;
     private readonly TemporaryStorage storage = new();
@@ -56,11 +58,16 @@ public class ApiFixture : IAsyncLifetime
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.Configure<ManagementOptions>(options => options.ManagementSubject = "management-test-subject");
         builder.Services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
         builder.Services.AddSingleton(Clock);
         Tasks.Timing = new(Clock, new());
         Notifications = new(Projects, Tasks);
         Documents = new(Projects, Tasks);
+        Management = new(Projects, Clients, Tasks);
+        builder.Services.RemoveAll<IManagementReadStore>();
+        builder.Services.AddSingleton<IManagementReadStore>(Management);
+        builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecurityDocumentTransformer>());
         builder.Services.RemoveAll<IProjectDocumentStore>();
         builder.Services.AddScoped<IProjectDocumentStore>(provider => Documents.Store(provider.GetRequiredService<IStreamingFileStorage>(), provider.GetRequiredService<ProjectDocumentAccess>(), provider.GetRequiredService<TaskTiming>()));
         builder.Services.RemoveAll<SnG.Control.Application.Features.Notifications.IProjectNotificationStore>();
@@ -97,6 +104,7 @@ public class ApiFixture : IAsyncLifetime
         app.UseAuthentication();
         app.UseAuthorization();
         app.MapControllers();
+        app.MapOpenApi().AllowAnonymous();
         await app.StartAsync();
         var server = app.Services.GetRequiredService<IServer>();
         var address = server.Features.Get<IServerAddressesFeature>()!.Addresses.Single();

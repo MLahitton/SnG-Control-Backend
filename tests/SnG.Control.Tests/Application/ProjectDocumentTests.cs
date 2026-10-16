@@ -148,7 +148,7 @@ public class ProjectDocumentTests
         var id = Guid.NewGuid(); var at = DateTime.UtcNow;
         Assert.Equal(ProjectNotification.DocumentsUpdated(task, "budgets", id, 1, 0, at).EventKey, ProjectNotification.DocumentsUpdated(task, "budgets", id, 1, 0, at).EventKey);
     }
-    internal static ProjectDocumentAccess Access(string actor = "creator") => new(new IdentityDouble(actor), new IdentityDouble("head"), new IdentityDouble("budgets"));
+    internal static ProjectDocumentAccess Access(string actor = "creator") => new(new IdentityDouble(actor), new IdentityDouble("head"), new IdentityDouble("budgets"), new IdentityDouble("management"));
     internal static async IAsyncEnumerable<DocumentUpload> Uploads(params DocumentUpload[] uploads)
     {
         foreach (var upload in uploads) { yield return upload; }

@@ -20,7 +20,7 @@ public class ProjectTaskUseCaseTests : IDisposable
     {
         database = new(projects, tasks);
         if (documents) foreach (var project in projects.Items) database.AddDocument(project.Id);
-        var access = new ProjectDocumentAccess(new IdentityDouble(), new IdentityDouble(), new IdentityDouble("budgets-test-subject"));
+        var access = new ProjectDocumentAccess(new IdentityDouble(), new IdentityDouble(), new IdentityDouble("budgets-test-subject"), new IdentityDouble("management-test-subject"));
         var store = database.Store(new LocalFileStorage(Options.Create(new FileStorageOptions { RootPath = storage.Root })), access, TestTiming.Value);
         stores.Add(store); return new(store);
     }
