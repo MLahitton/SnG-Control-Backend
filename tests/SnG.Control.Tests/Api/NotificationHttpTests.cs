@@ -51,6 +51,7 @@ public class NotificationHttpTests
         try
         {
             var project = new Project(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic, "google-test-subject"); fixture.Projects.Items.Add(project);
+            fixture.Documents.AddDocument(project.Id);
             var send = await fixture.Http.PostAsync($"/api/projects/{project.Id}/send-to-budgets", null); Assert.Equal(HttpStatusCode.Created, send.StatusCode);
             var pending = Assert.Single(fixture.Tasks.Items); Assert.Equal(clock.Now, pending.AssignedAt); Assert.Null(pending.DeadlineAt); Assert.Null(pending.WasOverdue);
             var assigned = Assert.Single(fixture.Tasks.Notifications); Assert.Equal("budgets-test-subject", assigned.RecipientGoogleSubject);

@@ -4,7 +4,7 @@
 
 La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web API con Controllers tradicionales y Clean Architecture. El núcleo de negocio contiene `Client`, `Project`, `ProjectTask`, la versión de cotización de Presupuestos, el catálogo base histórico y la cotización comercial confirmada con sus ítems; sus reglas se describen en [README.md](README.md).
 
-La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las nueve migraciones, desde `InitialCreate` hasta `AddLeakTimesAndNotifications`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
+La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las diez migraciones, desde `InitialCreate` hasta `AddProjectDocumentsAndHandoff`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
 Application implementa diecinueve casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel temporal; obtener preview comercial, confirmar su revisión y descargar el XLSX comercial final; listar notificaciones personales y el historial por proyecto. ProjectNotificationSweepService coordina adicionalmente una iteración recuperable. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. La autenticación Google protege las operaciones y `/api/auth/me` consulta la identidad mediante ICurrentUser, sin persistencia ni otro caso de uso de negocio. No hay repositorios genéricos, Unit of Work propio, roles específicos ni Docker. La API exige configuración de autenticación, conexión y almacenamiento, y no aplica migraciones al arrancar. El worker inicia una consulta de notificaciones en segundo plano; una falla de DB se registra por tipo y se reintenta sin detener la API.
 
@@ -63,6 +63,8 @@ src/
     Controllers/ProjectsController.cs
     Controllers/NotificationsController.cs
     Controllers/ProjectTasksController.cs
+    Controllers/ProjectDocumentsController.cs
+    Contracts/ProjectDocumentMultipartReader.cs
     Controllers/BudgetQuotationController.cs
     Controllers/AuthController.cs
     Controllers/CommercialHandoffController.cs
@@ -79,6 +81,7 @@ src/
     Identity/ICurrentUser.cs
     Identity/ICommercialHeadIdentity.cs
     Files/IFileStorage.cs
+    Files/IStreamingFileStorage.cs
     Features/
       Notifications/NotificationContracts.cs
       Notifications/NotificationUseCases.cs
@@ -119,6 +122,11 @@ src/
         Create/CreateProjectUseCase.cs
         GetById/GetProjectByIdUseCase.cs
         List/ListProjectsUseCase.cs
+      ProjectDocuments/
+        DocumentContracts.cs
+        ProjectDocumentAccess.cs
+        ProjectDocumentService.cs
+        DocumentSizeStream.cs
       ProjectTasks/
         IProjectTaskStore.cs
         ProjectTaskResponse.cs
@@ -199,6 +207,8 @@ src/
         20261014201256_AddCommercialQuotationConfirmation.Designer.cs
         20261015141208_AddLeakTimesAndNotifications.cs
         20261015141208_AddLeakTimesAndNotifications.Designer.cs
+        20261016051339_AddProjectDocumentsAndHandoff.cs
+        20261016051339_AddProjectDocumentsAndHandoff.Designer.cs
         SnGControlDbContextModelSnapshot.cs
 tests/
   SnG.Control.Tests/
@@ -340,7 +350,7 @@ Presupuestos posee el serial SG. `BudgetsAssigneeRequirement` y `BudgetsAssignee
 
 La política protege PUT `/api/projects/{id}/sg-code`, POST `/api/projects/{id}/budget-quotation/preview`, POST `/api/projects/{id}/budget-quotation/confirm` y POST `/api/projects/{id}/send-to-commercial`. Responde 401 sin autenticación y 403 para otro Subject antes del binding y del caso de uso, sin cambiar SG, tarea, StartedAt, DeadlineAt, WasOverdue ni notificaciones. La identidad configurada conserva los resultados funcionales existentes.
 
-CommercialHead permanece independiente: ser Jefe no concede acceso a Presupuestos. Si ambas claves contienen el mismo Subject, cada política lo autoriza por su propia configuración. Las consultas generales, send-to-budgets y las reglas comerciales de descarga/preview/confirm permanecen iguales; no se agregan Users, roles DB ni jerarquías.
+CommercialHead permanece independiente: ser Jefe no concede acceso a Presupuestos. Si ambas claves contienen el mismo Subject, cada política lo autoriza por su propia configuración. Las consultas generales y las reglas comerciales de descarga/preview/confirm mantienen su autorización; send-to-budgets exige creador/responsable o Jefe Comercial; no se agregan Users, roles DB ni jerarquías.
 
 ### Almacenamiento local
 
@@ -354,7 +364,7 @@ dotnet user-secrets set "FileStorage:RootPath" "<DIRECTORIO_ABSOLUTO_DE_ARCHIVOS
 
 Alternativa: `FileStorage__RootPath=<DIRECTORIO_ABSOLUTO_DE_ARCHIVOS>`. Las variables de entorno tienen prioridad sobre User Secrets. No versionar rutas reales ni añadir RootPath a PostgreSQL o appsettings.json. El tooling EF puede inspeccionar el modelo sin esta configuración; el arranque HTTP normal la exige, incluido cuando se utiliza solo preview.
 
-`Application/Files/IFileStorage` expone SaveAsync, ReadAsync y DeleteAsync mediante clave relativa, bytes y CancellationToken. No expone RootPath ni rutas físicas. `Infrastructure/Files/LocalFileStorage` resuelve las claves dentro de la raíz configurada, rechaza rutas absolutas, traversal, segmentos vacíos/punto, backslashes, colon y caracteres inválidos. También rechaza symlinks/junctions existentes dentro de la raíz. La carpeta debe pertenecer al servicio: no se pretende proteger frente a otro proceso privilegiado que cambie enlaces mientras se escribe.
+`Application/Files/IFileStorage` conserva SaveAsync, ReadAsync y DeleteAsync para cotizaciones. IStreamingFileStorage amplía esa capacidad con SaveFromStreamAsync y OpenReadAsync; documentos usan únicamente streams. Ambas abstracciones emplean claves relativas y CancellationToken. No expone RootPath ni rutas físicas. `Infrastructure/Files/LocalFileStorage` resuelve las claves dentro de la raíz configurada, rechaza rutas absolutas, traversal, segmentos vacíos/punto, backslashes, colon y caracteres inválidos. También rechaza symlinks/junctions existentes dentro de la raíz. La carpeta debe pertenecer al servicio: no se pretende proteger frente a otro proceso privilegiado que cambie enlaces mientras se escribe.
 
 La escritura crea directorios necesarios, escribe un temporal único con CreateNew en el directorio destino, hace flush a disco y rename al nombre final con overwrite desactivado. Si falla, intenta eliminar su temporal. DeleteAsync elimina exclusivamente la clave solicitada; no realiza limpieza global ni borra directorios ajenos. Los directorios vacíos de una operación fallida pueden permanecer.
 
@@ -380,7 +390,7 @@ Los tests normales funcionan sin conexión configurada, sin contraseña y sin Po
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite contiene 752 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+La suite contiene 810 tests. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
 
 ApiFixture autentica por defecto mediante el esquema TestIdentity, exclusivo de Tests: sub=google-test-subject, email=test@example.com y name=Test User. Aplica a la identidad sintética la misma regla OnTokenValidated de presencia de sub. Los tests negativos omiten la cabecera o seleccionan una identidad inválida sin cambiar los defaults de otros tests. BudgetsHttp usa el modo sintético budgets y BudgetsAssigneeSubject=budgets-test-subject, separado del cliente Http general. CommercialHeadSubject se configura como google-test-subject únicamente en Tests; other-google-subject prueba el 403 con el mismo email, y el mismo Subject con otro email conserva acceso. No se modifica la configuración productiva para permitir accesos de prueba. Las pruebas del handler JwtBearer real sustituyen discovery por configuración estática únicamente en Tests y verifican 401 para entradas ausentes o inválidas, sin Internet. También se comprueban startup de las opciones, opciones JWT, política global, CommercialHead y BudgetsAssignee, claims originales, ausencia de email como fallback, snapshots del creador, rechazo de identidad en el body, CreatedBy legacy null mediante materialización real de EF, asignación personal, DTOs y reintentos concurrentes HTTP con doble de persistencia. Los tests de compensación verifican la asignación en el ChangeTracker y un único SaveChanges; los índices y bloqueos PostgreSQL conservan la garantía de concurrencia real.
 
@@ -400,9 +410,9 @@ Los artefactos de compilación y `TestResults` están excluidos por `.gitignore`
 
 ## Contexto y materialización
 
-`SnGControlDbContext` está en `SnG.Control.Infrastructure.Persistence`. Recibe `DbContextOptions<SnGControlDbContext>`, expone diez DbSets: `Clients`, `Projects`, `ProjectTasks`, `BudgetQuotationVersions`, `CommercialCatalogs`, `CommercialCatalogItems`, `CommercialCatalogItemExtractions`, `CommercialQuotations`, `CommercialQuotationItems` y `ProjectNotifications`. Aplica explícitamente las diez configuraciones IEntityTypeConfiguration correspondientes.
+`SnGControlDbContext` está en `SnG.Control.Infrastructure.Persistence`. Recibe `DbContextOptions<SnGControlDbContext>`, expone trece DbSets: `Clients`, `Projects`, `ProjectTasks`, `BudgetQuotationVersions`, `CommercialCatalogs`, `CommercialCatalogItems`, `CommercialCatalogItemExtractions`, `CommercialQuotations`, `CommercialQuotationItems`, `ProjectNotifications`, `ProjectDocuments`, `ProjectDocumentHandoffs` y `ProjectDocumentHandoffItems`. Aplica explícitamente las trece configuraciones IEntityTypeConfiguration correspondientes.
 
-Las propiedades tienen setters privados. EF enlaza constructores y restaura los valores persistidos. Project y las seis entidades de cotización/catálogo tienen constructor privado sin parámetros reservado para materialización; ProjectTask y ProjectNotification también tienen constructor privado para EF; Client usa constructor enlazado. El constructor público de Project exige CreatedByGoogleSubject no vacío, mientras EF puede materializar proyectos históricos con los tres campos de creador null. Los tests compilan consultas de los diez DbSets y prueban esa materialización con IStructuralTypeMaterializerSource, sin conexión.
+Las propiedades tienen setters privados. EF enlaza constructores y restaura los valores persistidos. Project y las seis entidades de cotización/catálogo tienen constructor privado sin parámetros reservado para materialización; ProjectTask y ProjectNotification también tienen constructor privado para EF; Client usa constructor enlazado. El constructor público de Project exige CreatedByGoogleSubject no vacío, mientras EF puede materializar proyectos históricos con los tres campos de creador null. Los tests compilan consultas de los DbSets y prueban esa materialización con IStructuralTypeMaterializerSource, sin conexión.
 
 Los identificadores nacen de `Guid.NewGuid()` en el dominio y se mapean con `ValueGeneratedNever()`: no hay generación de UUID en PostgreSQL. Las fechas son `DateTime` UTC; `CreatedAt` y `UpdatedAt` coinciden al crear clientes o proyectos. Los timestamps e identificadores almacenados se conservan al materializar entidades; no hay mecanismo automático de actualización de fechas.
 
@@ -414,7 +424,7 @@ Los proyectos y carpetas bajo `src` se llaman `Api`, `Application`, `Domain` e `
 
 ## Tablas y restricciones
 
-No hay tablas Users/Employees ni roles persistidos. La identidad necesaria para el negocio se guarda en Project, ProjectTask y los snapshots de auditoría de CommercialQuotation; el modelo tiene nueve migraciones.
+No hay tablas Users/Employees ni roles persistidos. La identidad necesaria para el negocio se guarda en Project, ProjectTask y los snapshots de auditoría de CommercialQuotation; el modelo tiene diez migraciones.
 
 Se usan nombres explícitos `Clients`, `Projects` y `ProjectTasks`, con columnas PascalCase; el SQL PostgreSQL generado utiliza identificadores entre comillas. No se introduce un esquema personalizado.
 
@@ -479,6 +489,8 @@ La extracción utiliza PK/FK CatalogItemId y no necesita otra identidad. No hay 
 
 ## Migraciones
 
+`20261016051339_AddProjectDocumentsAndHandoff` crea ProjectDocuments, ProjectDocumentHandoffs y ProjectDocumentHandoffItems, con PK/FK Restrict, unicidad de StorageKey y de handoff por proyecto, índices de vigentes/histórico, constraints de tamaño/textos/estado y relaciones compuestas que impiden referencias entre proyectos. Amplía NotificationKind a 5; la restricción de estado existente ya exige Informational para todo tipo distinto de Overdue. No modifica migraciones anteriores, no hace backfill y no se aplica al arrancar. Debe revisarse y aplicarse explícitamente antes de operar esta funcionalidad; la validación aislada no actualiza la base normal.
+
 `20261015141208_AddLeakTimesAndNotifications` agrega DeadlineAt (`timestamp with time zone`) y WasOverdue (`boolean`) nullable a ProjectTasks, sin defaults ni backfill. Crea ProjectNotifications, sus restricciones y cuatro índices. Las ocho migraciones anteriores permanecen intactas. Down elimina exclusivamente la tabla nueva y ambas columnas.
 
 `20261014201256_AddCommercialQuotationConfirmation` crea CommercialQuotations y CommercialQuotationItems y el índice parcial único PresentQuotationToClient (`Type = 3`). Conserva las siete migraciones anteriores, sin backfill ni modificaciones a tablas históricas salvo el índice de tareas. Las nuevas FK usan Restrict. Down elimina solo ambas tablas nuevas y ese índice.
@@ -500,8 +512,8 @@ La fábrica `SnG.Control.Api.Persistence.SnGControlDbContextFactory` implementa 
 ```shell
 dotnet ef migrations list --no-connect --project src/Infrastructure --startup-project src/Api -- --environment Development
 dotnet ef migrations has-pending-model-changes --project src/Infrastructure --startup-project src/Api -- --environment Development
-dotnet ef migrations script 0 AddLeakTimesAndNotifications --project src/Infrastructure --startup-project src/Api -- --environment Development
-dotnet ef migrations script AddCommercialQuotationConfirmation AddLeakTimesAndNotifications --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script 0 AddProjectDocumentsAndHandoff --project src/Infrastructure --startup-project src/Api -- --environment Development
+dotnet ef migrations script AddLeakTimesAndNotifications AddProjectDocumentsAndHandoff --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
 ### Aplicar a la base existente
@@ -551,7 +563,7 @@ Comprobar que el comando termina correctamente y verificar el estado aplicado:
 dotnet ef migrations list --project src/Infrastructure --startup-project src/Api -- --environment Development
 ```
 
-El modelo tiene exactamente nueve migraciones, en orden:
+El modelo tiene exactamente diez migraciones, en orden:
 
 1. `20261013143318_InitialCreate`
 2. `20261013190849_AddProjectTasks`
@@ -562,6 +574,7 @@ El modelo tiene exactamente nueve migraciones, en orden:
 7. `20261014192650_AddCommercialIdentityAssignments`
 8. `20261014201256_AddCommercialQuotationConfirmation`
 9. `20261015141208_AddLeakTimesAndNotifications`
+10. `20261016051339_AddProjectDocumentsAndHandoff`
 
 Cada instalación debe comprobar su historial en `__EFMigrationsHistory` antes de operar. Los comandos de inspección offline no verifican si una base concreta tiene migraciones aplicadas.
 
@@ -586,10 +599,10 @@ dotnet run --project src/Api --launch-profile https
 
 El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `Development`, con redirección HTTP a HTTPS. Detener con `Ctrl+C`. También existe el perfil `http` en 5051, sin puerto HTTPS propio; la redirección puede advertir que no encuentra ese puerto. Se recomienda el perfil `https`.
 
-En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene diecinueve operaciones de negocio y `/api/auth/me`, veinte en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
+En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene veinticinco operaciones de negocio y `/api/auth/me`, veintiséis en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
 
 - `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS, autenticación, autorización y Controllers.
-- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y providers del Jefe Comercial y Presupuestos con sus políticas específicas, además de los diecinueve casos de uso, los nueve stores, el writer de notificaciones, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
+- `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y providers del Jefe Comercial y Presupuestos con sus políticas específicas, además de los diecinueve casos de uso, los diez stores, el writer de notificaciones, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
 - `appsettings.json`: logging (`Information` general y `Warning` para ASP.NET Core) y `AllowedHosts=*`; no contiene conexiones.
 - `Properties/launchSettings.json`: perfiles/puertos locales y `ASPNETCORE_ENVIRONMENT=Development`.
 - El registro del contexto no aplica migraciones. El worker registrado ejecuta su primer sweep en segundo plano al arrancar.
@@ -610,13 +623,73 @@ Las respuestas de Application se mapean explícitamente con `FromEntity`, compar
 
 `Features/ProjectTasks` contiene `IProjectTaskStore`, `ProjectTaskResponse` y los casos de uso agrupados en `SendToBudgets`, `ListByArea` y `ListByProject`. La interfaz declara únicamente `TryAddPrepareQuotationAsync`, `ListByAreaAsync` y `ListByProjectAsync`. La operación de inserción devuelve true si la tarea se guardó y false si ya existe PrepareQuotation para el proyecto. `EfProjectTaskStore` utiliza el mismo DbContext scoped; guarda con SaveChangesAsync, lee con AsNoTracking y propaga CancellationToken en todas las operaciones.
 
-`SendProjectToBudgetsUseCase` primero consulta el Project. Si no existe devuelve `ProjectNotFound`; si existe, construye una tarea Budgets/PrepareQuotation/Pending e intenta insertarla mediante `TryAddPrepareQuotationAsync`. Un true produce `Created` con su DTO; un false produce `AlreadySent`. No hay consulta previa de tareas como garantía de unicidad. `SendProjectToBudgetsResult` expresa esos resultados mediante records específicos, sin excepciones de negocio ni framework Result genérico. Crear Project no invoca este caso de uso.
+`SendProjectToBudgetsUseCase` delega el envío formal en `IProjectDocumentStore.SendToBudgetsAsync`. El store bloquea Project y revalida: inexistente → ProjectNotFound; actor distinto del creador/Jefe → Forbidden; PrepareQuotation o snapshot existentes → AlreadySent; ningún documento vigente → DocumentsRequired. El éxito crea snapshot exacto, tarea Pending asignada a Presupuestos y TaskAssigned en una transacción/SaveChanges. No inicia StartedAt ni DeadlineAt. Crear Project no invoca este caso de uso.
 
 `ListProjectTasksByAreaUseCase` valida los enums y consulta por igualdad de Area y Status. `ListProjectTasksByProjectUseCase` verifica primero el proyecto: devuelve null si no existe, colección vacía si no tiene tareas o todas sus tareas en otro caso. No hay paginación ni orden garantizado en ninguna consulta.
 
-PostgreSQL es la autoridad de integridad: la inserción se intenta directamente y el índice único parcial arbitra los envíos concurrentes. El store captura un DbUpdateException **solo** cuando su InnerException es PostgresException con SqlState=`PostgresErrorCodes.UniqueViolation` (23505) **y** ConstraintName=`UX_ProjectTasks_ProjectId_PrepareQuotation`. Ese conflicto se traduce a false → AlreadySent → HTTP 409. Una violación de otra restricción, otro SQLSTATE o cualquier otro error se propaga al manejo global de errores inesperados, sin exponer mensajes PostgreSQL por HTTP.
+PostgreSQL conserva el índice único parcial de PrepareQuotation y la unicidad de ProjectDocumentHandoffs.ProjectId. Las operaciones documentales y el envío se serializan con SELECT FOR UPDATE sobre Project antes de consultar documentos/tarea; así un segundo envío ve el primero confirmado y responde AlreadySent. El método de inserción aislada de EfProjectTaskStore conserva su detector específico de 23505, pero ya no es la ruta del handoff HTTP.
 
-Después del conflicto esperado, el store establece `context.Entry(task).State = EntityState.Detached`. Solo desacopla la tarea rechazada; no vacía el ChangeTracker ni descarta otras entidades. Así un SaveChanges posterior en el mismo scope no reintenta la inserción fallida. No hay transacciones externas ni UnitOfWork adicional en este flujo; SaveChangesAsync utiliza el comportamiento transaccional de EF.
+## Documentos del proyecto y handoff inicial
+
+`Features/ProjectDocuments` contiene los contratos y ProjectDocumentService/ProjectDocumentAccess; Api implementa ProjectDocumentsController y ProjectDocumentMultipartReader. EfProjectDocumentStore coordina la persistencia y LocalFileStorage implementa streaming. Los parsers de cotizaciones permanecen independientes.
+
+La comparación de identidades es exacta con StringComparison.Ordinal sobre Google `sub`. Creador/responsable y CommercialHead pueden modificar y consultar; BudgetsAssignee solo puede consultar/descargar cuando existe PrepareQuotation, incluso legacy o Completed. Los demás reciben 403. Para un proyecto legacy sin creador, el Jefe conserva acceso. Upload comprueba existencia y autorización antes de leer el body, y revalida bajo el lock transaccional.
+
+| Operación | Contrato / resultado |
+| --- | --- |
+| POST `/api/projects/{id}/documents/batch` | multipart; 201 DocumentBatchResponse |
+| GET `/api/projects/{id}/documents` | 200 DocumentListResponse |
+| DELETE `/api/projects/{id}/documents/{documentId}` | 204; solo vigente antes del handoff |
+| GET `/api/projects/{id}/documents/{documentId}/file` | 200 attachment, application/octet-stream |
+| GET `/api/projects/{id}/documents/current.zip` | 200 ZIP de vigentes |
+| GET `/api/projects/{id}/documents/initial-handoff.zip` | 200 ZIP del snapshot; 409 InitialHandoffUnavailable en legacy |
+
+Todos exigen autenticación (401 si falta). Los DTO documentales omiten StorageKey y Subjects. DocumentListResponse contiene `documents`, `initialHandoff`, `canModify`, `canRemove` y `canSendToBudgets`; cada documento contiene id, originalFileName, contentType, sizeBytes, uploadedAt, uploadedBy (email/name), uploadBatchId, isCurrent, replacedAt, replacedByDocumentId e inInitialHandoff. El handoff expone id, sentAt, sentBy (email/name) y documentIds. Batch devuelve uploadBatchId y documentos creados. Las capacidades son informativas; el servidor siempre vuelve a autorizar.
+
+### Multipart y límites
+
+La primera parte debe ser `manifest`, Content-Type application/json UTF-8, máximo **16 384 bytes**, profundidad JSON máxima 8, sin propiedades desconocidas. Contiene entre 1 y 15 archivos, con partName de 1–64 letras/dígitos ASCII o guiones, único y distinto de manifest. Las partes de archivo siguientes pueden llegar en cualquier orden y deben corresponder exactamente al manifest. No se permiten partes extra, faltantes, duplicadas, replacements repetidos, Guid vacío ni archivos vacíos. El manifest puede enviarse como Blob con filename; ese nombre se ignora.
+
+```json
+{
+  "files": [
+    { "partName": "file-0", "replacesDocumentId": null },
+    { "partName": "file-1", "replacesDocumentId": "<DOCUMENT_ID_VIGENTE>" }
+  ]
+}
+```
+
+```shell
+curl.exe -H "Authorization: Bearer <TOKEN_CREADOR_O_JEFE>" -F "manifest=@manifest.json;type=application/json" -F "file-0=@<ARCHIVO_NUEVO>" -F "file-1=@<ARCHIVO_REEMPLAZO>" "https://localhost:7265/api/projects/<PROJECT_ID>/documents/batch"
+```
+
+ProjectDocument declara MaxFileBytes=100_000_000, MaxBatchBytes=300_000_000 y MaxCurrentDocuments=15. DocumentSizeStream cuenta bytes realmente leídos; los límites exactos son válidos y excederlos produce 413 FileTooLarge/BatchTooLarge. El límite HTTP es 301_000_000 para permitir hasta 1 MB de overhead multipart; el contenido de archivos sigue limitado a 300 MB. Headers por parte: máximo 16 y 8192 bytes; boundary máximo 128. No se utiliza IFormFile ni se acumulan los archivos en memoria. El buffer de manifest es pequeño; la copia usa buffers de 81 920 bytes.
+
+Se admite cualquier extensión/formato sin inspección de contenido. OriginalFileName es metadata Unicode no vacía de hasta 255 caracteres; se rechazan componentes de path, slash/backslash, colon, controles, caracteres inseguros para nombres y terminación en punto/espacio. ContentType es nullable, acotado y sin controles; nunca decide cómo ejecutar/renderizar el archivo. Cada documento tiene Guid y clave opaca `projects/{projectId}/documents/{documentId}/content`, independiente del nombre. Nombres repetidos no implican reemplazo.
+
+### Atomicidad, concurrencia e historia
+
+Cada upload adquiere FOR UPDATE sobre Project antes de leer documentos/tarea y mantiene el lock hasta completar el streaming y la transacción. Revalida autorización, vigentes y replacements dentro de esa sección. El proveedor escribe mediante temporal y rename sin sobrescritura; preserva rechazo de traversal/symlinks/junctions y cancelación. SaveChanges guarda el batch y su eventual aviso juntos; commit ocurre después de que todos sus archivos están disponibles. Ante error se revierte y se limpian exclusivamente las claves nuevas; si COMMIT no fue confirmado y rollback no puede establecer fallo, se conservan los archivos para inspección. No se limpian archivos ajenos.
+
+Upload, reemplazo, baja y send-to-budgets comparten el lock de Project; no toman locks documentales en orden inverso. Las consultas documentales leen metadata/snapshot en una transacción RepeatableRead para evitar mezclar versiones entre consultas. Reemplazar crea una fila nueva, actualiza solo ReplacedAt/ReplacedByDocumentId del anterior y conserva bytes/metadata originales. Los reemplazados no vuelven a vigentes. El límite cuenta solo ReplacedAt=null y RemovedAt=null.
+
+La baja previa al envío es **lógica** mediante RemovedAt: se conservan la fila y sus bytes, y todas las consultas/descargas públicas excluyen esa fila. No hay purga física automática. Esto evita filas sin archivo o archivos sin referencia por una falla entre DB y filesystem. No se pueden quitar históricos; con PrepareQuotation o snapshot presente responde 409 DocumentRemovalLocked.
+
+El envío formal exige creador/Jefe y al menos un vigente. Guarda snapshot, items, PrepareQuotation Pending y TaskAssigned en una sola transacción. Una carga confirmada antes entra al snapshot; una posterior queda fuera y notifica. Una baja que gana al envío queda fuera; si gana el envío, la baja se rechaza. Las FK compuestas mantienen cada replacement/item dentro de su proyecto; las FK Restrict conservan historia. No se duplican físicamente los archivos del snapshot.
+
+Los proyectos con PrepareQuotation preexistente siguen enviados aunque initialHandoff sea null. Presupuestos puede leer sus documentos posteriores; no se reconstruye un snapshot ficticio. DeadlineAt/StartedAt/WasOverdue no cambian al cargar o reemplazar documentos.
+
+### Descargas, ZIP y notificaciones
+
+La descarga individual abre FileStream, siempre como attachment y application/octet-stream, con nosniff. También permite históricos, pero rechaza documentos de otro proyecto o dados de baja. ZIP vigente e inicial seleccionan sus documentos por estado o por los IDs inmutables del handoff. ProjectDocumentArchive copia en streaming a un archivo temporal aleatorio DeleteOnClose, que se elimina al cerrar la respuesta o ante fallo; no reserva hasta 1.5 GB en RAM. Los entries quedan en la raíz, ordenados por UploadedAt/Id; los duplicados se desambiguan de forma determinista (`planos.pdf`, `planos (2).pdf`), sin modificar nombres persistidos.
+
+NotificationKind.ProjectDocumentsUpdated=5 es Informational. Solo lo crea un batch documental exitoso posterior al envío, una vez por operación, incluso si PrepareQuotation está Completed. El destinatario es AssignedToGoogleSubject de PrepareQuotation; para legacy null se utiliza BudgetsAssigneeSubject configurado, sin reescribir la tarea. El título es “Documentación del proyecto actualizada”; el mensaje cuenta additions/replacements con singular/plural. ScheduledAt/CreatedAt corresponden al evento; DeadlineAt se proyecta de la tarea.
+
+Su EventKey usa TaskId, kind 5, SHA-256 del destinatario y UploadBatchId. La unicidad existente evita duplicar ese evento. Los otros cuatro kinds conservan su clave por ciclo de asignación; el worker nunca genera ProjectDocumentsUpdated.
+
+Los errores usan ProblemDetails con code: 400 InvalidDocumentBatch; 403 DocumentAccessDenied; 404 ProjectNotFound/DocumentNotFound; 409 DocumentsRequired, DocumentLimitExceeded, InvalidReplacement, DocumentRemovalLocked o InitialHandoffUnavailable; 413 FileTooLarge/BatchTooLarge; 500 DocumentUnavailable para bytes referenciados ausentes. Fallos inesperados se sanitizan con el handler global.
+
+Los tests sintéticos cubren autorización antes de consumir body, límites exactos con streams generados, atomicidad/compensación, replacements, históricos, notificaciones, archivos/ZIP y modelo EF. El smoke PostgreSQL se ejecuta en un esquema temporal separado, aplica las diez migraciones allí y comprueba carreras reales; elimina únicamente su esquema/archivos y verifica que datos e historial de migraciones de public permanezcan iguales. No requiere ni modifica el corpus XLSX.
 
 ## Contrato HTTP actual
 
@@ -653,7 +726,7 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 | POST `/api/projects` | `clientId`, `name`, `city`, `productLine` | 201, ProjectResponse y Location | 404 si no existe Client |
 | GET `/api/projects` | Sin body | 200, colección de ProjectResponse | Colección vacía |
 | GET `/api/projects/{id}` | Guid en ruta | 200, ProjectResponse | 404 |
-| POST `/api/projects/{id}/send-to-budgets` | Guid en ruta, sin body | 201, ProjectTaskResponse; 409 si ya enviado | 404 |
+| POST `/api/projects/{id}/send-to-budgets` | Sin body; creador o Jefe; ≥1 vigente | 201, ProjectTaskResponse; 403 otro actor; 409 AlreadySent/DocumentsRequired | 404 |
 | GET `/api/project-tasks?area=Budgets&status=Pending` | area y status requeridos como nombres | 200, colección de ProjectTaskResponse | Colección vacía |
 | GET `/api/projects/{id}/tasks` | Guid en ruta, sin filtros | 200, colección de ProjectTaskResponse | 404 |
 | PUT `/api/projects/{id}/sg-code` | `sgCode`; BudgetsAssignee | 200, AssignProjectSgCodeResponse; 409 por workflow o SG ocupado | 404 |
@@ -1065,6 +1138,8 @@ Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects/$($project.id)"
 Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/clients"
 Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects"
 
+# Antes del envío, cargar al menos un documento mediante el contrato batch documentado.
+# El token del envío debe pertenecer al creador o al Jefe.
 # Debe estar vacío: crear Project no lo envía a Presupuestos.
 Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects/$($project.id)/tasks"
 $task = Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
@@ -1090,7 +1165,7 @@ Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/project-tasks?area=Budgets
 
 Los POST de creación y el primer envío generan registros reales y responden 201; los GET del ejemplo responden 200. El segundo envío responde 409 sin escribir otra tarea. Un Guid válido inexistente responde 404 al consultar entidades, enviar o consultar su historial. Cambiar `productLine`, `area` o `status` por un número o nombre desconocido, omitir área/estado, dejar `name`/`city` en blanco o enviar `Guid.Empty` como `clientId` produce 400. Un proyecto con cliente inexistente produce 404 sin insertar el proyecto.
 
-No hay endpoint de borrado. Para validaciones controladas en una base compartida, identificar los registros de prueba con una marca única y retirar exclusivamente esos registros mediante una operación administrativa segura, primero las ProjectNotifications de la prueba, después ProjectTasks, Projects y finalmente Clients; si la prueba incluye cotizaciones, retirar previamente sus registros dependientes en orden de FK. No modificar datos ajenos a la prueba.
+Solo existe baja lógica documental antes del handoff; no hay borrado de proyectos/clientes. Para validaciones controladas en una base compartida, identificar los registros de prueba con una marca única y retirar exclusivamente esos registros mediante una operación administrativa segura, primero las ProjectNotifications de la prueba, después ProjectTasks, Projects y finalmente Clients; si la prueba incluye cotizaciones, retirar previamente sus registros dependientes en orden de FK. No modificar datos ajenos a la prueba.
 
 ### Validación de concurrencia real
 
@@ -1140,9 +1215,9 @@ GET no persiste WasOverdue ni genera notificaciones. Por eso puede mostrar Overd
 
 ProjectNotification tiene doce columnas explícitas: Id, ProjectId, ProjectTaskId, RecipientGoogleSubject, Kind, State, Title, Message, ScheduledAt, CreatedAt, ResolvedAt y EventKey. Guid generados por Domain; textos text; Kind/State integer; fechas timestamp with time zone. Solo ResolvedAt admite null. FK a Project y ProjectTask con Restrict. CHECKs validan textos no vacíos, Kind válido y coherencia entre tipo, estado y resolución. No hay Users, roles, tokens ni campos leído/no leído.
 
-NotificationKind: TaskAssigned=1, DueInTwoBusinessDays=2, DueToday=3, Overdue=4. NotificationState: Informational=1, Active=2, Resolved=3. Solo Overdue puede estar Active/Resolved; los demás son Informational. Los títulos se declaran para cada tipo de tarea y evento en lenguaje operativo, sin nombres técnicos. Message remite al detalle del proyecto sin inventar contexto.
+NotificationKind: TaskAssigned=1, DueInTwoBusinessDays=2, DueToday=3, Overdue=4, ProjectDocumentsUpdated=5. NotificationState: Informational=1, Active=2, Resolved=3. Solo Overdue puede estar Active/Resolved; los demás son Informational. Los títulos se declaran para cada tipo de tarea y evento en lenguaje operativo, sin nombres técnicos. Message remite al detalle del proyecto sin inventar contexto.
 
-EventKey combina TaskId, Kind, SHA-256 del Subject exacto y AssignedAt a precisión de microsegundos. Ese instante identifica el ciclo actual; la futura reasignación podrá distinguir otro ciclo sin borrar historia. El hash evita introducir el Subject literal en la clave, pero no reemplaza la autorización. EventKey no se devuelve por HTTP. La unicidad real es **UX_ProjectNotifications_EventKey**; los otros índices son RecipientGoogleSubject+CreatedAt, ProjectId+CreatedAt y ProjectTaskId.
+Para TaskAssigned, DueInTwoBusinessDays, DueToday y Overdue, EventKey combina TaskId, Kind, SHA-256 del Subject exacto y AssignedAt a precisión de microsegundos. Ese instante identifica el ciclo actual; la futura reasignación podrá distinguir otro ciclo sin borrar historia. El hash evita introducir el Subject literal en la clave, pero no reemplaza la autorización. EventKey no se devuelve por HTTP. La unicidad real es **UX_ProjectNotifications_EventKey**; los otros índices son RecipientGoogleSubject+CreatedAt, ProjectId+CreatedAt y ProjectTaskId.
 
 ScheduledAt es el instante empresarial; CreatedAt el momento de generación del registro. TaskAssigned usa AssignedAt como ScheduledAt y se inserta en la misma operación/transacción que la nueva tarea, incluso Pending. Los avisos temporales usan exclusivamente el deadline almacenado: dos días laborales hacia atrás a las 08:00, el día de vencimiento a las 08:00 y atraso solo después de DeadlineAt. Overdue conserva DeadlineAt como ScheduledAt. Un deadline de martes genera el recordatorio previo el sábado, si no hay festivos intermedios.
 
@@ -1182,4 +1257,4 @@ La regla futura de reasignación conserva historia, emite otro TaskAssigned y re
 - Validar herramientas, restore, build, tests y migraciones; corregir warnings atribuibles al código sin ocultarlos mediante configuración. Reportar los que legítimamente permanezcan y cualquier supuesto o impedimento.
 - No incluir secretos reales en archivos versionados. No aplicar migraciones automáticamente al arrancar.
 
-Siguen pendientes la aprobación del cliente, anticipo, finalización de PresentQuotationToClient, reasignación de asesor/tareas y, en alcance posterior, la edición de otros campos, eliminación, generación automática de SG, auditoría/historial de cambios SG, nuevas versiones y edición posterior de cotizaciones, revisiones comerciales posteriores, devolución de tareas y demás módulos funcionales. El preview XLSX de Presupuestos es stateless; su confirmación crea el catálogo base y conserva el documento inicial, sin implementar versión 2 ni edición posterior. Los filtros de tareas son Area+Status; notificaciones personales se filtran exclusivamente por la identidad autenticada; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation, ReviewQuotation y PresentQuotationToClient por proyecto.
+Siguen pendientes la aprobación del cliente, anticipo, finalización de PresentQuotationToClient, reasignación de asesor/tareas y, en alcance posterior, la edición de otros campos, eliminación de proyectos/clientes, generación automática de SG, auditoría/historial de cambios SG, nuevas versiones y edición posterior de cotizaciones, revisiones comerciales posteriores, devolución de tareas y demás módulos funcionales. El preview XLSX de Presupuestos es stateless; su confirmación crea el catálogo base y conserva el documento inicial, sin implementar versión 2 ni edición posterior. Los filtros de tareas son Area+Status; notificaciones personales se filtran exclusivamente por la identidad autenticada; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation, ReviewQuotation y PresentQuotationToClient por proyecto.

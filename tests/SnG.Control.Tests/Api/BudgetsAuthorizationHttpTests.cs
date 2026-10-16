@@ -67,6 +67,7 @@ public class BudgetsAuthorizationHttpTests(ApiFixture fixture) : IClassFixture<A
     {
         var project = new Project(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic, "google-test-subject");
         fixture.Projects.Items.Add(project);
+        fixture.Documents.AddDocument(project.Id);
         using var sent = await fixture.Http.PostAsync($"/api/projects/{project.Id}/send-to-budgets", null);
         Assert.Equal(HttpStatusCode.Created, sent.StatusCode);
         if (correction)
@@ -105,14 +106,15 @@ public class BudgetsAuthorizationHttpTests(ApiFixture fixture) : IClassFixture<A
     [Theory]
     [InlineData("other")]
     [InlineData("valid")]
-    public async Task GeneralQueriesAndSendToBudgets_RemainAvailable(string mode)
+    public async Task GeneralQueriesRemainAvailable_AndSendRequiresCreatorOrHead(string mode)
     {
         using var client = new HttpClient { BaseAddress = fixture.Http.BaseAddress };
         client.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, mode);
         var project = new Project(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic, "google-test-subject");
         fixture.Projects.Items.Add(project);
+        fixture.Documents.AddDocument(project.Id);
         using var sent = await client.PostAsync($"/api/projects/{project.Id}/send-to-budgets", null);
-        Assert.Equal(HttpStatusCode.Created, sent.StatusCode);
+        Assert.Equal(mode == "valid" ? HttpStatusCode.Created : HttpStatusCode.Forbidden, sent.StatusCode);
         foreach (var route in new[] { "/api/clients", "/api/projects", $"/api/projects/{project.Id}",
             "/api/project-tasks?area=Budgets&status=Pending", $"/api/projects/{project.Id}/tasks",
             "/api/notifications", $"/api/projects/{project.Id}/notifications" })

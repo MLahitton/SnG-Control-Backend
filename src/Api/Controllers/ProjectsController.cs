@@ -55,6 +55,7 @@ public class ProjectsController(
         Ok(await list.ExecuteAsync(cancellationToken));
 
     [HttpPost("{id}/send-to-budgets")]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProjectTaskResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
@@ -66,6 +67,9 @@ public class ProjectsController(
             SendProjectToBudgetsResult.Created created => StatusCode(StatusCodes.Status201Created, created.Task),
             SendProjectToBudgetsResult.ProjectNotFound => Problem(
                 statusCode: StatusCodes.Status404NotFound, title: "Project not found."),
+            SendProjectToBudgetsResult.Forbidden => Problem(statusCode: 403, title: "Project access denied."),
+            SendProjectToBudgetsResult.DocumentsRequired => Problem(statusCode: 409, title: "Current documents are required.",
+                extensions: new Dictionary<string, object?> { ["code"] = "DocumentsRequired" }),
             SendProjectToBudgetsResult.AlreadySent => Problem(
                 statusCode: StatusCodes.Status409Conflict, title: "Project has already been sent to Budgets."),
             _ => throw new InvalidOperationException("Unexpected send-to-budgets result.")

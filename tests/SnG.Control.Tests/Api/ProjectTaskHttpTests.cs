@@ -22,6 +22,7 @@ public class ProjectTaskHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture
         Assert.Empty((await empty.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray());
         Assert.DoesNotContain(fixture.Tasks.Items, task => task.ProjectId == id);
 
+        fixture.Documents.AddDocument(id);
         using var sent = await fixture.Http.PostAsync($"/api/projects/{id}/send-to-budgets", null);
         Assert.Equal(HttpStatusCode.Created, sent.StatusCode);
         var task = await sent.Content.ReadFromJsonAsync<JsonElement>();

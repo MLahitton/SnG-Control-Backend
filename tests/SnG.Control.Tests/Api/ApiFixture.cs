@@ -1,3 +1,5 @@
+using SnG.Control.Application.Features.ProjectDocuments;
+using SnG.Control.Application.Scheduling;
 using SnG.Control.Api.Authorization;
 using SnG.Control.Application.Features.CommercialQuotations;
 using SnG.Control.Domain.Entities;
@@ -35,6 +37,7 @@ public class ApiFixture : IAsyncLifetime
     public ClientStoreDouble Clients { get; } = new();
     public ProjectStoreDouble Projects { get; } = new();
     public ProjectTaskStoreDouble Tasks { get; } = new();
+    public DocumentDatabaseDouble Documents { get; private set; } = null!;
     public TimeProvider Clock { get; set; } = TimeProvider.System;
     public NotificationStoreDouble Notifications { get; private set; } = null!;
     private readonly TemporaryStorage storage = new();
@@ -57,6 +60,9 @@ public class ApiFixture : IAsyncLifetime
         builder.Services.AddSingleton(Clock);
         Tasks.Timing = new(Clock, new());
         Notifications = new(Projects, Tasks);
+        Documents = new(Projects, Tasks);
+        builder.Services.RemoveAll<IProjectDocumentStore>();
+        builder.Services.AddScoped<IProjectDocumentStore>(provider => Documents.Store(provider.GetRequiredService<IStreamingFileStorage>(), provider.GetRequiredService<ProjectDocumentAccess>(), provider.GetRequiredService<TaskTiming>()));
         builder.Services.RemoveAll<SnG.Control.Application.Features.Notifications.IProjectNotificationStore>();
         builder.Services.AddSingleton<SnG.Control.Application.Features.Notifications.IProjectNotificationStore>(Notifications);
         builder.Services.Configure<BudgetsAssigneeOptions>(options => options.BudgetsAssigneeSubject = "budgets-test-subject");

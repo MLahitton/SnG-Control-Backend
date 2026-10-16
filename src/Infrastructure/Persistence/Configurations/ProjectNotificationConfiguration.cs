@@ -12,7 +12,7 @@ public sealed class ProjectNotificationConfiguration : IEntityTypeConfiguration<
         builder.ToTable("ProjectNotifications", table =>
         {
             table.HasCheckConstraint("CK_ProjectNotifications_Text", "length(btrim(\"RecipientGoogleSubject\")) > 0 AND length(btrim(\"Title\")) > 0 AND length(btrim(\"Message\")) > 0 AND length(btrim(\"EventKey\")) > 0");
-            table.HasCheckConstraint("CK_ProjectNotifications_Kind", "\"Kind\" IN (1, 2, 3, 4)");
+            table.HasCheckConstraint("CK_ProjectNotifications_Kind", "\"Kind\" IN (1, 2, 3, 4, 5)");
             table.HasCheckConstraint("CK_ProjectNotifications_State", "(\"Kind\" <> 4 AND \"State\" = 1 AND \"ResolvedAt\" IS NULL) OR (\"Kind\" = 4 AND ((\"State\" = 2 AND \"ResolvedAt\" IS NULL) OR (\"State\" = 3 AND \"ResolvedAt\" IS NOT NULL)))");
         });
         builder.HasKey(n => n.Id); builder.Property(n => n.Id).ValueGeneratedNever();

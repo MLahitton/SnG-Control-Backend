@@ -467,6 +467,130 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ContentType")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ReplacedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ReplacedByDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UploadBatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UploadedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UploadedByEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("UploadedByGoogleSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("UploadedByName")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId")
+                        .HasDatabaseName("IX_ProjectDocuments_Current")
+                        .HasFilter("\"ReplacedAt\" IS NULL AND \"RemovedAt\" IS NULL");
+
+                    b.HasIndex("StorageKey")
+                        .IsUnique();
+
+                    b.HasIndex("ProjectId", "ReplacedByDocumentId");
+
+                    b.HasIndex("ProjectId", "UploadedAt");
+
+                    b.ToTable("ProjectDocuments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProjectDocuments_Size", "\"SizeBytes\" > 0 AND \"SizeBytes\" <= 100000000");
+
+                            t.HasCheckConstraint("CK_ProjectDocuments_State", "((\"ReplacedAt\" IS NULL AND \"ReplacedByDocumentId\" IS NULL) OR (\"ReplacedAt\" IS NOT NULL AND \"ReplacedAt\" >= \"UploadedAt\" AND \"ReplacedByDocumentId\" IS NOT NULL AND \"ReplacedByDocumentId\" <> \"Id\" AND \"RemovedAt\" IS NULL)) AND (\"RemovedAt\" IS NULL OR (\"RemovedAt\" >= \"UploadedAt\" AND \"ReplacedAt\" IS NULL))");
+
+                            t.HasCheckConstraint("CK_ProjectDocuments_Text", "length(btrim(\"OriginalFileName\")) > 0 AND length(btrim(\"StorageKey\")) > 0 AND length(btrim(\"UploadedByGoogleSubject\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectDocumentHandoff", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SentByEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SentByGoogleSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SentByName")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProjectId")
+                        .IsUnique();
+
+                    b.ToTable("ProjectDocumentHandoffs", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProjectDocumentHandoffs_Subject", "length(btrim(\"SentByGoogleSubject\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectDocumentHandoffItem", b =>
+                {
+                    b.Property<Guid>("HandoffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("HandoffId", "ProjectDocumentId");
+
+                    b.HasIndex("ProjectId", "HandoffId");
+
+                    b.HasIndex("ProjectId", "ProjectDocumentId");
+
+                    b.ToTable("ProjectDocumentHandoffItems", (string)null);
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectNotification", b =>
                 {
                     b.Property<Guid>("Id")
@@ -523,7 +647,7 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.ToTable("ProjectNotifications", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ProjectNotifications_Kind", "\"Kind\" IN (1, 2, 3, 4)");
+                            t.HasCheckConstraint("CK_ProjectNotifications_Kind", "\"Kind\" IN (1, 2, 3, 4, 5)");
 
                             t.HasCheckConstraint("CK_ProjectNotifications_State", "(\"Kind\" <> 4 AND \"State\" = 1 AND \"ResolvedAt\" IS NULL) OR (\"Kind\" = 4 AND ((\"State\" = 2 AND \"ResolvedAt\" IS NULL) OR (\"State\" = 3 AND \"ResolvedAt\" IS NOT NULL)))");
 
@@ -664,6 +788,47 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasOne("SnG.Control.Domain.Entities.Client", null)
                         .WithMany()
                         .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectDocument", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId", "ReplacedByDocumentId")
+                        .HasPrincipalKey("ProjectId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectDocumentHandoff", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ProjectDocumentHandoffItem", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocumentHandoff", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId", "HandoffId")
+                        .HasPrincipalKey("ProjectId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId", "ProjectDocumentId")
+                        .HasPrincipalKey("ProjectId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

@@ -1,4 +1,5 @@
 using SnG.Control.Application.Features.Notifications;
+using SnG.Control.Application.Features.ProjectDocuments;
 using SnG.Control.Application.Scheduling;
 using SnG.Control.Api.Workers;
 using System.Text.Json.Serialization;
@@ -37,6 +38,11 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApiServices(this IServiceCollection services)
     {
+        services.AddScoped<ProjectDocumentAccess>();
+        services.AddScoped<ProjectDocumentService>();
+        services.AddScoped<IProjectDocumentStore, EfProjectDocumentStore>();
+        services.AddScoped<IStreamingFileStorage, LocalFileStorage>();
+        services.AddScoped<IProjectDocumentArchive, ProjectDocumentArchive>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<ColombiaBusinessCalendar>();
         services.AddSingleton<TaskTiming>();

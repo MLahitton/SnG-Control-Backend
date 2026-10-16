@@ -17,6 +17,9 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
     public DbSet<CommercialQuotationItem> CommercialQuotationItems => Set<CommercialQuotationItem>();
 
     public DbSet<ProjectNotification> ProjectNotifications => Set<ProjectNotification>();
+    public DbSet<ProjectDocument> ProjectDocuments => Set<ProjectDocument>();
+    public DbSet<ProjectDocumentHandoff> ProjectDocumentHandoffs => Set<ProjectDocumentHandoff>();
+    public DbSet<ProjectDocumentHandoffItem> ProjectDocumentHandoffItems => Set<ProjectDocumentHandoffItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -24,6 +27,9 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
         modelBuilder.ApplyConfiguration(new ProjectConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectTaskConfiguration());
         modelBuilder.ApplyConfiguration(new ProjectNotificationConfiguration());
+        modelBuilder.ApplyConfiguration(new ProjectDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new ProjectDocumentHandoffConfiguration());
+        modelBuilder.ApplyConfiguration(new ProjectDocumentHandoffItemConfiguration());
         modelBuilder.ApplyConfiguration(new BudgetQuotationVersionConfiguration());
         modelBuilder.ApplyConfiguration(new CommercialCatalogConfiguration());
         modelBuilder.ApplyConfiguration(new CommercialCatalogItemConfiguration());

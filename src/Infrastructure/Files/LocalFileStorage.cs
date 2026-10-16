@@ -3,7 +3,7 @@ using SnG.Control.Application.Files;
 
 namespace SnG.Control.Infrastructure.Files;
 
-public sealed class LocalFileStorage(IOptions<FileStorageOptions> options) : IFileStorage
+public sealed class LocalFileStorage(IOptions<FileStorageOptions> options) : IStreamingFileStorage
 {
     private readonly string root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(options.Value.RootPath));
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
@@ -16,7 +16,23 @@ public sealed class LocalFileStorage(IOptions<FileStorageOptions> options) : IFi
         return File.ReadAllBytesAsync(path, cancellationToken);
     }
 
-    public async Task SaveAsync(string storageKey, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken)
+    public Task SaveAsync(string storageKey, ReadOnlyMemory<byte> bytes, CancellationToken cancellationToken) =>
+        WriteAsync(storageKey, (output, token) => output.WriteAsync(bytes, token).AsTask(), cancellationToken);
+
+    public Task<Stream> OpenReadAsync(string storageKey, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var path = Resolve(storageKey);
+        if (File.Exists(path) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("Storage file links are not supported.");
+        return Task.FromResult<Stream>(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920,
+            FileOptions.Asynchronous | FileOptions.SequentialScan));
+    }
+
+    public Task SaveFromStreamAsync(string storageKey, Stream content, CancellationToken cancellationToken) =>
+        WriteAsync(storageKey, (output, token) => content.CopyToAsync(output, 81920, token), cancellationToken);
+
+    private async Task WriteAsync(string storageKey, Func<FileStream, CancellationToken, Task> write, CancellationToken cancellationToken)
     {
         var destination = Resolve(storageKey);
         var directory = Path.GetDirectoryName(destination)!;
@@ -27,7 +43,7 @@ public sealed class LocalFileStorage(IOptions<FileStorageOptions> options) : IFi
         {
             await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, FileOptions.Asynchronous))
             {
-                await output.WriteAsync(bytes, cancellationToken);
+                await write(output, cancellationToken);
                 await output.FlushAsync(cancellationToken);
                 output.Flush(flushToDisk: true);
             }
