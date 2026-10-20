@@ -72,6 +72,7 @@ public static class DependencyInjection
         services.AddSingleton<IValidateOptions<FileStorageOptions>, FileStorageOptionsValidator>();
         services.AddOptions<FileStorageOptions>().BindConfiguration(FileStorageOptions.SectionName).ValidateOnStart();
         services.AddScoped<IFileStorage, LocalFileStorage>();
+        services.AddScoped<SnG.Control.Application.Features.Budgets.Status.IBudgetQuotationStatusStore, EfBudgetQuotationStatusStore>();
         services.AddScoped<IBudgetQuotationCommercialHandoffStore, EfBudgetQuotationCommercialHandoffStore>();
         services.AddScoped<IBudgetQuotationWorkbookGenerator, XlsxBudgetQuotationWorkbookGenerator>();
         services.AddScoped<SendBudgetQuotationToCommercialUseCase>();
@@ -94,6 +95,8 @@ public static class DependencyInjection
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<TechnicalField>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<CatalogItemImageStatus>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<BudgetQuotationWarningCode>(allowIntegerValues: false));
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<SnG.Control.Application.Features.Budgets.Status.BudgetQuotationStatus>(allowIntegerValues: false));
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<SnG.Control.Application.Features.Budgets.Status.BudgetQuotationSendBlockReason>(allowIntegerValues: false));
             options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
         });
 

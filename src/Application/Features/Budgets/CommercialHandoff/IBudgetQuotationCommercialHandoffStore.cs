@@ -10,21 +10,11 @@ public enum CommercialHandoffStatus { Sent, ProjectNotFound, InvalidState, SgCha
 public sealed record CommercialHandoffState(Project Project, IReadOnlyList<ProjectTask> Tasks, BudgetQuotationVersion? Version,
     CommercialCatalog? Catalog, IReadOnlyList<CommercialCatalogItem> Items, IReadOnlyList<CommercialCatalogItemExtraction> Extractions)
 {
-    public CommercialHandoffStatus Validate()
-    {
-        if (Tasks.Any(task => task.Type == ProjectTaskType.ReviewQuotation) || Version?.ConfirmedFileStorageKey is not null
-            || Tasks.Any(task => task.Type == ProjectTaskType.PrepareQuotation && task.Status == ProjectTaskStatus.Completed))
-            return CommercialHandoffStatus.AlreadySent;
-        if (BudgetQuotationWorkflow.ReadyTask(Project, Tasks) is null || Version is null || Version.VersionNumber != 1
-            || Catalog is null || Items.Count == 0 || Extractions.Count != Items.Count
-            || Extractions.Select(value => value.CatalogItemId).Distinct().Count() != Items.Count
-            || Items.Any(item => !Extractions.Any(value => value.CatalogItemId == item.Id)))
-            return CommercialHandoffStatus.InvalidState;
-        if (!string.Equals(Project.SgCode, Version.DocumentSgCode, StringComparison.Ordinal))
-            return CommercialHandoffStatus.SgChangedAfterConfirmation;
-        return CommercialHandoffStatus.Sent;
-    }
+    public CommercialHandoffReadiness Readiness() => new(Version?.VersionNumber, Version?.ConfirmedFileStorageKey is not null,
+        Catalog is not null, Items.Count, Extractions.Count, Extractions.Select(value => value.CatalogItemId).Distinct().Count(),
+        Items.All(item => Extractions.Any(value => value.CatalogItemId == item.Id)), Version?.DocumentSgCode);
 
+    public CommercialHandoffStatus Validate() => Readiness().Validate(Project, Tasks);
     public IReadOnlyList<ConfirmedWorkbookItem> WorkbookItems() => Items.OrderBy(item => item.SourceRow).Select(item =>
     {
         var original = Extractions.Single(value => value.CatalogItemId == item.Id);

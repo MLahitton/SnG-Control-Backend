@@ -1,3 +1,4 @@
+using SnG.Control.Application.Features.Budgets.Status;
 using SnG.Control.Application.Features.ProjectDocuments;
 using SnG.Control.Application.Features.Management;
 using SnG.Control.Application.Scheduling;
@@ -80,6 +81,8 @@ public class ApiFixture : IAsyncLifetime
             options.DefaultAuthenticateScheme = TestAuthenticationHandler.SchemeName;
             options.DefaultChallengeScheme = TestAuthenticationHandler.SchemeName;
         }).AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestAuthenticationHandler.SchemeName, _ => { });
+        builder.Services.RemoveAll<IBudgetQuotationStatusStore>();
+        builder.Services.AddScoped<IBudgetQuotationStatusStore>(_ => new QuotationStatusDouble(this));
         builder.Services.RemoveAll<IBudgetQuotationCommercialHandoffStore>();
         builder.Services.RemoveAll<IFileStorage>();
         builder.Services.AddScoped<IBudgetQuotationCommercialHandoffStore>(_ => Handoff);
@@ -121,6 +124,17 @@ public class ApiFixture : IAsyncLifetime
         await app.DisposeAsync();
         storage.Dispose();
         Commercial?.Dispose();
+    }
+
+    private sealed class QuotationStatusDouble(ApiFixture fixture) : IBudgetQuotationStatusStore
+    {
+        public Task<BudgetQuotationStatusResponse?> GetAsync(Guid id, CancellationToken token)
+        {
+            var state = fixture.Handoff.State;
+            return Task.FromResult(state?.Project.Id != id ? null :
+                BudgetQuotationStatusResponse.From(state.Project, state.Tasks, state.Readiness(),
+                    state.Version?.ConfirmedAt, state.Items.Sum(i => (long)i.Quantity)));
+        }
     }
 
     // Scopes must not dispose the fixture-owned temporary storage after each HTTP request.

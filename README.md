@@ -133,6 +133,18 @@ Solo se admite una confirmación inicial por proyecto; una segunda produce confl
 
 La confirmación **no completa Presupuestos ni envía el proyecto a Comercial**: PrepareQuotation permanece InProgress, mantiene su fecha original de inicio y no tiene fecha de finalización. Tampoco modifica Project, Client ni sus fechas. Si falla el almacenamiento, se revierte la operación y se intenta retirar exclusivamente los archivos creados por ella; las limitaciones ante interrupciones del proceso se detallan en la guía técnica.
 
+## Estado persistente de cotización de Presupuestos
+
+GET `/api/projects/{id}/budget-quotation/status` permite a Presupuestos recuperar el estado oficial después de recargar, bajo la misma policy BudgetsAssignee. Responde 200 para un proyecto existente, incluso sin cotización, y 404 solo si no existe. No acepta body; mantiene 401/403 de autenticación/autorización.
+
+- NotConfirmed: aún no existe versión inicial confirmada; metadata nullable, cantidades cero y envío no disponible.
+- Confirmed: conserva versión, fecha, cantidad de ítems, suma de cantidades del catálogo histórico y SG documental/actual.
+- SentToCommercial: el handoff ya ocurrió; mantiene la metadata histórica y no permite reenviar, incluso después de completar la revisión Comercial o retirar confirmed.xlsx.
+
+`canSendToCommercial` y `sendBlockReason` provienen del backend. Las razones son None, SgChangedAfterConfirmation e InvalidState. Un SG actual distinto del confirmado bloquea el envío y no se repara automáticamente. La consulta comparte la regla con el comando existente y no lee ni genera XLSX, imágenes o extracción completa. El POST `/api/projects/{id}/send-to-commercial` sigue sin body y revalida todo antes de completar PrepareQuotation e iniciar ReviewQuotation; la consulta no sustituye esa validación ni verifica disponibilidad física del archivo.
+
+La UI de revisión Comercial sigue pendiente en Frontend; las APIs de revisión existentes se conservan.
+
 ## Envío a Comercial y Excel operativo
 
 **Enviar a Comercial** es una acción explícita posterior a confirmar. Requiere la versión inicial, un catálogo con ítems y sus extracciones, el archivo original disponible y PrepareQuotation de Presupuestos En proceso. Solo se permite un envío. Si el SG actual difiere del SG histórico confirmado, el envío se bloquea; no se modifica el documento ni se reconcilian códigos automáticamente.
