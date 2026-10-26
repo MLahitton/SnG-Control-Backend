@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Scheduling;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -104,9 +105,9 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
         }
     }
 
-    public async Task<CommercialFileState> GetFileAsync(Guid projectId, CancellationToken cancellationToken)
+    public async Task<CommercialFileState> GetFileAsync(Guid projectId, ProjectReadScope scope, CancellationToken cancellationToken)
     {
-        if (!await context.Projects.AnyAsync(value => value.Id == projectId, cancellationToken)) return new(false);
+        if (!await context.Projects.Where(scope.Filter(context.ProjectTasks)).AnyAsync(value => value.Id == projectId, cancellationToken)) return new(false);
         var version = await context.BudgetQuotationVersions.AsNoTracking().SingleOrDefaultAsync(value => value.ProjectId == projectId && value.VersionNumber == 1, cancellationToken);
         var review = await context.ProjectTasks.AnyAsync(value => value.ProjectId == projectId && value.Area == OperationalArea.Commercial
             && value.Type == ProjectTaskType.ReviewQuotation, cancellationToken);

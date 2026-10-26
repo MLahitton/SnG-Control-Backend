@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
@@ -32,7 +33,7 @@ public sealed class CommercialQuotationScenario : ICommercialQuotationStore, IFi
     public async Task InitializeAsync()
     {
         var handoff = await CommercialHandoffScenario.CreateAsync(Workbook().Build());
-        await new SendBudgetQuotationToCommercialUseCase(handoff, handoff, CommercialHandoffScenario.Generator(), new IdentityDouble()).ExecuteAsync(handoff.State!.Project.Id, default);
+        await new SendBudgetQuotationToCommercialUseCase(handoff, handoff, CommercialHandoffScenario.Generator(), new IdentityDouble(), new IdentityDouble("budgets-test-subject")).ExecuteAsync(handoff.State!.Project.Id, default);
         var old = handoff.State!;
         typeof(Project).GetProperty(nameof(Project.CreatedByGoogleSubject))!.SetValue(old.Project, "other-google-subject");
         State = new(old.Project, old.Tasks, old.Version, old.Catalog, old.Items, old.Extractions, null);
@@ -42,7 +43,7 @@ public sealed class CommercialQuotationScenario : ICommercialQuotationStore, IFi
     public PreviewCommercialQuotationUseCase Preview() => new(this, Parser(), this, new IdentityDouble());
     public ConfirmCommercialQuotationUseCase Confirm(IdentityDouble? user = null) => new(Preview(), this, new IdentityDouble(), user ?? new IdentityDouble());
     public Task<CommercialQuotationState?> LoadAsync(Guid id, CancellationToken token) => Task.FromResult(State?.Project.Id == id ? State : null);
-    public Task<CommercialQuotationFileState?> GetFileAsync(Guid id, CancellationToken token) => Task.FromResult(State?.Project.Id == id ? new CommercialQuotationFileState(State.Project, State.Quotation) : null);
+    public Task<CommercialQuotationFileState?> GetFileAsync(Guid id, ProjectReadScope scope, CancellationToken token) => Task.FromResult(State?.Project.Id == id && scope.CanRead(State.Project, State.Tasks) ? new CommercialQuotationFileState(State.Project, State.Quotation) : null);
     public async Task<CommercialQuotationConfirmationResult> ConfirmAsync(CommercialQuotationState expected, string headSubject, CommercialQuotation quotation,
         IReadOnlyList<CommercialQuotationItem> items, byte[] bytes, CommercialQuotationPreviewResponse preview, CancellationToken token)
     {

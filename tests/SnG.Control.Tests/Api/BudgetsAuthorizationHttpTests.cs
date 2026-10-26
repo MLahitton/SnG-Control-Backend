@@ -39,6 +39,7 @@ public class BudgetsAuthorizationHttpTests(ApiFixture fixture) : IClassFixture<A
     {
         using var client = new HttpClient { BaseAddress = fixture.Http.BaseAddress };
         using var request = new HttpRequestMessage(new HttpMethod(method), $"/api/projects/{Guid.NewGuid()}/{route}");
+        request.Headers.Add("X-SnG-Active-Role", "Budgets");
         if (mode is not null) request.Headers.Authorization = new(TestAuthenticationHandler.SchemeName, mode);
         if (method == "PUT") request.Content = JsonContent.Create(new { sgCode = "SG123" });
         else if (route.Contains("budget-quotation", StringComparison.Ordinal))
@@ -106,9 +107,10 @@ public class BudgetsAuthorizationHttpTests(ApiFixture fixture) : IClassFixture<A
     [Theory]
     [InlineData("other")]
     [InlineData("valid")]
-    public async Task GeneralQueriesRemainAvailable_AndSendRequiresCreatorOrHead(string mode)
+    public async Task QueriesRespectOwnership_AndSendRequiresAdvisorOwner(string mode)
     {
         using var client = new HttpClient { BaseAddress = fixture.Http.BaseAddress };
+        client.DefaultRequestHeaders.Add("X-SnG-Active-Role", "CommercialAdvisor");
         client.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, mode);
         var project = new Project(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic, "google-test-subject");
         fixture.Projects.Items.Add(project);
@@ -120,7 +122,7 @@ public class BudgetsAuthorizationHttpTests(ApiFixture fixture) : IClassFixture<A
             "/api/notifications", $"/api/projects/{project.Id}/notifications" })
         {
             using var response = await client.GetAsync(route);
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(mode == "other" && route.Contains(project.Id.ToString()) ? HttpStatusCode.NotFound : HttpStatusCode.OK, response.StatusCode);
         }
     }
 }

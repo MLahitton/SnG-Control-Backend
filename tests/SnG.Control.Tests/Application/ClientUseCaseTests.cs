@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Features.Clients.Create;
 using SnG.Control.Application.Features.Clients.GetById;
 using SnG.Control.Application.Features.Clients.List;
@@ -7,6 +8,7 @@ namespace SnG.Control.Tests.Application;
 
 public class ClientUseCaseTests
 {
+    private static ProjectReadAccess ReadAccess => new(new IdentityDouble(), new ActiveRoleDouble(SnG.Control.Domain.Enums.SystemRole.CommercialAdvisor));
     [Fact]
     public async Task CreateGetAndList_MapPersistedClientsAndAllowRepeatedNames()
     {
@@ -22,9 +24,9 @@ public class ClientUseCaseTests
         Assert.NotEqual(first.Id, second.Id);
         Assert.Equal(store.Items[0].CreatedAt, first.CreatedAt);
         Assert.Equal(store.Items[0].UpdatedAt, first.UpdatedAt);
-        Assert.Equal(first, await new GetClientByIdUseCase(store).ExecuteAsync(first.Id, token));
-        Assert.Null(await new GetClientByIdUseCase(store).ExecuteAsync(Guid.NewGuid(), token));
-        var listed = await new ListClientsUseCase(store).ExecuteAsync(token);
+        Assert.Equal(first, await new GetClientByIdUseCase(store, ReadAccess).ExecuteAsync(first.Id, token));
+        Assert.Null(await new GetClientByIdUseCase(store, ReadAccess).ExecuteAsync(Guid.NewGuid(), token));
+        var listed = await new ListClientsUseCase(store, ReadAccess).ExecuteAsync(token);
         Assert.Equal(2, listed.Count);
         Assert.Contains(first, listed);
         Assert.Contains(second, listed);
@@ -34,7 +36,7 @@ public class ClientUseCaseTests
     [Fact]
     public async Task List_WhenEmpty_ReturnsEmptyCollection()
     {
-        Assert.Empty(await new ListClientsUseCase(new ClientStoreDouble()).ExecuteAsync(CancellationToken.None));
+        Assert.Empty(await new ListClientsUseCase(new ClientStoreDouble(), ReadAccess).ExecuteAsync(CancellationToken.None));
     }
 
     [Theory]

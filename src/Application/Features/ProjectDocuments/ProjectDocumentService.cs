@@ -32,7 +32,7 @@ public sealed class ProjectDocumentService(IProjectDocumentStore store, ProjectD
         var sent = state.PrepareQuotation is not null || state.Handoff is not null;
         return new(state.Documents.Where(d => d.RemovedAt is null).Select(d => DocumentResponse.From(d, initial)).ToArray(),
             state.Handoff is { } h ? new(h.Id, h.SentAt, new(h.SentByEmail, h.SentByName), initial.Order().ToArray()) : null,
-            canModify, canModify && !sent, canModify && !sent && state.Documents.Any(d => d.IsCurrent));
+            canModify, canModify && !sent, access.CanSendToBudgets(state.Project) && !sent && state.Documents.Any(d => d.IsCurrent));
     }
     public async Task<DocumentDownload> DownloadAsync(Guid id, Guid documentId, CancellationToken token)
     {

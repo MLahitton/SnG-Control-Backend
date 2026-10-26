@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -19,6 +20,7 @@ public class GoogleAuthenticationTests
     public async Task Startup_RejectsMissingClientIdWithoutPrintingValues(string? clientId)
     {
         var builder = Host.CreateApplicationBuilder();
+        builder.Logging.ClearProviders(); // Startup validation must not depend on Windows Event Log permissions.
         builder.Configuration.Sources.Clear();
         builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?> { ["Authentication:Google:ClientId"] = clientId });
         builder.Services.AddGoogleAuthentication();

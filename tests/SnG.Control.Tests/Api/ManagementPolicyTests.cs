@@ -41,13 +41,14 @@ public class ManagementPolicyTests
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["Authentication:ManagementSubject"] = "management-test-subject" }).Build());
         services.AddManagementAuthorization();
+        RoleTestAuthorization.Register(services);
         using var provider = services.BuildServiceProvider();
         Assert.Equal("management-test-subject", provider.GetRequiredService<IManagementIdentity>().Subject);
         var claims = new List<Claim>();
         if (subject is not null) claims.Add(new("sub", subject));
         if (email is not null) claims.Add(new("email", email));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticated ? "test" : null));
-        var result = await provider.GetRequiredService<IAuthorizationService>().AuthorizeAsync(principal, null, ManagementRequirement.PolicyName);
+        var result = await RoleTestAuthorization.AuthorizeAsync(provider, principal, ManagementRequirement.PolicyName);
         Assert.Equal(allowed, result.Succeeded);
     }
     [Theory]
@@ -62,11 +63,12 @@ public class ManagementPolicyTests
             ["Authentication:BudgetsAssigneeSubject"] = sameSubject ? "management-test-subject" : "budgets-test-subject"
         }).Build());
         services.AddManagementAuthorization(); services.AddBudgetsAssigneeAuthorization();
+        RoleTestAuthorization.Register(services);
         using var provider = services.BuildServiceProvider();
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", "management-test-subject")], "test"));
         var authorization = provider.GetRequiredService<IAuthorizationService>();
-        Assert.True((await authorization.AuthorizeAsync(principal, null, ManagementRequirement.PolicyName)).Succeeded);
-        Assert.Equal(sameSubject, (await authorization.AuthorizeAsync(principal, null, BudgetsAssigneeRequirement.PolicyName)).Succeeded);
+        Assert.True((await RoleTestAuthorization.AuthorizeAsync(provider, principal, ManagementRequirement.PolicyName)).Succeeded);
+        Assert.Equal(sameSubject, (await RoleTestAuthorization.AuthorizeAsync(provider, principal, BudgetsAssigneeRequirement.PolicyName)).Succeeded);
     }
     [Theory]
     [InlineData("management-test-subject", "google-test-subject", true, false)]
@@ -83,11 +85,12 @@ public class ManagementPolicyTests
         }).Build());
         services.AddManagementAuthorization();
         services.AddCommercialHeadAuthorization();
+        RoleTestAuthorization.Register(services);
         using var provider = services.BuildServiceProvider();
         Assert.Single(provider.GetServices<IManagementIdentity>());
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", subject)], "test"));
         var authorization = provider.GetRequiredService<IAuthorizationService>();
-        Assert.Equal(managementAllowed, (await authorization.AuthorizeAsync(principal, null, ManagementRequirement.PolicyName)).Succeeded);
-        Assert.Equal(headAllowed, (await authorization.AuthorizeAsync(principal, null, CommercialHeadRequirement.PolicyName)).Succeeded);
+        Assert.Equal(managementAllowed, (await RoleTestAuthorization.AuthorizeAsync(provider, principal, ManagementRequirement.PolicyName)).Succeeded);
+        Assert.Equal(headAllowed, (await RoleTestAuthorization.AuthorizeAsync(provider, principal, CommercialHeadRequirement.PolicyName)).Succeeded);
     }
 }

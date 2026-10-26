@@ -21,9 +21,9 @@ public sealed class ConfirmationScenario
     public ConfirmationScenario()
     {
         Project.SetSgCode("SG0012"); Projects.Items.Add(Project);
-        Task = new ProjectTask(Project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation); Task.Start(); Tasks.Items.Add(Task);
+        Task = new ProjectTask(Project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation, "budgets-test-subject"); Task.Start(); Tasks.Items.Add(Task);
         Store = new(Projects, Tasks);
-        Preview = new(Projects, Tasks, new XlsxBudgetQuotationParser(Options.Create(new BudgetQuotationParserOptions())));
+        Preview = new(Projects, Tasks, new XlsxBudgetQuotationParser(Options.Create(new BudgetQuotationParserOptions())), new IdentityDouble("budgets-test-subject"));
         UseCase = new(Preview, Store, TestTiming.Value);
     }
     public async Task<ConfirmBudgetQuotationRequest> RequestAsync()

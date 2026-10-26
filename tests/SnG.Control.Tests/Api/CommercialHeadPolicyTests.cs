@@ -39,13 +39,14 @@ public class CommercialHeadPolicyTests
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
             { ["Authentication:CommercialHeadSubject"] = "google-test-subject" }).Build());
         services.AddCommercialHeadAuthorization();
+        RoleTestAuthorization.Register(services);
         using var provider = services.BuildServiceProvider();
         Assert.Equal("google-test-subject", provider.GetRequiredService<ICommercialHeadIdentity>().Subject);
         var claims = new List<Claim>();
         if (subject is not null) claims.Add(new("sub", subject));
         if (email is not null) claims.Add(new("email", email));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticated ? "test" : null));
-        var result = await provider.GetRequiredService<IAuthorizationService>().AuthorizeAsync(principal, null, CommercialHeadRequirement.PolicyName);
+        var result = await RoleTestAuthorization.AuthorizeAsync(provider, principal, CommercialHeadRequirement.PolicyName);
         Assert.Equal(allowed, result.Succeeded);
     }
 }

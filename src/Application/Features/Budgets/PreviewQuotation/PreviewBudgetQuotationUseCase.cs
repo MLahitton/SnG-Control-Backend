@@ -1,15 +1,17 @@
 using SnG.Control.Application.Features.Projects;
+using SnG.Control.Application.Identity;
 using SnG.Control.Application.Features.ProjectTasks;
 
 namespace SnG.Control.Application.Features.Budgets.PreviewQuotation;
 
-public class PreviewBudgetQuotationUseCase(IProjectStore projects, IProjectTaskStore tasks, IBudgetQuotationParser parser)
+public class PreviewBudgetQuotationUseCase(IProjectStore projects, IProjectTaskStore tasks, IBudgetQuotationParser parser, ICurrentUser user)
 {
     public async Task<PreviewBudgetQuotationResult> ExecuteAsync(Guid projectId, Stream stream, string fileName, CancellationToken cancellationToken)
     {
         var project = await projects.GetByIdAsync(projectId, cancellationToken);
         if (project is null) return new PreviewBudgetQuotationResult.ProjectNotFound();
-        if (BudgetQuotationWorkflow.ReadyTask(project, await tasks.ListByProjectAsync(projectId, cancellationToken)) is null)
+        var task = BudgetQuotationWorkflow.ReadyTask(project, await tasks.ListByProjectAsync(projectId, cancellationToken));
+        if (task is null || !string.Equals(task.AssignedToGoogleSubject, user.Subject, StringComparison.Ordinal))
             return new PreviewBudgetQuotationResult.InvalidWorkflowState();
 
         var result = await parser.ParseAsync(stream, fileName, cancellationToken);

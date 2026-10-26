@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Scheduling;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -121,9 +122,9 @@ public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFil
         else if (!existing.AsSpan().SequenceEqual(bytes)) throw new IOException("Operational file changed during compensation.");
     }
 
-    public async Task<CommercialQuotationFileState?> GetFileAsync(Guid id, CancellationToken token)
+    public async Task<CommercialQuotationFileState?> GetFileAsync(Guid id, ProjectReadScope scope, CancellationToken token)
     {
-        var project = await context.Projects.AsNoTracking().SingleOrDefaultAsync(p => p.Id == id, token);
+        var project = await context.Projects.AsNoTracking().Where(scope.Filter(context.ProjectTasks)).SingleOrDefaultAsync(p => p.Id == id, token);
         return project is null ? null : new(project, await context.CommercialQuotations.AsNoTracking().SingleOrDefaultAsync(q => q.ProjectId == id, token));
     }
     private ProjectTaskResponse Response(ProjectTask task) => ProjectTaskResponse.FromEntity(task, timing);

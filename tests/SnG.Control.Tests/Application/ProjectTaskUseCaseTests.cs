@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Features.ProjectDocuments;
 using SnG.Control.Infrastructure.Files;
 using Microsoft.Extensions.Options;
@@ -13,6 +14,7 @@ namespace SnG.Control.Tests.Application;
 
 public class ProjectTaskUseCaseTests : IDisposable
 {
+    private static ProjectReadAccess ReadAccess => new(new IdentityDouble(), new ActiveRoleDouble(SystemRole.CommercialAdvisor));
     private readonly TemporaryStorage storage = new();
     private DocumentDatabaseDouble database = null!;
     private readonly List<IDisposable> stores = [];
@@ -20,7 +22,7 @@ public class ProjectTaskUseCaseTests : IDisposable
     {
         database = new(projects, tasks);
         if (documents) foreach (var project in projects.Items) database.AddDocument(project.Id);
-        var access = new ProjectDocumentAccess(new IdentityDouble(), new IdentityDouble(), new IdentityDouble("budgets-test-subject"), new IdentityDouble("management-test-subject"));
+        var access = new ProjectDocumentAccess(new IdentityDouble(), new ActiveRoleDouble(SystemRole.CommercialAdvisor), new IdentityDouble("budgets-test-subject"));
         var store = database.Store(new LocalFileStorage(Options.Create(new FileStorageOptions { RootPath = storage.Root })), access, TestTiming.Value);
         stores.Add(store); return new(store);
     }
@@ -30,7 +32,7 @@ public class ProjectTaskUseCaseTests : IDisposable
     public async Task Send_CreatesPendingBudgetsTask_AndMapsRejectedInsertToAlreadySent()
     {
         var projects = new ProjectStoreDouble();
-        var tasks = new ProjectTaskStoreDouble();
+        var tasks = new ProjectTaskStoreDouble { Projects = projects };
         var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
         using var cancellation = new CancellationTokenSource();
@@ -72,7 +74,7 @@ public class ProjectTaskUseCaseTests : IDisposable
     public async Task Send_StoreRejectsExistingQuotationInAnyStatus_ReturnsAlreadySent(ProjectTaskStatus status)
     {
         var projects = new ProjectStoreDouble();
-        var tasks = new ProjectTaskStoreDouble();
+        var tasks = new ProjectTaskStoreDouble { Projects = projects };
         var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
         tasks.Items.Add(StoredTask(project.Id, OperationalArea.Commercial, status));
@@ -88,7 +90,7 @@ public class ProjectTaskUseCaseTests : IDisposable
     public async Task Lists_FilterByAreaStatusAndProject_AndPropagateCancellation()
     {
         var projects = new ProjectStoreDouble();
-        var tasks = new ProjectTaskStoreDouble();
+        var tasks = new ProjectTaskStoreDouble { Projects = projects };
         var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
         var pending = StoredTask(project.Id, OperationalArea.Budgets, ProjectTaskStatus.Pending);
@@ -98,11 +100,11 @@ public class ProjectTaskUseCaseTests : IDisposable
         using var cancellation = new CancellationTokenSource();
         var token = cancellation.Token;
 
-        var byArea = await new ListProjectTasksByAreaUseCase(tasks, TestTiming.Value).ExecuteAsync(
+        var byArea = await new ListProjectTasksByAreaUseCase(tasks, TestTiming.Value, ReadAccess).ExecuteAsync(
             OperationalArea.Budgets, ProjectTaskStatus.Pending, token);
         Assert.Equal(pending.Id, Assert.Single(byArea).Id);
 
-        var history = await new ListProjectTasksByProjectUseCase(projects, tasks, TestTiming.Value).ExecuteAsync(project.Id, token);
+        var history = await new ListProjectTasksByProjectUseCase(projects, tasks, TestTiming.Value, ReadAccess).ExecuteAsync(project.Id, token);
         Assert.NotNull(history);
         Assert.Equal(2, history.Count);
         Assert.Contains(history, task => task.Id == pending.Id);
@@ -114,16 +116,16 @@ public class ProjectTaskUseCaseTests : IDisposable
     public async Task Lists_ReturnEmptyForExistingProjectAndNoAreaMatches_ButNullForMissingProject()
     {
         var projects = new ProjectStoreDouble();
-        var tasks = new ProjectTaskStoreDouble();
+        var tasks = new ProjectTaskStoreDouble { Projects = projects };
         var project = new Project(Guid.NewGuid(), "Proyecto", "Ciudad", ProductLine.Classic, "google-test-subject");
         projects.Items.Add(project);
-        var history = new ListProjectTasksByProjectUseCase(projects, tasks, TestTiming.Value);
+        var history = new ListProjectTasksByProjectUseCase(projects, tasks, TestTiming.Value, ReadAccess);
 
         Assert.Empty((await history.ExecuteAsync(project.Id, CancellationToken.None))!);
         var reads = tasks.ReceivedTokens.Count;
         Assert.Null(await history.ExecuteAsync(Guid.NewGuid(), CancellationToken.None));
         Assert.Equal(reads, tasks.ReceivedTokens.Count);
-        Assert.Empty(await new ListProjectTasksByAreaUseCase(tasks, TestTiming.Value).ExecuteAsync(
+        Assert.Empty(await new ListProjectTasksByAreaUseCase(tasks, TestTiming.Value, ReadAccess).ExecuteAsync(
             OperationalArea.Budgets, ProjectTaskStatus.Pending, CancellationToken.None));
     }
 
@@ -136,7 +138,7 @@ public class ProjectTaskUseCaseTests : IDisposable
     {
         var tasks = new ProjectTaskStoreDouble();
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            new ListProjectTasksByAreaUseCase(tasks, TestTiming.Value).ExecuteAsync(
+            new ListProjectTasksByAreaUseCase(tasks, TestTiming.Value, ReadAccess).ExecuteAsync(
                 (OperationalArea)area, (ProjectTaskStatus)status, CancellationToken.None));
         Assert.Empty(tasks.ReceivedTokens);
     }

@@ -8,6 +8,6 @@ public interface IProjectTaskStore
     // True when inserted; false when a PrepareQuotation task already exists for the project.
     Task<bool> TryAddPrepareQuotationAsync(ProjectTask task, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProjectTask>> ListByAreaAsync(
-        OperationalArea area, ProjectTaskStatus status, CancellationToken cancellationToken);
+        OperationalArea area, ProjectTaskStatus status, SnG.Control.Application.Access.ProjectReadScope scope, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProjectTask>> ListByProjectAsync(Guid projectId, CancellationToken cancellationToken);
 }

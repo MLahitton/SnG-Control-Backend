@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Authorization;
+using SnG.Control.Api.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using SnG.Control.Api.Contracts;
 using SnG.Control.Application.Features.Clients;
@@ -15,6 +17,7 @@ public class ClientsController(
     ListClientsUseCase list) : ControllerBase
 {
     [HttpPost]
+    [Authorize(Policy = ActiveRoleRegistration.CommercialAdvisorPolicy)]
     [ProducesResponseType<ClientResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<ClientResponse>> Create(

@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Domain.Entities;
 using SnG.Control.Domain.Enums;
 
@@ -30,5 +31,5 @@ public interface ICommercialQuotationStore
     Task<CommercialQuotationConfirmationResult> ConfirmAsync(CommercialQuotationState expected, string headSubject,
         CommercialQuotation quotation, IReadOnlyList<CommercialQuotationItem> items, byte[] bytes,
         CommercialQuotationPreviewResponse preview, CancellationToken cancellationToken);
-    Task<CommercialQuotationFileState?> GetFileAsync(Guid projectId, CancellationToken cancellationToken);
+    Task<CommercialQuotationFileState?> GetFileAsync(Guid projectId, ProjectReadScope scope, CancellationToken cancellationToken);
 }

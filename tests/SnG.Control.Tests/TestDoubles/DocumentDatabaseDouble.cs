@@ -36,7 +36,8 @@ public sealed class DocumentDatabaseDouble(ProjectStoreDouble projects, ProjectT
         var project = projects.Items.SingleOrDefault(p => p.Id == id);
         return project is null ? null : new(project, Documents.Where(d => d.ProjectId == id).Select(Clone).ToArray(),
             tasks.Items.SingleOrDefault(t => t.ProjectId == id && t.Type == ProjectTaskType.PrepareQuotation),
-            Handoffs.SingleOrDefault(h => h.ProjectId == id), Items.Where(i => i.ProjectId == id).ToArray());
+            Handoffs.SingleOrDefault(h => h.ProjectId == id), Items.Where(i => i.ProjectId == id).ToArray(),
+            tasks.Items.SingleOrDefault(t => t.ProjectId == id && t.Type == ProjectTaskType.ReviewQuotation));
     }
     private static T Clone<T>(T entity) where T : class =>
         (T)typeof(object).GetMethod("MemberwiseClone", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(entity, null)!;

@@ -13,13 +13,14 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
     private HttpClient Client(string? mode)
     {
         var client = new HttpClient { BaseAddress = fixture.Http.BaseAddress };
+        client.DefaultRequestHeaders.Add("X-SnG-Active-Role", "Management");
         if (mode is not null) client.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, mode);
         return client;
     }
     private Project Project()
     {
         var client = new Client("Management test client"); fixture.Clients.Items.Add(client);
-        var project = new Project(client.Id, "Management test project", "City", ProductLine.Classic, "other-google-subject");
+        var project = new Project(client.Id, "Management test project", "City", ProductLine.Classic, "google-test-subject");
         fixture.Projects.Items.Add(project); return project;
     }
     [Theory]
@@ -48,7 +49,7 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
     {
         using var client = Client(mode);
         var me = await client.GetFromJsonAsync<JsonElement>("/api/auth/me");
-        Assert.Equal(new[] { "subject", "email", "name", "isManagement" }, me.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "subject", "email", "name", "isManagement", "roles" }, me.EnumerateObject().Select(p => p.Name));
         Assert.Equal(expected, me.GetProperty("isManagement").GetBoolean());
         Assert.Equal(expected ? "management-test-subject" : "google-test-subject", me.GetProperty("subject").GetString());
         Assert.Equal(email, me.GetProperty("email").GetString()); Assert.Equal("Test User", me.GetProperty("name").GetString());
@@ -155,13 +156,13 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
         }
     }
     [Theory]
-    [InlineData("creator", true)]
-    [InlineData("head", true)]
+    [InlineData("creator", false)]
+    [InlineData("head", false)]
     [InlineData("budgets", false)]
-    public void ManagementOverlap_DoesNotRemoveOtherDocumentPermissions(string identity, bool canModify)
+    public void ManagementActiveRole_RemainsReadOnlyDespiteOverlappingIdentity(string identity, bool canModify)
     {
         var project = new Project(Guid.NewGuid(), "Overlap", "City", ProductLine.Classic, "creator");
-        var access = new ProjectDocumentAccess(new IdentityDouble(identity), new IdentityDouble("head"), new IdentityDouble("budgets"), new IdentityDouble(identity));
+        var access = new ProjectDocumentAccess(new IdentityDouble(identity), new ActiveRoleDouble(SystemRole.Management), new IdentityDouble("budgets"));
         Assert.True(access.CanRead(new(project, [], null, null, [])));
         Assert.Equal(canModify, access.CanModify(project));
     }
@@ -180,6 +181,12 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
         var quotationStatus = document.GetProperty("paths").GetProperty("/api/projects/{id}/budget-quotation/status").GetProperty("get");
         foreach (var status in new[] { "200", "401", "403", "404" }) Assert.True(quotationStatus.GetProperty("responses").TryGetProperty(status, out _));
         Assert.False(quotationStatus.TryGetProperty("requestBody", out _));
-        Assert.Equal(29, document.GetProperty("paths").EnumerateObject().Sum(p => p.Value.EnumerateObject().Count(o => o.Name is "get" or "post" or "put" or "delete")));
+        foreach (var route in new[] { "/api/projects/{id}/budget-quotation/view", "/api/projects/{id}/commercial-quotation/view", "/api/projects/{id}/budget-quotation/items/{itemId}/image" })
+        {
+            var read = document.GetProperty("paths").GetProperty(route).GetProperty("get");
+            foreach (var status in new[] { "200", "401", "403", "404" }) Assert.True(read.GetProperty("responses").TryGetProperty(status, out _));
+            Assert.False(read.TryGetProperty("requestBody", out _));
+        }
+        Assert.Equal(32, document.GetProperty("paths").EnumerateObject().Sum(p => p.Value.EnumerateObject().Count(o => o.Name is "get" or "post" or "put" or "delete")));
     }
 }

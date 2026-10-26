@@ -69,7 +69,7 @@ public class CommercialHandoffCompensationTests
         var storedReview = Assert.Single(db.ChangeTracker.Entries<ProjectTask>(), entry => entry.Entity.Type == ProjectTaskType.ReviewQuotation).Entity;
         Assert.Equal("google-test-subject", storedReview.AssignedToGoogleSubject);
         Assert.Equal(storedReview.AssignedToGoogleSubject, result.Response!.CommercialTask.AssignedToGoogleSubject);
-        Assert.Null(result.Response.BudgetTask.AssignedToGoogleSubject);
+        Assert.Equal("budgets-test-subject", result.Response.BudgetTask.AssignedToGoogleSubject);
         Assert.Equal(1, db.SaveCalls);
         Assert.Equal(ProjectTaskStatus.Completed, result.Response!.BudgetTask.Status); Assert.Equal(ProjectTaskStatus.InProgress, result.Response.CommercialTask.Status);
         Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(new { state.Project, state.Catalog, state.Items, state.Extractions }));

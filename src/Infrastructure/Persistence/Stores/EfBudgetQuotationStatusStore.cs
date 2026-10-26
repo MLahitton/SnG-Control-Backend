@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using Microsoft.EntityFrameworkCore;
 using SnG.Control.Application.Features.Budgets.CommercialHandoff;
 using SnG.Control.Application.Features.Budgets.Status;
@@ -7,9 +8,9 @@ namespace SnG.Control.Infrastructure.Persistence.Stores;
 // No IFileStorage/parser/generator dependency. No extraction values or image payloads are loaded.
 public sealed class EfBudgetQuotationStatusStore(SnGControlDbContext context) : IBudgetQuotationStatusStore
 {
-    public async Task<BudgetQuotationStatusResponse?> GetAsync(Guid projectId, CancellationToken token)
+    public async Task<BudgetQuotationStatusResponse?> GetAsync(Guid projectId, ProjectReadScope scope, CancellationToken token)
     {
-        var project = await context.Projects.AsNoTracking().SingleOrDefaultAsync(p => p.Id == projectId, token);
+        var project = await context.Projects.AsNoTracking().Where(scope.Filter(context.ProjectTasks)).SingleOrDefaultAsync(p => p.Id == projectId, token);
         if (project is null) return null;
         var tasks = await context.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == projectId).ToArrayAsync(token);
         var version = await context.BudgetQuotationVersions.AsNoTracking()

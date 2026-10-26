@@ -5,8 +5,15 @@ using SnG.Control.Tests.Fixtures;
 
 namespace SnG.Control.Tests.Api;
 
-public class CommercialHandoffApiTests(ApiFixture fixture) : IClassFixture<ApiFixture>
+public class CommercialHandoffApiTests : IClassFixture<ApiFixture>
 {
+    private readonly ApiFixture fixture;
+    public CommercialHandoffApiTests(ApiFixture fixture)
+    {
+        this.fixture = fixture;
+        fixture.Http.DefaultRequestHeaders.Remove("X-SnG-Active-Role");
+        fixture.Http.DefaultRequestHeaders.Add("X-SnG-Active-Role", "CommercialHead");
+    }
     [Theory]
     [InlineData("send-to-commercial")][InlineData("budget-quotation/commercial-file")]
     public async Task MissingProject_Is404(string route)
@@ -29,13 +36,13 @@ public class CommercialHandoffApiTests(ApiFixture fixture) : IClassFixture<ApiFi
         Assert.Empty(fixture.Handoff.SavedKeys);
     }
     [Fact]
-    public async Task BodyIsRejected_AndDownloadBeforeHandoffIs409()
+    public async Task BodyIsRejected_AndUnassignedDownloadIs404()
     {
         fixture.Handoff = await CommercialHandoffScenario.CreateAsync(); var id = fixture.Handoff.State!.Project.Id;
         using var post = await fixture.BudgetsHttp.PostAsync($"/api/projects/{id}/send-to-commercial", new StringContent("{}"));
         Assert.Equal(HttpStatusCode.BadRequest, post.StatusCode);
         using var get = await fixture.Http.GetAsync($"/api/projects/{id}/budget-quotation/commercial-file");
-        Assert.Equal(HttpStatusCode.Conflict, get.StatusCode); Assert.Empty(fixture.Handoff.SavedKeys);
+        Assert.Equal(HttpStatusCode.NotFound, get.StatusCode); Assert.Empty(fixture.Handoff.SavedKeys);
     }
     [Fact]
     public async Task Success_DuplicateAndDownloadsHaveCorrectContractAndNoSideEffects()

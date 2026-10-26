@@ -32,10 +32,14 @@ public class EfProjectTaskStore(SnGControlDbContext context, TaskTiming timing, 
     }
 
     public async Task<IReadOnlyList<ProjectTask>> ListByAreaAsync(
-        OperationalArea area, ProjectTaskStatus status, CancellationToken cancellationToken) =>
-        await context.ProjectTasks.AsNoTracking()
-            .Where(task => task.Area == area && task.Status == status)
+        OperationalArea area, ProjectTaskStatus status, SnG.Control.Application.Access.ProjectReadScope scope, CancellationToken cancellationToken)
+    {
+        var projects = context.Projects.Where(scope.Filter(context.ProjectTasks));
+        return await context.ProjectTasks.AsNoTracking()
+            .Where(task => task.Area == area && task.Status == status
+                && projects.Any(p => p.Id == task.ProjectId))
             .ToListAsync(cancellationToken);
+    }
 
     public async Task<IReadOnlyList<ProjectTask>> ListByProjectAsync(Guid projectId, CancellationToken cancellationToken) =>
         await context.ProjectTasks.AsNoTracking()

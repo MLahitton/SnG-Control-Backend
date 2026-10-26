@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using SnG.Control.Application.Identity;
+using SnG.Control.Domain.Enums;
 
 namespace SnG.Control.Api.Authorization;
 
@@ -8,14 +9,12 @@ public sealed class BudgetsAssigneeRequirement : IAuthorizationRequirement
     public const string PolicyName = "BudgetsAssignee";
 }
 
-public sealed class BudgetsAssigneeAuthorizationHandler(IBudgetsAssigneeIdentity budgets)
+public sealed class BudgetsAssigneeAuthorizationHandler(IActiveRoleContext active)
     : AuthorizationHandler<BudgetsAssigneeRequirement>
 {
-    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, BudgetsAssigneeRequirement requirement)
+    protected override Task HandleRequirementAsync(Microsoft.AspNetCore.Authorization.AuthorizationHandlerContext context, BudgetsAssigneeRequirement requirement)
     {
-        var subject = context.User.FindFirst("sub")?.Value;
-        if (context.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(subject)
-            && string.Equals(subject, budgets.Subject, StringComparison.Ordinal))
+        if (context.User.Identity?.IsAuthenticated == true && active.Role == SystemRole.Budgets)
             context.Succeed(requirement);
         return Task.CompletedTask;
     }

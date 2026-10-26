@@ -95,7 +95,7 @@ public class AssignSgCodeHttpTests(ApiFixture fixture) : IClassFixture<ApiFixtur
     {
         var project = new Project(Guid.NewGuid(), "Project", "City", ProductLine.Classic, "google-test-subject");
         fixture.Projects.Items.Add(project);
-        fixture.Tasks.Items.Add(new ProjectTask(project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation));
+        fixture.Tasks.Items.Add(new ProjectTask(project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation, "budgets-test-subject"));
         return project;
     }
 

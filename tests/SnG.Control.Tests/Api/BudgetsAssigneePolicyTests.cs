@@ -41,13 +41,14 @@ public class BudgetsAssigneePolicyTests
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         { ["Authentication:BudgetsAssigneeSubject"] = "budgets-test-subject" }).Build());
         services.AddBudgetsAssigneeAuthorization();
+        RoleTestAuthorization.Register(services);
         using var provider = services.BuildServiceProvider();
         Assert.Equal("budgets-test-subject", provider.GetRequiredService<IBudgetsAssigneeIdentity>().Subject);
         var claims = new List<Claim>();
         if (subject is not null) claims.Add(new("sub", subject));
         if (email is not null) claims.Add(new("email", email));
         var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, authenticated ? "test" : null));
-        var result = await provider.GetRequiredService<IAuthorizationService>().AuthorizeAsync(principal, null, BudgetsAssigneeRequirement.PolicyName);
+        var result = await RoleTestAuthorization.AuthorizeAsync(provider, principal, BudgetsAssigneeRequirement.PolicyName);
         Assert.Equal(allowed, result.Succeeded);
     }
     [Theory]
@@ -65,11 +66,12 @@ public class BudgetsAssigneePolicyTests
         }).Build());
         services.AddBudgetsAssigneeAuthorization();
         services.AddCommercialHeadAuthorization();
+        RoleTestAuthorization.Register(services);
         using var provider = services.BuildServiceProvider();
         Assert.Single(provider.GetServices<IBudgetsAssigneeIdentity>());
         var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("sub", subject)], "test"));
         var authorization = provider.GetRequiredService<IAuthorizationService>();
-        Assert.Equal(budgetsAllowed, (await authorization.AuthorizeAsync(principal, null, BudgetsAssigneeRequirement.PolicyName)).Succeeded);
-        Assert.Equal(headAllowed, (await authorization.AuthorizeAsync(principal, null, CommercialHeadRequirement.PolicyName)).Succeeded);
+        Assert.Equal(budgetsAllowed, (await RoleTestAuthorization.AuthorizeAsync(provider, principal, BudgetsAssigneeRequirement.PolicyName)).Succeeded);
+        Assert.Equal(headAllowed, (await RoleTestAuthorization.AuthorizeAsync(provider, principal, CommercialHeadRequirement.PolicyName)).Succeeded);
     }
 }

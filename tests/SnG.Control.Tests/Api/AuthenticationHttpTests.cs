@@ -31,7 +31,7 @@ public class AuthenticationHttpTests(ApiFixture fixture) : IClassFixture<ApiFixt
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         var user = json.RootElement;
         Assert.False(user.GetProperty("isManagement").GetBoolean());
-        Assert.Equal(new[] { "subject", "email", "name", "isManagement" }, user.EnumerateObject().Select(property => property.Name));
+        Assert.Equal(new[] { "subject", "email", "name", "isManagement", "roles" }, user.EnumerateObject().Select(property => property.Name));
         Assert.Equal("google-test-subject", user.GetProperty("subject").GetString());
         Assert.Equal("test@example.com", user.GetProperty("email").GetString());
         Assert.Equal("Test User", user.GetProperty("name").GetString());

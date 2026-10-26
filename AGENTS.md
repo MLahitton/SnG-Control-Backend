@@ -62,6 +62,7 @@ Email is informational only.
 Never use email as the authorization key.
 Existing concepts include:
 - ICurrentUser
+- IRoleResolver and request-scoped IActiveRoleContext
 - ICommercialHeadIdentity
 - Google JwtBearer authentication
 - CommercialHead authorization policy
@@ -383,3 +384,4 @@ Efficiency means:
 - avoiding unnecessary database smokes;
 - avoiding over-engineering.
 Efficiency must never mean skipping the final validation actually required by the task.
+Identity & Areas V1: Google Subject is identity; configuration defines membership; exactly one owned X-SnG-Active-Role authorizes each operational request. Auth/me is exempt from active-role selection. CommercialAdvisorSubjects is explicit; do not infer advisor access from Google authentication. Never bypass active-role checks because one Subject owns several roles. Project ownership and task assignments remain unchanged when switching area. Management is always read-only while active.

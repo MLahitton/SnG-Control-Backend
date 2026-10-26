@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Features.ProjectTasks;
 using SnG.Control.Domain.Entities;
 using SnG.Control.Domain.Enums;
@@ -39,5 +40,5 @@ public interface IBudgetQuotationCommercialHandoffStore
 {
     Task<CommercialHandoffState?> LoadAsync(Guid projectId, CancellationToken cancellationToken);
     Task<CommercialHandoffResult> SendAsync(CommercialHandoffState expected, ReadOnlyMemory<byte> workbook, string commercialHeadSubject, CancellationToken cancellationToken);
-    Task<CommercialFileState> GetFileAsync(Guid projectId, CancellationToken cancellationToken);
+    Task<CommercialFileState> GetFileAsync(Guid projectId, ProjectReadScope scope, CancellationToken cancellationToken);
 }

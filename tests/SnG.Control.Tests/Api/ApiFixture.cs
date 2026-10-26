@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Features.Budgets.Status;
 using SnG.Control.Application.Features.ProjectDocuments;
 using SnG.Control.Application.Features.Management;
@@ -33,6 +34,7 @@ namespace SnG.Control.Tests.Api;
 public class ApiFixture : IAsyncLifetime
 {
     private WebApplication app = null!;
+    public Action<IServiceCollection>? ConfigureServices { get; set; }
     public HttpClient Http { get; private set; } = null!;
     public HttpClient BudgetsHttp { get; private set; } = null!;
     public BudgetsWorkflowStoreDouble BudgetsWorkflow { get; private set; } = null!;
@@ -59,10 +61,12 @@ public class ApiFixture : IAsyncLifetime
         builder.WebHost.UseUrls("http://127.0.0.1:0");
         builder.Logging.ClearProviders();
         builder.Services.AddApiServices();
+        builder.Services.Configure<CommercialAdvisorOptions>(options => options.CommercialAdvisorSubjects = ["google-test-subject", "other-google-subject"]);
         builder.Services.Configure<ManagementOptions>(options => options.ManagementSubject = "management-test-subject");
         builder.Services.RemoveAll<Microsoft.Extensions.Hosting.IHostedService>();
         builder.Services.AddSingleton(Clock);
         Tasks.Timing = new(Clock, new());
+        Projects.Tasks = Tasks.Items; Clients.Projects = Projects; Tasks.Projects = Projects;
         Notifications = new(Projects, Tasks);
         Documents = new(Projects, Tasks);
         Management = new(Projects, Clients, Tasks);
@@ -102,6 +106,7 @@ public class ApiFixture : IAsyncLifetime
         builder.Services.AddSingleton<IProjectTaskStore>(Tasks);
         BudgetsWorkflow = new(Projects, Tasks);
         builder.Services.AddSingleton<IBudgetsWorkflowStore>(BudgetsWorkflow);
+        ConfigureServices?.Invoke(builder.Services);
         app = builder.Build();
         app.UseExceptionHandler();
         app.UseAuthentication();
@@ -113,6 +118,8 @@ public class ApiFixture : IAsyncLifetime
         var address = server.Features.Get<IServerAddressesFeature>()!.Addresses.Single();
         Http = new HttpClient { BaseAddress = new Uri(address) };
         BudgetsHttp = new HttpClient { BaseAddress = new Uri(address) };
+        Http.DefaultRequestHeaders.Add(HttpActiveRoleContext.HeaderName, "CommercialAdvisor");
+        BudgetsHttp.DefaultRequestHeaders.Add(HttpActiveRoleContext.HeaderName, "Budgets");
         BudgetsHttp.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName, "budgets");
         Http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(TestAuthenticationHandler.SchemeName, "valid");
     }
@@ -128,10 +135,10 @@ public class ApiFixture : IAsyncLifetime
 
     private sealed class QuotationStatusDouble(ApiFixture fixture) : IBudgetQuotationStatusStore
     {
-        public Task<BudgetQuotationStatusResponse?> GetAsync(Guid id, CancellationToken token)
+        public Task<BudgetQuotationStatusResponse?> GetAsync(Guid id, ProjectReadScope scope, CancellationToken token)
         {
             var state = fixture.Handoff.State;
-            return Task.FromResult(state?.Project.Id != id ? null :
+            return Task.FromResult(state?.Project.Id != id || !scope.CanRead(state.Project, state.Tasks) ? null :
                 BudgetQuotationStatusResponse.From(state.Project, state.Tasks, state.Readiness(),
                     state.Version?.ConfirmedAt, state.Items.Sum(i => (long)i.Quantity)));
         }
@@ -147,7 +154,7 @@ public class ApiFixture : IAsyncLifetime
     private sealed class CommercialStoreProxy(ICommercialQuotationStore inner) : ICommercialQuotationStore
     {
         public Task<CommercialQuotationState?> LoadAsync(Guid id, CancellationToken token) => inner.LoadAsync(id, token);
-        public Task<CommercialQuotationFileState?> GetFileAsync(Guid id, CancellationToken token) => inner.GetFileAsync(id, token);
+        public Task<CommercialQuotationFileState?> GetFileAsync(Guid id, ProjectReadScope scope, CancellationToken token) => inner.GetFileAsync(id, scope, token);
         public Task<CommercialQuotationConfirmationResult> ConfirmAsync(CommercialQuotationState state, string head, CommercialQuotation quotation,
             IReadOnlyList<CommercialQuotationItem> items, byte[] bytes, CommercialQuotationPreviewResponse preview, CancellationToken token)
             => inner.ConfirmAsync(state, head, quotation, items, bytes, preview, token);

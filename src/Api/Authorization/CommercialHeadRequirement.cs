@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using SnG.Control.Application.Identity;
+using SnG.Control.Domain.Enums;
 
 namespace SnG.Control.Api.Authorization;
 
@@ -8,14 +9,12 @@ public sealed class CommercialHeadRequirement : IAuthorizationRequirement
     public const string PolicyName = "CommercialHead";
 }
 
-public sealed class CommercialHeadAuthorizationHandler(ICommercialHeadIdentity head)
+public sealed class CommercialHeadAuthorizationHandler(IActiveRoleContext active)
     : AuthorizationHandler<CommercialHeadRequirement>
 {
-    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, CommercialHeadRequirement requirement)
+    protected override Task HandleRequirementAsync(Microsoft.AspNetCore.Authorization.AuthorizationHandlerContext context, CommercialHeadRequirement requirement)
     {
-        var subject = context.User.FindFirst("sub")?.Value;
-        if (context.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(subject)
-            && string.Equals(subject, head.Subject, StringComparison.Ordinal))
+        if (context.User.Identity?.IsAuthenticated == true && active.Role == SystemRole.CommercialHead)
             context.Succeed(requirement);
         return Task.CompletedTask;
     }

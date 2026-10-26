@@ -41,7 +41,7 @@ public class BudgetQuotationStatusApiTests(ApiFixture fixture) : IClassFixture<A
         var source = fixture.Handoff.State!;
         if (state == "none") fixture.Handoff.State = source with { Version = null, Catalog = null, Items = [], Extractions = [] };
         if (state == "sg") source.Project.SetSgCode("SG987");
-        if (state == "invalid") fixture.Handoff.State = source with { Tasks = [] };
+        if (state == "invalid") fixture.Handoff.State = source with { Tasks = [new SnG.Control.Domain.Entities.ProjectTask(source.Project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation, "budgets-test-subject")] };
         if (state is "sent" or "later")
         {
             using var sent = await fixture.BudgetsHttp.PostAsync($"/api/projects/{source.Project.Id}/send-to-commercial", null);

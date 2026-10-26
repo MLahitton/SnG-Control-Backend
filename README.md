@@ -10,13 +10,15 @@ La API requiere configuración de autenticación Google, identidades del Jefe Co
 
 ## Identidad y acceso
 
-Las operaciones de negocio requieren autenticación mediante un ID Token de Google válido para el Client ID configurado. Durante esta fase de desarrollo puede acceder cualquier cuenta Google válida para ese cliente OAuth; no hay restricción por dominio corporativo ni jerarquías o roles específicos.
+Google identifica al usuario mediante el **Subject (`sub`)**, nunca por email o nombre. `GET /api/auth/me` valida el ID Token y devuelve `subject`, `email`, `name`, `roles` como strings e `isManagement`, derivado de la pertenencia a Management. Esta consulta no requiere área activa.
 
-Google identifica al usuario mediante el **Subject (`sub`)**, no el email. `GET /api/auth/me` devuelve subject, email, nombre e `isManagement` del usuario autenticado; este último indica la coincidencia exacta con el Subject configurado de Gerencia. Existe un único Jefe Comercial global, identificado por `Authentication:CommercialHeadSubject`. Solo esa identidad puede descargar el Excel operativo mediante `commercial-file`; otro usuario autenticado recibe 403. La comparación es exacta por Subject y no depende del email ni del nombre.
+Las membresías V1 provienen de configuración: `Authentication:CommercialAdvisorSubjects` es una lista explícita de asesores; `BudgetsAssigneeSubject`, `CommercialHeadSubject` y `ManagementSubject` asignan sus respectivos roles. Una cuenta puede poseer varios, pero cada request operacional debe enviar **`X-SnG-Active-Role`** con uno que realmente posea. Sin autenticación válida se responde 401; sin área, con un valor inválido o con un rol ajeno, 403. No hay tabla Users/UserRoles, passwords ni tokens propios.
 
-No existe tabla Users y no se almacenan passwords ni tokens. Una solicitud sin autenticación, con un token inválido o sin Subject recibe 401. Durante desarrollo, cualquier usuario Google autenticado puede crear proyectos y realizar las consultas generales; enviar a Presupuestos y modificar sus documentos requiere ser el creador/responsable del proyecto o el Jefe Comercial; todavía no se modelan usuarios por área. La descarga del Excel temporal y el preview y confirmación de Comercial están restringidos al Jefe Comercial. El archivo comercial final puede descargarlo el Jefe o el creador/responsable del proyecto, siempre por Subject.
+Los roles activos implementados son `CommercialAdvisor`, `Budgets`, `CommercialHead` y `Management`. Accounting, Engineering, Production, Logistics e Installation están reservados en el contrato, sin asignación ni experiencia operativa. Solo el Asesor activo crea clientes/proyectos y envía a Presupuestos un proyecto propio. Puede modificar documentos propios; el Jefe Comercial escribe únicamente en su revisión comercial. Presupuestos y Jefe consultan documentos de proyectos con su tarea asignada, incluso completada. Gerencia tiene lectura transversal, sin adquirir escritura por compartir Subject con el creador o el Jefe.
 
-La cuenta configurada mediante `Authentication:BudgetsAssigneeSubject` controla el serial SG: solo ella puede asignarlo o corregirlo, ejecutar preview y confirmación de la cotización inicial y enviarla de Presupuestos a Comercial. La política `BudgetsAssignee` compara exactamente el Google `sub`, sin usar email ni fallback; otra identidad autenticada recibe 403 antes de ejecutar la operación. Ser Jefe Comercial no concede estos permisos. El Subject es configuración de User Secrets o entorno, nunca un valor hardcodeado.
+La política BudgetsAssignee exige membresía y área activa Budgets. SG, preview, confirmación y envío a Comercial requieren también PrepareQuotation asignada al Subject actual; una tarea sin asignación o asignada a otro usuario no permite esas acciones. CommercialHead activo puede descargar el Excel operativo de proyectos con ReviewQuotation asignada y revisar/confirmar según workflow. El archivo final permite acceso al Jefe activo asignado o al Asesor activo propietario.
+
+Cambiar de área no cambia `Project.CreatedByGoogleSubject`, el responsable comercial original, las asignaciones de tareas ni sus plazos. Los handoffs siguen asignando PrepareQuotation a Presupuestos, ReviewQuotation al Jefe y PresentQuotationToClient al creador original.
 
 ## Gerencia V1
 
@@ -24,9 +26,20 @@ La cuenta configurada mediante `Authentication:ManagementSubject` tiene visibili
 
 La consulta de operación devuelve todas las tareas actuales e históricas, con contexto de proyecto y cliente, SG, ciudad, línea de producto y fechas. Prioriza las tareas pendientes de completar según su Leak Time y deja las completadas al final. Gerencia puede consultar los proyectos, sus tareas e historial de notificaciones, y leer/descargar documentos vigentes, reemplazados y snapshot inicial de cualquier proyecto, antes o después del envío a Presupuestos; el snapshot solo está disponible si existe.
 
-Management no concede permisos para cargar, reemplazar o quitar documentos, enviar a Presupuestos, asignar SG ni confirmar cotizaciones. Si el mismo Subject también es creador, Jefe Comercial o Presupuestos, conserva los permisos propios de esa identidad. La bandeja personal de notificaciones sigue mostrando solo las dirigidas al usuario; no se copian avisos ajenos. Esta funcionalidad es backend de consulta: todavía no incluye frontend gerencial ni SnG Intelligence.
+Management no concede permisos para cargar, reemplazar o quitar documentos, enviar a Presupuestos, asignar SG ni confirmar cotizaciones. Aunque el Subject también posea otros roles, Management activo permanece de solo lectura; debe cambiar al área correspondiente para ejercer sus otros permisos. La bandeja personal de notificaciones sigue mostrando solo las dirigidas al usuario; no se copian avisos ajenos. Frontend e Intelligence consumen esta funcionalidad en sus repositorios separados.
 
 ## Clientes y proyectos
+
+El área activa determina el ámbito de lectura y las acciones permitidas, no solo qué módulos aparecen. Clientes y Proyectos son navegables directamente para las cuatro áreas:
+
+| Área activa | Clientes visibles | Proyectos visibles | Escritura |
+| --- | --- | --- | --- |
+| CommercialAdvisor | Registro compartido de clientes | Propios | Crear cliente/proyecto, documentos propios y envío inicial |
+| Budgets | Relacionados con proyectos accesibles | PrepareQuotation asignada al Subject actual, incluida Completed | Operaciones de Presupuestos según workflow |
+| CommercialHead | Relacionados con proyectos accesibles | ReviewQuotation asignada al Subject actual, incluida Completed | Revisión Comercial según workflow |
+| Management | Todos | Todos, incluidos legacy | Ninguna |
+
+Backend aplica el ámbito tanto a listados como a URLs directas, tareas y actividad del expediente. La asignación de tarea conserva trazabilidad y acceso histórico; no concede acciones de otra área. Un proyecto legacy sin creador solo es visible por asignación válida o mediante Gerencia. La bandeja personal de notificaciones conserva su filtro por destinatario.
 
 Un **Client** representa un cliente. Tiene un identificador interno único, un nombre y fechas de creación y actualización. Su nombre es descriptivo y nunca reemplaza su identidad interna.
 
@@ -89,13 +102,13 @@ Los identificadores, las fechas, el código SG y la identidad del creador no pue
 
 ## Documentos del proyecto
 
-El responsable Comercial (creador del proyecto) y el Jefe Comercial pueden cargar documentos de cualquier formato, agregar archivos y reemplazarlos explícitamente durante toda la vida del proyecto. Se admiten hasta **15 documentos vigentes**, **100 MB por archivo** y **300 MB de contenido por operación** (MB decimal). Cada carga es todo-o-nada. Los archivos se conservan como bytes opacos: no se interpretan ni previsualizan.
+El Asesor Comercial activo responsable (creador del proyecto) puede cargar documentos de cualquier formato, agregar archivos y reemplazarlos explícitamente durante toda la vida del proyecto. Se admiten hasta **15 documentos vigentes**, **100 MB por archivo** y **300 MB de contenido por operación** (MB decimal). Cada carga es todo-o-nada. Los archivos se conservan como bytes opacos: no se interpretan ni previsualizan.
 
 El nombre no identifica al documento: dos archivos planos.pdf pueden coexistir. Un reemplazo debe indicar el documento anterior; crea otro identificador, conserva el archivo y la metadata anteriores como históricos y deja la nueva versión vigente. Los históricos no cuentan para el límite de 15.
 
-Antes del primer envío, Comercial/Jefe puede quitar un vigente cargado por error. La baja es lógica: queda excluido del listado y de cualquier descarga, conservando internamente sus bytes y referencia para evitar inconsistencias con almacenamiento. No hay purga física automática. Después del envío no se pueden quitar documentos ni borrar históricos.
+Antes del primer envío, el Asesor propietario puede quitar un vigente cargado por error. La baja es lógica: queda excluido del listado y de cualquier descarga, conservando internamente sus bytes y referencia para evitar inconsistencias con almacenamiento. No hay purga física automática. Después del envío no se pueden quitar documentos ni borrar históricos.
 
-Enviar a Presupuestos exige al menos un vigente y guarda juntos el snapshot exacto de documentos, PrepareQuotation Pending y TaskAssigned. El inicio y deadline permanecen vacíos: la primera asignación de SG inicia el Leak Time. Presupuestos obtiene acceso documental de lectura y descarga después del envío; no puede cargar, reemplazar ni quitar archivos. Gerencia también puede leer y descargar documentos antes o después del envío, sin permiso de modificación. Los demás usuarios no tienen acceso documental ni pueden enviar el proyecto.
+Enviar a Presupuestos exige al menos un vigente y guarda juntos el snapshot exacto de documentos, PrepareQuotation Pending y TaskAssigned. El inicio y deadline permanecen vacíos: la primera asignación de SG inicia el Leak Time. Presupuestos obtiene acceso documental de lectura y descarga después del envío; no puede cargar, reemplazar ni quitar archivos. Gerencia también puede leer y descargar documentos antes o después del envío, sin permiso de modificación. El Jefe asignado a ReviewQuotation conserva lectura documental histórica. Solo el Asesor activo propietario puede enviar inicialmente el proyecto.
 
 Las descargas incluyen archivo individual, históricos, ZIP de vigentes y ZIP del snapshot inicial. Los nombres repetidos se desambiguan dentro del ZIP. Las actualizaciones posteriores no cambian el snapshot ni reinician la tarea: cada batch exitoso genera una sola notificación a Presupuestos, incluso con PrepareQuotation completada. Un proyecto legacy que ya tenía esa tarea sigue enviado, puede recibir documentación y avisos, pero no se le inventa un snapshot inicial.
 
@@ -143,7 +156,9 @@ GET `/api/projects/{id}/budget-quotation/status` permite a Presupuestos recupera
 
 `canSendToCommercial` y `sendBlockReason` provienen del backend. Las razones son None, SgChangedAfterConfirmation e InvalidState. Un SG actual distinto del confirmado bloquea el envío y no se repara automáticamente. La consulta comparte la regla con el comando existente y no lee ni genera XLSX, imágenes o extracción completa. El POST `/api/projects/{id}/send-to-commercial` sigue sin body y revalida todo antes de completar PrepareQuotation e iniciar ReviewQuotation; la consulta no sustituye esa validación ni verifica disponibilidad física del archivo.
 
-La UI de revisión Comercial sigue pendiente en Frontend; las APIs de revisión existentes se conservan.
+El expediente conserva vistas completas de las cotizaciones confirmadas. La de Presupuestos muestra metadata, valores técnicos oficiales, extracción original, diferencias e imágenes históricas bajo demanda. La Comercial muestra sus valores técnicos, precios, total del proyecto y diferencias frente a Presupuestos. Ambas se reconstruyen desde datos persistidos; no se vuelve a interpretar XLSX y los snapshots permanecen disponibles después de los handoffs.
+
+La lectura exige un área activa autorizada: el asesor original consulta ambas; Presupuestos consulta su snapshot con PrepareQuotation asignada; el Jefe consulta ambas con ReviewQuotation asignada; Gerencia consulta ambas en solo lectura. La consulta no concede permisos de edición ni amplía las descargas existentes.
 
 ## Envío a Comercial y Excel operativo
 

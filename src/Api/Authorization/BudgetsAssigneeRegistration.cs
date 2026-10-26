@@ -11,7 +11,7 @@ public static class BudgetsAssigneeRegistration
             .Validate(options => !string.IsNullOrWhiteSpace(options.BudgetsAssigneeSubject),
                 "Configure Authentication:BudgetsAssigneeSubject.").ValidateOnStart();
         services.AddSingleton<IBudgetsAssigneeIdentity, ConfiguredBudgetsAssigneeIdentity>();
-        services.AddSingleton<IAuthorizationHandler, BudgetsAssigneeAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, BudgetsAssigneeAuthorizationHandler>();
         services.AddAuthorization(options => options.AddPolicy(BudgetsAssigneeRequirement.PolicyName,
             policy => policy.RequireAuthenticatedUser().AddRequirements(new BudgetsAssigneeRequirement())));
         return services;

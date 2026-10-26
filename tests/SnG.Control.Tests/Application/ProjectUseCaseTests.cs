@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Features.Projects.Create;
 using SnG.Control.Application.Features.Projects.GetById;
 using SnG.Control.Application.Features.Projects.List;
@@ -9,6 +10,7 @@ namespace SnG.Control.Tests.Application;
 
 public class ProjectUseCaseTests
 {
+    private static ProjectReadAccess ReadAccess => new(new IdentityDouble(), new ActiveRoleDouble(SnG.Control.Domain.Enums.SystemRole.CommercialAdvisor));
     [Theory]
     [InlineData("other-google-subject", "a@example.com", "User A")]
     [InlineData(" Opaque-001 ", null, null)]
@@ -58,9 +60,9 @@ public class ProjectUseCaseTests
         Assert.Null(second.SgCode);
         Assert.Equal(projects.Items[0].CreatedAt, first.CreatedAt);
         Assert.Equal(projects.Items[0].UpdatedAt, first.UpdatedAt);
-        Assert.Equal(first, await new GetProjectByIdUseCase(projects).ExecuteAsync(first.Id, token));
-        Assert.Null(await new GetProjectByIdUseCase(projects).ExecuteAsync(Guid.NewGuid(), token));
-        var listed = await new ListProjectsUseCase(projects).ExecuteAsync(token);
+        Assert.Equal(first, await new GetProjectByIdUseCase(projects, ReadAccess).ExecuteAsync(first.Id, token));
+        Assert.Null(await new GetProjectByIdUseCase(projects, ReadAccess).ExecuteAsync(Guid.NewGuid(), token));
+        var listed = await new ListProjectsUseCase(projects, ReadAccess).ExecuteAsync(token);
         Assert.Equal(2, listed.Count);
         Assert.Contains(first, listed);
         Assert.Contains(second, listed);
@@ -83,7 +85,7 @@ public class ProjectUseCaseTests
     [Fact]
     public async Task List_WhenEmpty_ReturnsEmptyCollection()
     {
-        Assert.Empty(await new ListProjectsUseCase(new ProjectStoreDouble()).ExecuteAsync(CancellationToken.None));
+        Assert.Empty(await new ListProjectsUseCase(new ProjectStoreDouble(), ReadAccess).ExecuteAsync(CancellationToken.None));
     }
 
     [Theory]

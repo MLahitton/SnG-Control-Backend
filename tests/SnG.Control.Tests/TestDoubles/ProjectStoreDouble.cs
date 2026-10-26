@@ -5,6 +5,11 @@ namespace SnG.Control.Tests.TestDoubles;
 
 public class ProjectStoreDouble : IProjectStore
 {
+    public List<ProjectTask> Tasks { get; set; } = [];
+    public async Task<Project?> GetReadableByIdAsync(Guid id, SnG.Control.Application.Access.ProjectReadScope scope, CancellationToken token)
+    { var p = await GetByIdAsync(id, token); return p is not null && scope.CanRead(p, Tasks) ? p : null; }
+    public async Task<IReadOnlyList<Project>> ListReadableAsync(SnG.Control.Application.Access.ProjectReadScope scope, CancellationToken token) =>
+        (await ListAsync(token)).Where(p => scope.CanRead(p, Tasks)).ToArray();
     public List<Project> Items { get; } = [];
     public List<CancellationToken> ReceivedTokens { get; } = [];
 

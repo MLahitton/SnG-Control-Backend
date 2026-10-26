@@ -1,9 +1,10 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Scheduling;
 using SnG.Control.Domain.Enums;
 
 namespace SnG.Control.Application.Features.ProjectTasks.ListByArea;
 
-public class ListProjectTasksByAreaUseCase(IProjectTaskStore tasks, TaskTiming timing)
+public class ListProjectTasksByAreaUseCase(IProjectTaskStore tasks, TaskTiming timing, ProjectReadAccess access)
 {
     public async Task<IReadOnlyList<ProjectTaskResponse>> ExecuteAsync(
         OperationalArea area, ProjectTaskStatus status, CancellationToken cancellationToken)
@@ -17,7 +18,7 @@ public class ListProjectTasksByAreaUseCase(IProjectTaskStore tasks, TaskTiming t
             throw new ArgumentOutOfRangeException(nameof(status), status, "Status must be a defined value.");
         }
 
-        var entities = await tasks.ListByAreaAsync(area, status, cancellationToken);
+        var entities = await tasks.ListByAreaAsync(area, status, access.Scope, cancellationToken);
         return entities.Select(task => ProjectTaskResponse.FromEntity(task, timing)).ToArray();
     }
 }

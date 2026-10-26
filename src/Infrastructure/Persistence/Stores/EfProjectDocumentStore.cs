@@ -26,7 +26,8 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
         await context.ProjectDocuments.AsNoTracking().Where(d => d.ProjectId == project.Id).OrderBy(d => d.UploadedAt).ThenBy(d => d.Id).ToListAsync(token),
         await context.ProjectTasks.AsNoTracking().SingleOrDefaultAsync(t => t.ProjectId == project.Id && t.Type == ProjectTaskType.PrepareQuotation, token),
         await context.ProjectDocumentHandoffs.AsNoTracking().SingleOrDefaultAsync(h => h.ProjectId == project.Id, token),
-        await context.ProjectDocumentHandoffItems.AsNoTracking().Where(i => i.ProjectId == project.Id).ToListAsync(token));
+        await context.ProjectDocumentHandoffItems.AsNoTracking().Where(i => i.ProjectId == project.Id).ToListAsync(token),
+        await context.ProjectTasks.AsNoTracking().SingleOrDefaultAsync(t => t.ProjectId == project.Id && t.Type == ProjectTaskType.ReviewQuotation, token));
 
     protected virtual Task<IDbContextTransaction> BeginAsync(CancellationToken token) => context.Database.BeginTransactionAsync(token);
     protected virtual async Task<ProjectDocumentState?> LoadLockedAsync(Guid id, CancellationToken token)

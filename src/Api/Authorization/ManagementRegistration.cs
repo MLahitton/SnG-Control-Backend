@@ -11,7 +11,7 @@ public static class ManagementRegistration
             .Validate(options => !string.IsNullOrWhiteSpace(options.ManagementSubject),
                 "Configure Authentication:ManagementSubject.").ValidateOnStart();
         services.AddSingleton<IManagementIdentity, ConfiguredManagementIdentity>();
-        services.AddSingleton<IAuthorizationHandler, ManagementAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, ManagementAuthorizationHandler>();
         services.AddAuthorization(options => options.AddPolicy(ManagementRequirement.PolicyName,
             policy => policy.RequireAuthenticatedUser().AddRequirements(new ManagementRequirement())));
         return services;

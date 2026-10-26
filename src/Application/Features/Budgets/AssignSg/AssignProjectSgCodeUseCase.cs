@@ -1,17 +1,21 @@
 using SnG.Control.Application.Scheduling;
+using SnG.Control.Application.Identity;
 using SnG.Control.Application.Features.Projects;
 using SnG.Control.Application.Features.ProjectTasks;
 using SnG.Control.Domain.Enums;
 
 namespace SnG.Control.Application.Features.Budgets.AssignSg;
 
-public class AssignProjectSgCodeUseCase(IBudgetsWorkflowStore store, TaskTiming timing)
+public class AssignProjectSgCodeUseCase(IBudgetsWorkflowStore store, TaskTiming timing, ICurrentUser user)
 {
     public async Task<AssignProjectSgCodeResult> ExecuteAsync(Guid projectId, string sgCode, CancellationToken cancellationToken)
     {
         var (project, task) = await store.LoadAsync(projectId, cancellationToken);
         if (project is null) return new AssignProjectSgCodeResult.ProjectNotFound();
         if (task is null) return new AssignProjectSgCodeResult.ProjectNotSentToBudgets();
+
+        if (!string.Equals(task.AssignedToGoogleSubject, user.Subject, StringComparison.Ordinal))
+            return new AssignProjectSgCodeResult.InvalidWorkflowState();
 
         var firstAssignment = project.SgCode is null;
         var validState = task.CompletedAt is null && (firstAssignment

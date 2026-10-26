@@ -7,6 +7,7 @@ namespace SnG.Control.Tests.TestDoubles;
 public class ProjectTaskStoreDouble : IProjectTaskStore
 {
     public SnG.Control.Application.Scheduling.TaskTiming Timing { get; set; } = TestTiming.Value;
+    public ProjectStoreDouble Projects { get; set; } = new();
     public List<ProjectNotification> Notifications { get; } = [];
     public List<ProjectTask> Items { get; } = [];
     public List<CancellationToken> ReceivedTokens { get; } = [];
@@ -27,12 +28,13 @@ public class ProjectTaskStoreDouble : IProjectTaskStore
     }
 
     public Task<IReadOnlyList<ProjectTask>> ListByAreaAsync(
-        OperationalArea area, ProjectTaskStatus status, CancellationToken cancellationToken)
+        OperationalArea area, ProjectTaskStatus status, SnG.Control.Application.Access.ProjectReadScope scope, CancellationToken cancellationToken)
     {
         ReceivedTokens.Add(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult<IReadOnlyList<ProjectTask>>(
-            Items.Where(task => task.Area == area && task.Status == status).ToArray());
+            Items.Where(task => task.Area == area && task.Status == status
+                && Projects.Items.Any(p => p.Id == task.ProjectId && scope.CanRead(p, Items))).ToArray());
     }
 
     public Task<IReadOnlyList<ProjectTask>> ListByProjectAsync(Guid projectId, CancellationToken cancellationToken)

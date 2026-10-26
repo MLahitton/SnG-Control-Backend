@@ -12,6 +12,8 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
 {
     private async Task<CommercialQuotationScenario> Scenario()
     {
+        fixture.Http.DefaultRequestHeaders.Remove("X-SnG-Active-Role");
+        fixture.Http.DefaultRequestHeaders.Add("X-SnG-Active-Role", "CommercialHead");
         fixture.Commercial?.Dispose(); fixture.Commercial = new(); await fixture.Commercial.InitializeAsync();
         fixture.Http.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, "valid");
         return fixture.Commercial;
@@ -56,6 +58,8 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
         var scenario = await Scenario(); var id = scenario.State!.Project.Id;
         await scenario.Confirm().ExecuteAsync(id, scenario.Bytes, "folder/Cotización \"final\".xlsx", default);
         fixture.Http.DefaultRequestHeaders.Authorization = identity is null ? null : new(TestAuthenticationHandler.SchemeName, identity);
+        fixture.Http.DefaultRequestHeaders.Remove("X-SnG-Active-Role");
+        fixture.Http.DefaultRequestHeaders.Add("X-SnG-Active-Role", identity is "other" or "creator-other-email" ? "CommercialAdvisor" : "CommercialHead");
         var before = JsonSerializer.Serialize(scenario.State);
         for (var index = 0; index < 2; index++)
         {

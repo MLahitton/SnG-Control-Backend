@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Features.Budgets.CommercialHandoff;
 using SnG.Control.Domain.Entities;
 
@@ -32,5 +33,5 @@ public sealed record BudgetQuotationStatusResponse(Guid ProjectId, BudgetQuotati
 }
 public interface IBudgetQuotationStatusStore
 {
-    Task<BudgetQuotationStatusResponse?> GetAsync(Guid projectId, CancellationToken cancellationToken);
+    Task<BudgetQuotationStatusResponse?> GetAsync(Guid projectId, ProjectReadScope scope, CancellationToken cancellationToken);
 }

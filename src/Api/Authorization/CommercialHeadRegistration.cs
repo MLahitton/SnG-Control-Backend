@@ -11,7 +11,7 @@ public static class CommercialHeadRegistration
             .Validate(options => !string.IsNullOrWhiteSpace(options.CommercialHeadSubject),
                 "Configure Authentication:CommercialHeadSubject.").ValidateOnStart();
         services.AddSingleton<ICommercialHeadIdentity, ConfiguredCommercialHeadIdentity>();
-        services.AddSingleton<IAuthorizationHandler, CommercialHeadAuthorizationHandler>();
+        services.AddScoped<IAuthorizationHandler, CommercialHeadAuthorizationHandler>();
         services.AddAuthorization(options => options.AddPolicy(CommercialHeadRequirement.PolicyName,
             policy => policy.RequireAuthenticatedUser().AddRequirements(new CommercialHeadRequirement())));
         return services;

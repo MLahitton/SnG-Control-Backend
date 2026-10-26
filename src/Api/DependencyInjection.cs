@@ -39,6 +39,10 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApiServices(this IServiceCollection services)
     {
+        services.AddScoped<SnG.Control.Application.Features.QuotationViews.IQuotationReadStore, EfQuotationReadStore>();
+        services.AddScoped<SnG.Control.Application.Features.QuotationViews.QuotationReadService>();
+        services.AddActiveRoles();
+        services.AddScoped<SnG.Control.Application.Access.ProjectReadAccess>();
         services.AddManagementAuthorization();
         services.AddScoped<IManagementReadStore, EfManagementReadStore>();
         services.AddScoped<ListManagementTasksUseCase>();
@@ -82,11 +86,12 @@ public static class DependencyInjection
         services.AddOptions<BudgetQuotationParserOptions>().BindConfiguration(BudgetQuotationParserOptions.SectionName)
             .Validate(options => options.MaxUploadBytes > 0 && options.MaxUncompressedBytes > 0 && options.MaxZipEntries > 0,
                 "Quotation preview technical limits must be positive.").ValidateOnStart();
-        services.AddControllers().AddJsonOptions(options =>
+        services.AddControllers(options => options.Filters.Add<ActiveRoleFilter>()).AddJsonOptions(options =>
         {
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<NotificationKind>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<NotificationState>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<LeakTimeStatus>(allowIntegerValues: false));
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<SystemRole>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new ProductLineJsonConverter());
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<OperationalArea>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<ProjectTaskType>(allowIntegerValues: false));

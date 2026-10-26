@@ -1,3 +1,4 @@
+using SnG.Control.Application.Access;
 using Microsoft.Extensions.Options;
 using SnG.Control.Application.Features.Budgets.CommercialHandoff;
 using SnG.Control.Application.Files;
@@ -33,10 +34,10 @@ public sealed class CommercialHandoffScenario : IBudgetQuotationCommercialHandof
         return result;
     }
     public Task<CommercialHandoffState?> LoadAsync(Guid id, CancellationToken token) => Task.FromResult(State?.Project.Id == id ? State : null);
-    public Task<CommercialFileState> GetFileAsync(Guid id, CancellationToken token)
+    public Task<CommercialFileState> GetFileAsync(Guid id, ProjectReadScope scope, CancellationToken token)
     {
         GetFileCalls++;
-        return Task.FromResult(State?.Project.Id != id ? new CommercialFileState(false)
+        return Task.FromResult(State?.Project.Id != id || !scope.CanRead(State.Project, State.Tasks) ? new CommercialFileState(false)
             : new(true, State.Version?.ConfirmedFileStorageKey, State.Version?.OriginalFileName, State.Tasks.Any(task => task.Type == ProjectTaskType.ReviewQuotation)));
     }
     public async Task<CommercialHandoffResult> SendAsync(CommercialHandoffState expected, ReadOnlyMemory<byte> bytes, string commercialHeadSubject, CancellationToken token)

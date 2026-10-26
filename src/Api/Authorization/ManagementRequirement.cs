@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using SnG.Control.Application.Identity;
+using SnG.Control.Domain.Enums;
 
 namespace SnG.Control.Api.Authorization;
 
@@ -8,14 +9,12 @@ public sealed class ManagementRequirement : IAuthorizationRequirement
     public const string PolicyName = "Management";
 }
 
-public sealed class ManagementAuthorizationHandler(IManagementIdentity management)
+public sealed class ManagementAuthorizationHandler(IActiveRoleContext active)
     : AuthorizationHandler<ManagementRequirement>
 {
-    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, ManagementRequirement requirement)
+    protected override Task HandleRequirementAsync(Microsoft.AspNetCore.Authorization.AuthorizationHandlerContext context, ManagementRequirement requirement)
     {
-        var subject = context.User.FindFirst("sub")?.Value;
-        if (context.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(subject)
-            && string.Equals(subject, management.Subject, StringComparison.Ordinal))
+        if (context.User.Identity?.IsAuthenticated == true && active.Role == SystemRole.Management)
             context.Succeed(requirement);
         return Task.CompletedTask;
     }

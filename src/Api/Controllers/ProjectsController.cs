@@ -24,6 +24,7 @@ public class ProjectsController(
     AssignProjectSgCodeUseCase assignSgCode) : ControllerBase
 {
     [HttpPost]
+    [Authorize(Policy = ActiveRoleRegistration.CommercialAdvisorPolicy)]
     [ProducesResponseType<ProjectResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]
@@ -55,6 +56,7 @@ public class ProjectsController(
         Ok(await list.ExecuteAsync(cancellationToken));
 
     [HttpPost("{id}/send-to-budgets")]
+    [Authorize(Policy = ActiveRoleRegistration.CommercialAdvisorPolicy)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     [ProducesResponseType<ProjectTaskResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound)]

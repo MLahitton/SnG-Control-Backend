@@ -1,17 +1,18 @@
+using SnG.Control.Application.Access;
 using SnG.Control.Application.Identity;
 using SnG.Control.Domain.Entities;
+using SnG.Control.Domain.Enums;
 
 namespace SnG.Control.Application.Features.ProjectDocuments;
 
-public sealed class ProjectDocumentAccess(ICurrentUser current, ICommercialHeadIdentity head, IBudgetsAssigneeIdentity budgets, IManagementIdentity management)
+public sealed class ProjectDocumentAccess(ICurrentUser current, IActiveRoleContext active, IBudgetsAssigneeIdentity budgets)
 {
     public ICurrentUser Current => current;
     public string BudgetsSubject => budgets.Subject;
-    public bool CanModify(Project project) => string.Equals(current.Subject, project.CreatedByGoogleSubject, StringComparison.Ordinal)
-        || string.Equals(current.Subject, head.Subject, StringComparison.Ordinal);
-    public bool CanRead(ProjectDocumentState state) => CanModify(state.Project)
-        || string.Equals(current.Subject, management.Subject, StringComparison.Ordinal)
-        || (state.PrepareQuotation is not null && string.Equals(current.Subject, budgets.Subject, StringComparison.Ordinal));
+    public bool CanModify(Project project) => active.Role == SystemRole.CommercialAdvisor && string.Equals(current.Subject, project.CreatedByGoogleSubject, StringComparison.Ordinal);
+    public bool CanSendToBudgets(Project project) => active.Role == SystemRole.CommercialAdvisor && CanModify(project);
+    public bool CanRead(ProjectDocumentState state) => new ProjectReadScope(current.Subject, active.Role).CanRead(state.Project,
+        new[] { state.PrepareQuotation, state.ReviewQuotation }.OfType<ProjectTask>());
     public void RequireModify(Project project)
     {
         if (!CanModify(project)) throw new DocumentException(403, "DocumentAccessDenied");

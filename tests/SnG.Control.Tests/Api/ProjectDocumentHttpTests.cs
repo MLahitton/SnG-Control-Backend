@@ -11,14 +11,15 @@ namespace SnG.Control.Tests.Api;
 
 public class ProjectDocumentHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
 {
-    private Project Project()
+    private Project Project(string owner = "google-test-subject")
     {
-        var project = new Project(Guid.NewGuid(), "Documents", "City", ProductLine.Classic, "other-google-subject");
+        var project = new Project(Guid.NewGuid(), "Documents", "City", ProductLine.Classic, owner);
         fixture.Projects.Items.Add(project); return project;
     }
     private HttpClient Client(string? mode)
     {
         var client = new HttpClient { BaseAddress = fixture.Http.BaseAddress };
+        client.DefaultRequestHeaders.Add("X-SnG-Active-Role", mode == "valid" ? "CommercialHead" : mode == "budgets" ? "Budgets" : "CommercialAdvisor");
         if (mode is not null) client.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, mode);
         return client;
     }
@@ -58,18 +59,18 @@ public class ProjectDocumentHttpTests(ApiFixture fixture) : IClassFixture<ApiFix
     [Theory]
     [InlineData(null, 401)]
     [InlineData("other", 201)]
-    [InlineData("valid", 201)]
+    [InlineData("valid", 403)]
     [InlineData("budgets", 403)]
     [InlineData("outsider", 403)]
-    public async Task UploadAndSend_UseCreatorOrHead(string? mode, int status)
+    public async Task UploadAndSend_RequireAdvisorCreator(string? mode, int status)
     {
-        var project = Project(); using var client = Client(mode);
+        var project = Project("other-google-subject"); using var client = Client(mode);
         using var batch = Batch(("planos.pdf", [1, 2, 3], null));
         using var response = await client.PostAsync($"/api/projects/{project.Id}/documents/batch", batch);
         Assert.Equal(status, (int)response.StatusCode);
         using var sent = await client.PostAsync($"/api/projects/{project.Id}/send-to-budgets", null);
-        Assert.Equal(status, (int)sent.StatusCode);
-        Assert.Equal(status == 201 ? 1 : 0, fixture.Documents.Handoffs.Count(h => h.ProjectId == project.Id));
+        Assert.Equal(mode == "valid" ? 403 : status, (int)sent.StatusCode);
+        Assert.Equal(status == 201 && mode != "valid" ? 1 : 0, fixture.Documents.Handoffs.Count(h => h.ProjectId == project.Id));
     }
     [Fact]
     public async Task EmptyProject_CannotBeSent_AndNoEffects()
@@ -85,7 +86,7 @@ public class ProjectDocumentHttpTests(ApiFixture fixture) : IClassFixture<ApiFix
     [Fact]
     public async Task FullDocumentFlow_PreservesSnapshotAndBytes_AndNotifiesOncePerBatch()
     {
-        var project = Project(); var root = $"/api/projects/{project.Id}";
+        var project = Project("other-google-subject"); var root = $"/api/projects/{project.Id}";
         using var budgets = Client("budgets"); using var creator = Client("other");
         Assert.Equal(HttpStatusCode.Forbidden, (await budgets.GetAsync(root + "/documents")).StatusCode);
         using var firstBatch = Batch(("planos.pdf", [1, 2], null), ("planos.pdf", [3, 4], null));
@@ -171,7 +172,7 @@ public class ProjectDocumentHttpTests(ApiFixture fixture) : IClassFixture<ApiFix
         Assert.Equal(HttpStatusCode.NoContent, (await fixture.Http.DeleteAsync(root + $"/{document.Id}")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await fixture.Http.GetAsync(root + $"/{document.Id}/file")).StatusCode);
         Assert.Empty((await fixture.Http.GetFromJsonAsync<JsonElement>(root)).GetProperty("documents").EnumerateArray());
-        fixture.Tasks.Items.Add(new(project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation));
+        fixture.Tasks.Items.Add(new(project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation, "budgets-test-subject"));
         using var budgets = Client("budgets");
         Assert.Equal(HttpStatusCode.OK, (await budgets.GetAsync(root)).StatusCode);
         using var missing = await budgets.GetAsync(root + "/initial-handoff.zip");
