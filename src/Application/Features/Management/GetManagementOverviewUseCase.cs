@@ -11,21 +11,21 @@ public sealed class GetManagementOverviewUseCase(IManagementReadStore store, Lis
     {
         var totalProjects = await store.CountProjectsAsync(cancellationToken);
         var tasks = await list.ExecuteAsync(cancellationToken);
-        int Count(LeakTimeStatus status) => tasks.Count(task => task.LeakTimeStatus == status);
-        var attention = tasks.Where(task => task.LeakTimeStatus is LeakTimeStatus.Overdue
-            or LeakTimeStatus.DueToday or LeakTimeStatus.DueSoon).ToArray();
+        int Count(LeadTimeStatus status) => tasks.Count(task => task.LeadTimeStatus == status);
+        var attention = tasks.Where(task => task.LeadTimeStatus is LeadTimeStatus.Overdue
+            or LeadTimeStatus.DueToday or LeadTimeStatus.DueSoon).ToArray();
         // The task list already orders attention by priority, deadline, ordinal project name and task id.
         return new(totalProjects,
             new(tasks.Count(t => t.Status == ProjectTaskStatus.Pending),
                 tasks.Count(t => t.Status == ProjectTaskStatus.InProgress), tasks.Count(t => t.Status == ProjectTaskStatus.Completed)),
-            new(Count(LeakTimeStatus.NotStarted), Count(LeakTimeStatus.OnTrack), Count(LeakTimeStatus.DueSoon),
-                Count(LeakTimeStatus.DueToday), Count(LeakTimeStatus.Overdue), Count(LeakTimeStatus.CompletedOnTime),
-                Count(LeakTimeStatus.CompletedLate), Count(LeakTimeStatus.UntrackedLegacy)),
+            new(Count(LeadTimeStatus.NotStarted), Count(LeadTimeStatus.OnTrack), Count(LeadTimeStatus.DueSoon),
+                Count(LeadTimeStatus.DueToday), Count(LeadTimeStatus.Overdue), Count(LeadTimeStatus.CompletedOnTime),
+                Count(LeadTimeStatus.CompletedLate), Count(LeadTimeStatus.UntrackedLegacy)),
             tasks.GroupBy(t => t.Area).OrderBy(group => group.Key).Select(group => new ManagementAreaSummary(group.Key,
                 group.Count(t => t.Status == ProjectTaskStatus.Pending), group.Count(t => t.Status == ProjectTaskStatus.InProgress),
-                group.Count(t => t.Status == ProjectTaskStatus.Completed), group.Count(t => t.LeakTimeStatus == LeakTimeStatus.Overdue),
-                group.Count(t => t.LeakTimeStatus == LeakTimeStatus.DueToday), group.Count(t => t.LeakTimeStatus == LeakTimeStatus.DueSoon))).ToArray(),
+                group.Count(t => t.Status == ProjectTaskStatus.Completed), group.Count(t => t.LeadTimeStatus == LeadTimeStatus.Overdue),
+                group.Count(t => t.LeadTimeStatus == LeadTimeStatus.DueToday), group.Count(t => t.LeadTimeStatus == LeadTimeStatus.DueSoon))).ToArray(),
             new(attention.Length, attention.Take(AttentionItemLimit).Select(t => new ManagementAttentionItem(t.TaskId,
-                t.ProjectId, t.ProjectName, t.ClientName, t.SgCode, t.Area, t.Type, t.Status, t.LeakTimeStatus, t.DeadlineAt, t.StartedAt)).ToArray()));
+                t.ProjectId, t.ProjectName, t.ClientName, t.SgCode, t.Area, t.Type, t.Status, t.LeadTimeStatus, t.DeadlineAt, t.StartedAt)).ToArray()));
     }
 }

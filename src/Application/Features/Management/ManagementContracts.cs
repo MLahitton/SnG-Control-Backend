@@ -16,16 +16,16 @@ public interface IManagementReadStore
 public sealed record ManagementTaskResponse(Guid TaskId, Guid ProjectId, string ProjectName,
     Guid ClientId, string ClientName, string? SgCode, string City, ProductLine ProductLine,
     OperationalArea Area, ProjectTaskType Type, ProjectTaskStatus Status, DateTime AssignedAt,
-    DateTime? StartedAt, DateTime? CompletedAt, DateTime? DeadlineAt, bool? WasOverdue, LeakTimeStatus LeakTimeStatus);
+    DateTime? StartedAt, DateTime? CompletedAt, DateTime? DeadlineAt, bool? WasOverdue, LeadTimeStatus LeadTimeStatus);
 
 public sealed record ManagementTaskCounts(int Pending, int InProgress, int Completed);
-public sealed record ManagementLeakTimeCounts(int NotStarted, int OnTrack, int DueSoon, int DueToday,
+public sealed record ManagementLeadTimeCounts(int NotStarted, int OnTrack, int DueSoon, int DueToday,
     int Overdue, int CompletedOnTime, int CompletedLate, int UntrackedLegacy);
 public sealed record ManagementAreaSummary(OperationalArea Area, int Pending, int InProgress,
     int Completed, int Overdue, int DueToday, int DueSoon);
 public sealed record ManagementAttentionItem(Guid TaskId, Guid ProjectId, string ProjectName,
     string ClientName, string? SgCode, OperationalArea Area, ProjectTaskType TaskType,
-    ProjectTaskStatus TaskStatus, LeakTimeStatus LeakTimeStatus, DateTime? DeadlineAt, DateTime? StartedAt);
+    ProjectTaskStatus TaskStatus, LeadTimeStatus LeadTimeStatus, DateTime? DeadlineAt, DateTime? StartedAt);
 public sealed record ManagementAttention(int Total, IReadOnlyList<ManagementAttentionItem> Items);
 public sealed record ManagementOverviewResponse(int TotalProjects, ManagementTaskCounts Tasks,
-    ManagementLeakTimeCounts LeakTime, IReadOnlyList<ManagementAreaSummary> Areas, ManagementAttention Attention);
+    ManagementLeadTimeCounts LeadTime, IReadOnlyList<ManagementAreaSummary> Areas, ManagementAttention Attention);

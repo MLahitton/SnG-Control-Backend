@@ -62,7 +62,7 @@ public class NotificationHttpTests
             var correction = await fixture.BudgetsHttp.PutAsJsonAsync($"/api/projects/{project.Id}/sg-code", new { sgCode = "SG90002" }); Assert.Equal(HttpStatusCode.OK, correction.StatusCode);
             task = Assert.Single(fixture.Tasks.Items); Assert.Equal(deadline, task.DeadlineAt); Assert.Equal(start, task.StartedAt); Assert.False(task.WasOverdue);
             var response = (await fixture.Http.GetFromJsonAsync<JsonElement>($"/api/projects/{project.Id}/tasks"))[0];
-            Assert.Equal("Overdue", response.GetProperty("leakTimeStatus").GetString()); Assert.False(task.WasOverdue); Assert.Single(fixture.Tasks.Notifications);
+            Assert.Equal("Overdue", response.GetProperty("leadTimeStatus").GetString()); Assert.False(task.WasOverdue); Assert.Single(fixture.Tasks.Notifications);
         }
         finally { await fixture.DisposeAsync(); }
     }

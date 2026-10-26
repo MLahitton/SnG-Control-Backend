@@ -30,7 +30,7 @@ public class ProjectTaskHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture
         Assert.Equal("budgets-test-subject", task.GetProperty("assignedToGoogleSubject").GetString());
         Assert.Equal(JsonValueKind.Null, task.GetProperty("deadlineAt").ValueKind);
         Assert.Equal(JsonValueKind.Null, task.GetProperty("wasOverdue").ValueKind);
-        Assert.Equal("NotStarted", task.GetProperty("leakTimeStatus").GetString());
+        Assert.Equal("NotStarted", task.GetProperty("leadTimeStatus").GetString());
         Assert.NotEqual(Guid.Empty, task.GetProperty("id").GetGuid());
         Assert.Equal(id, task.GetProperty("projectId").GetGuid());
         Assert.Equal("Budgets", task.GetProperty("area").GetString());

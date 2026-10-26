@@ -6,7 +6,7 @@ namespace SnG.Control.Application.Features.ProjectTasks;
 
 public sealed record ProjectTaskResponse(
     Guid Id, Guid ProjectId, OperationalArea Area, ProjectTaskType Type, ProjectTaskStatus Status,
-    DateTime AssignedAt, DateTime? StartedAt, DateTime? CompletedAt, string? AssignedToGoogleSubject, DateTime? DeadlineAt, bool? WasOverdue, LeakTimeStatus LeakTimeStatus)
+    DateTime AssignedAt, DateTime? StartedAt, DateTime? CompletedAt, string? AssignedToGoogleSubject, DateTime? DeadlineAt, bool? WasOverdue, LeadTimeStatus LeadTimeStatus)
 {
     public static ProjectTaskResponse FromEntity(ProjectTask task, TaskTiming timing) => new(
         task.Id, task.ProjectId, task.Area, task.Type, task.Status,

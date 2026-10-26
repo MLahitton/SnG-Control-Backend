@@ -22,9 +22,9 @@ Cambiar de área no cambia `Project.CreatedByGoogleSubject`, el responsable come
 
 ## Gerencia V1
 
-La cuenta configurada mediante `Authentication:ManagementSubject` tiene visibilidad transversal de solo lectura. Su resumen muestra el total real de proyectos, los conteos de tareas y Leak Times por estado y área, y hasta diez tareas que requieren atención: primero atrasadas, luego las que vencen hoy y después las próximas a vencer. No se inventa un estado global de proyecto.
+La cuenta configurada mediante `Authentication:ManagementSubject` tiene visibilidad transversal de solo lectura. Su resumen muestra el total real de proyectos, los conteos de tareas y Lead Times por estado y área, y hasta diez tareas que requieren atención: primero atrasadas, luego las que vencen hoy y después las próximas a vencer. No se inventa un estado global de proyecto.
 
-La consulta de operación devuelve todas las tareas actuales e históricas, con contexto de proyecto y cliente, SG, ciudad, línea de producto y fechas. Prioriza las tareas pendientes de completar según su Leak Time y deja las completadas al final. Gerencia puede consultar los proyectos, sus tareas e historial de notificaciones, y leer/descargar documentos vigentes, reemplazados y snapshot inicial de cualquier proyecto, antes o después del envío a Presupuestos; el snapshot solo está disponible si existe.
+La consulta de operación devuelve todas las tareas actuales e históricas, con contexto de proyecto y cliente, SG, ciudad, línea de producto y fechas. Prioriza las tareas pendientes de completar según su Lead Time y deja las completadas al final. Gerencia puede consultar los proyectos, sus tareas e historial de notificaciones, y leer/descargar documentos vigentes, reemplazados y snapshot inicial de cualquier proyecto, antes o después del envío a Presupuestos; el snapshot solo está disponible si existe.
 
 Management no concede permisos para cargar, reemplazar o quitar documentos, enviar a Presupuestos, asignar SG ni confirmar cotizaciones. Aunque el Subject también posea otros roles, Management activo permanece de solo lectura; debe cambiar al área correspondiente para ejercer sus otros permisos. La bandeja personal de notificaciones sigue mostrando solo las dirigidas al usuario; no se copian avisos ajenos. Frontend e Intelligence consumen esta funcionalidad en sus repositorios separados.
 
@@ -94,7 +94,7 @@ No se permite asignar SG antes de enviar el proyecto a Presupuestos. Los estados
 12. El Jefe Comercial descarga el archivo temporal con su nombre original y lo modifica externamente en Excel.
 13. Sube el XLSX revisado y consulta un preview informativo: precios, total del proyecto y diferencias técnicas respecto a Presupuestos. Para corregir algo debe editar el archivo y volver a subirlo.
 14. Confirma el XLSX. El sistema conserva sus bytes exactos como commercial.xlsx, guarda un snapshot comercial separado, elimina confirmed.xlsx y conserva original.xlsx e imágenes.
-15. ReviewQuotation se completa y PresentQuotationToClient comienza InProgress, asignada al creador original. Su StartedAt UTC inicia el Leak Time de presentación al cliente.
+15. ReviewQuotation se completa y PresentQuotationToClient comienza InProgress, asignada al creador original. Su StartedAt UTC inicia el Lead Time de presentación al cliente.
 
 Las creaciones de clientes y proyectos devuelven el registro guardado y una referencia para consultarlo; el envío devuelve la tarea creada. Las consultas o envíos sobre proyectos inexistentes, o la creación de un proyecto para un cliente inexistente, responden como recurso no encontrado. Las entradas inválidas se rechazan sin crear registros. El historial de un proyecto existente sin tareas es una colección vacía.
 
@@ -120,7 +120,7 @@ El nombre no identifica al documento: dos archivos planos.pdf pueden coexistir. 
 
 Antes del primer envío, el Asesor propietario puede quitar un vigente cargado por error. La baja es lógica: queda excluido del listado y de cualquier descarga, conservando internamente sus bytes y referencia para evitar inconsistencias con almacenamiento. No hay purga física automática. Después del envío no se pueden quitar documentos ni borrar históricos.
 
-Enviar a Presupuestos exige al menos un vigente y guarda juntos el snapshot exacto de documentos, PrepareQuotation Pending y TaskAssigned. El inicio y deadline permanecen vacíos: la primera asignación de SG inicia el Leak Time. Presupuestos obtiene acceso documental de lectura y descarga después del envío; no puede cargar, reemplazar ni quitar archivos. Gerencia también puede leer y descargar documentos antes o después del envío, sin permiso de modificación. El Jefe asignado a ReviewQuotation conserva lectura documental histórica. Solo el Asesor activo propietario puede enviar inicialmente el proyecto.
+Enviar a Presupuestos exige al menos un vigente y guarda juntos el snapshot exacto de documentos, PrepareQuotation Pending y TaskAssigned. El inicio y deadline permanecen vacíos: la primera asignación de SG inicia el Lead Time. Presupuestos obtiene acceso documental de lectura y descarga después del envío; no puede cargar, reemplazar ni quitar archivos. Gerencia también puede leer y descargar documentos antes o después del envío, sin permiso de modificación. El Jefe asignado a ReviewQuotation conserva lectura documental histórica. Solo el Asesor activo propietario puede enviar inicialmente el proyecto.
 
 Las descargas incluyen archivo individual, históricos, ZIP de vigentes y ZIP del snapshot inicial. Los nombres repetidos se desambiguan dentro del ZIP. Las actualizaciones posteriores no cambian el snapshot ni reinician la tarea: cada batch exitoso genera una sola notificación a Presupuestos, incluso con PrepareQuotation completada. Un proyecto legacy que ya tenía esa tarea sigue enviado, puede recibir documentación y avisos, pero no se le inventa un snapshot inicial.
 

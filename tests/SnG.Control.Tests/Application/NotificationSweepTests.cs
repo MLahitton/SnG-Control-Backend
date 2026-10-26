@@ -115,15 +115,15 @@ public class NotificationSweepTests
     public void Projection_IsReadOnly_AndDistinguishesAllStates()
     {
         var scenario = new Scenario(false); var task = scenario.Task; var timing = scenario.Timing;
-        Assert.Equal(LeakTimeStatus.NotStarted, timing.Status(task, Start)); timing.Start(task, Start); var deadline = task.DeadlineAt!.Value;
-        Assert.Equal(LeakTimeStatus.OnTrack, timing.Status(task, Start));
-        Assert.Equal(LeakTimeStatus.DueSoon, timing.Status(task, timing.DueSoon(deadline)));
-        Assert.Equal(LeakTimeStatus.DueToday, timing.Status(task, deadline.Date.AddHours(5)));
-        Assert.Equal(LeakTimeStatus.DueToday, timing.Status(task, deadline));
-        Assert.Equal(LeakTimeStatus.Overdue, timing.Status(task, deadline.AddTicks(1))); Assert.False(task.WasOverdue); Assert.Empty(scenario.History);
-        task.Complete(deadline); Assert.Equal(LeakTimeStatus.CompletedOnTime, timing.Status(task, deadline.AddYears(1)));
+        Assert.Equal(LeadTimeStatus.NotStarted, timing.Status(task, Start)); timing.Start(task, Start); var deadline = task.DeadlineAt!.Value;
+        Assert.Equal(LeadTimeStatus.OnTrack, timing.Status(task, Start));
+        Assert.Equal(LeadTimeStatus.DueSoon, timing.Status(task, timing.DueSoon(deadline)));
+        Assert.Equal(LeadTimeStatus.DueToday, timing.Status(task, deadline.Date.AddHours(5)));
+        Assert.Equal(LeadTimeStatus.DueToday, timing.Status(task, deadline));
+        Assert.Equal(LeadTimeStatus.Overdue, timing.Status(task, deadline.AddTicks(1))); Assert.False(task.WasOverdue); Assert.Empty(scenario.History);
+        task.Complete(deadline); Assert.Equal(LeadTimeStatus.CompletedOnTime, timing.Status(task, deadline.AddYears(1)));
         var late = new Scenario(); late.Task.Complete(late.Task.DeadlineAt!.Value.AddTicks(1));
-        Assert.Equal(LeakTimeStatus.CompletedLate, timing.Status(late.Task, deadline.AddYears(1)));
+        Assert.Equal(LeadTimeStatus.CompletedLate, timing.Status(late.Task, deadline.AddYears(1)));
     }
     private sealed class Scenario : IProjectNotificationSweepStore
     {

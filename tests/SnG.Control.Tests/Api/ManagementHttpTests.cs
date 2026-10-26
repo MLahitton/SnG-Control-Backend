@@ -68,10 +68,10 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
         Assert.Equal(project.Id, row.GetProperty("projectId").GetGuid()); Assert.Equal(project.ClientId, row.GetProperty("clientId").GetGuid());
         Assert.Equal(project.Name, row.GetProperty("projectName").GetString()); Assert.Equal("Management test client", row.GetProperty("clientName").GetString());
         foreach (var (key, value) in new[] { ("sgCode", "SG005"), ("city", "City"), ("productLine", "Classic"),
-            ("area", "Budgets"), ("type", "PrepareQuotation"), ("status", "Pending"), ("leakTimeStatus", "NotStarted") })
+            ("area", "Budgets"), ("type", "PrepareQuotation"), ("status", "Pending"), ("leadTimeStatus", "NotStarted") })
             Assert.Equal(value, row.GetProperty(key).GetString());
         var overview = await client.GetFromJsonAsync<JsonElement>("/api/management/overview");
-        Assert.Equal(new[] { "totalProjects", "tasks", "leakTime", "areas", "attention" }, overview.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new[] { "totalProjects", "tasks", "leadTime", "areas", "attention" }, overview.EnumerateObject().Select(p => p.Name));
         Assert.Equal(fixture.Projects.Items.Count, overview.GetProperty("totalProjects").GetInt32());
         Assert.DoesNotContain("subject", rows.GetRawText(), StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("subject", overview.GetRawText(), StringComparison.OrdinalIgnoreCase);

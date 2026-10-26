@@ -388,7 +388,7 @@ lo fija a Management en lecturas y descargas; mantiene compatibilidad temporal c
 isManagement derivado. Los clientes anteriores deben enviar el nuevo header.
 
 Identidad, membresía, área activa, ownership y asignación son conceptos distintos.
-Cambiar área no escribe proyectos/tareas ni reinicia Leak Time. No introduce migración,
+Cambiar área no escribe proyectos/tareas ni reinicia Lead Time. No introduce migración,
 reassignment, tabla de usuarios ni caché de permisos entre requests.
 
 ### Almacenamiento local
@@ -746,11 +746,11 @@ La alternativa de entorno es `Authentication__ManagementSubject`. No versionar S
 
 - `totalProjects`: todos los proyectos persistidos, incluso sin tareas; no hay ProjectStatus, ActiveProjects, CompletedProjects ni CriticalProjects.
 - `tasks`: pending, inProgress, completed.
-- `leakTime`: notStarted, onTrack, dueSoon, dueToday, overdue, completedOnTime, completedLate, untrackedLegacy.
+- `leadTime`: notStarted, onTrack, dueSoon, dueToday, overdue, completedOnTime, completedLate, untrackedLegacy.
 - `areas`: únicamente áreas representadas en tareas; cada fila contiene area, pending, inProgress, completed, overdue, dueToday, dueSoon. Enums como texto canónico, sin labels traducidos.
-- `attention`: total completo y hasta `AttentionItemLimit = 10` items. Incluye exclusivamente Overdue → DueToday → DueSoon, ordenados dentro de la prioridad por DeadlineAt ascendente, ProjectName ordinal y TaskId. Cada item contiene taskId, projectId, projectName, clientName, sgCode nullable, area, taskType, taskStatus, leakTimeStatus, deadlineAt y startedAt.
+- `attention`: total completo y hasta `AttentionItemLimit = 10` items. Incluye exclusivamente Overdue → DueToday → DueSoon, ordenados dentro de la prioridad por DeadlineAt ascendente, ProjectName ordinal y TaskId. Cada item contiene taskId, projectId, projectName, clientName, sgCode nullable, area, taskType, taskStatus, leadTimeStatus, deadlineAt y startedAt.
 
-`GET /api/management/tasks` devuelve todas las tareas actuales e históricas, sin filtros ni paginación. Cada fila contiene taskId, projectId, projectName, clientId, clientName, sgCode nullable, city, productLine, area, type, status, assignedAt, startedAt, completedAt, deadlineAt, wasOverdue nullable y leakTimeStatus. Ninguno de los DTO gerenciales expone Subjects ni claves de almacenamiento.
+`GET /api/management/tasks` devuelve todas las tareas actuales e históricas, sin filtros ni paginación. Cada fila contiene taskId, projectId, projectName, clientId, clientName, sgCode nullable, city, productLine, area, type, status, assignedAt, startedAt, completedAt, deadlineAt, wasOverdue nullable y leadTimeStatus. Ninguno de los DTO gerenciales expone Subjects ni claves de almacenamiento.
 
 La lista ordena primero las no completadas: Overdue → DueToday → DueSoon → OnTrack → NotStarted → UntrackedLegacy; después DeadlineAt ascendente, null al final. Las completadas quedan detrás: CompletedLate → CompletedOnTime → UntrackedLegacy, con CompletedAt descendente dentro de cada grupo. ProjectName ordinal y TaskId resuelven empates. Las fechas son UTC y los valores legacy desconocidos siguen siendo null.
 
@@ -836,7 +836,7 @@ Ejemplo de respuesta del envío:
   "assignedToGoogleSubject": "<BUDGETS_SUBJECT>",
   "deadlineAt": null,
   "wasOverdue": null,
-  "leakTimeStatus": "NotStarted"
+  "leadTimeStatus": "NotStarted"
 }
 ```
 
@@ -879,7 +879,7 @@ Devuelve 200 con `AssignProjectSgCodeResponse`:
     "assignedToGoogleSubject": "<BUDGETS_SUBJECT>",
     "deadlineAt": "2026-10-19T22:00:00Z",
     "wasOverdue": false,
-    "leakTimeStatus": "OnTrack"
+    "leadTimeStatus": "OnTrack"
   }
 }
 ```
@@ -1287,7 +1287,7 @@ La suite sin conexión no sustituye esta comprobación. Crear un cliente y un pr
 
 Para SG, crear dos proyectos temporales enviados a Presupuestos y elegir un código libre. Lanzar dos PUT simultáneos con ese mismo código. Exigir **1×200 y 1×409**, y consultar la base: solo un proyecto debe tenerlo; el rechazado debe conservar SgCode=null, tarea Pending y StartedAt=null. No basta con comprobar los códigos HTTP.
 
-## Leak Time, calendario y notificaciones
+## Lead Time, calendario y notificaciones
 
 ### Configuración y tiempo
 
@@ -1311,7 +1311,7 @@ ProjectTask incorpora DeadlineAt nullable y WasOverdue nullable. Pending nuevo t
 
 Las comparaciones usan el reloj sin redondearlo antes de evaluar los límites. PostgreSQL conserva microsegundos: las transiciones existentes ajustan sus timestamps; una finalización estrictamente posterior al deadline se lleva al siguiente microsegundo representable si hace falta, para no convertirla en igualdad al persistir. El resto conserva el ajuste de precisión existente. AssignedAt se suministra desde el reloj a los tres flujos de asignación.
 
-ProjectTaskResponse conserva sus nueve campos previos y agrega deadlineAt, wasOverdue y leakTimeStatus. El último no se persiste y se serializa como string:
+ProjectTaskResponse conserva sus nueve campos previos y agrega deadlineAt, wasOverdue y leadTimeStatus. El último no se persiste y se serializa como string:
 
 | Estado | Regla |
 | --- | --- |

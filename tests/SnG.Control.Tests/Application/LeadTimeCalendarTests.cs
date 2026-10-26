@@ -4,7 +4,7 @@ using SnG.Control.Domain.Enums;
 
 namespace SnG.Control.Tests.Application;
 
-public class LeakTimeCalendarTests
+public class LeadTimeCalendarTests
 {
     private readonly ColombiaBusinessCalendar calendar = new();
     [Theory]
@@ -79,7 +79,7 @@ public class LeakTimeCalendarTests
         typeof(ProjectTask).GetProperty(nameof(ProjectTask.StartedAt))!.SetValue(legacy, now);
         legacy.DetectOverdue(now.AddYears(1)); legacy.Complete(now.AddYears(1));
         Assert.Null(legacy.DeadlineAt); Assert.Null(legacy.WasOverdue);
-        Assert.Equal(LeakTimeStatus.UntrackedLegacy, TestTiming.Value.Status(legacy, now.AddYears(1)));
+        Assert.Equal(LeadTimeStatus.UntrackedLegacy, TestTiming.Value.Status(legacy, now.AddYears(1)));
     }
     [Theory]
     [InlineData("utc-start")][InlineData("utc-deadline")][InlineData("equal")][InlineData("before")]

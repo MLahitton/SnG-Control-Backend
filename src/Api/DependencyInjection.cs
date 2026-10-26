@@ -90,7 +90,7 @@ public static class DependencyInjection
         {
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<NotificationKind>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<NotificationState>(allowIntegerValues: false));
-            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<LeakTimeStatus>(allowIntegerValues: false));
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<LeadTimeStatus>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<SystemRole>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new ProductLineJsonConverter());
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<OperationalArea>(allowIntegerValues: false));

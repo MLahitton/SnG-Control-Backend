@@ -16,22 +16,22 @@ public sealed class ListManagementTasksUseCase(IManagementReadStore store, TaskT
                 row.ClientName, row.SgCode, row.City, row.ProductLine, task.Area, task.Type, task.Status,
                 task.AssignedAt, task.StartedAt, task.CompletedAt, task.DeadlineAt, task.WasOverdue, timing.Status(task, now));
         }).OrderBy(row => row.Status == ProjectTaskStatus.Completed)
-            .ThenBy(row => Priority(row.LeakTimeStatus))
+            .ThenBy(row => Priority(row.LeadTimeStatus))
             .ThenBy(row => row.Status == ProjectTaskStatus.Completed ? (DateTime?)null : row.DeadlineAt ?? DateTime.MaxValue)
             .ThenByDescending(row => row.Status == ProjectTaskStatus.Completed ? row.CompletedAt : null)
             .ThenBy(row => row.ProjectName, StringComparer.Ordinal)
             .ThenBy(row => row.TaskId).ToArray();
     }
 
-    private static int Priority(LeakTimeStatus status) => status switch
+    private static int Priority(LeadTimeStatus status) => status switch
     {
-        LeakTimeStatus.Overdue => 0,
-        LeakTimeStatus.DueToday => 1,
-        LeakTimeStatus.DueSoon => 2,
-        LeakTimeStatus.OnTrack => 3,
-        LeakTimeStatus.NotStarted => 4,
-        LeakTimeStatus.CompletedLate => 0,
-        LeakTimeStatus.CompletedOnTime => 1,
+        LeadTimeStatus.Overdue => 0,
+        LeadTimeStatus.DueToday => 1,
+        LeadTimeStatus.DueSoon => 2,
+        LeadTimeStatus.OnTrack => 3,
+        LeadTimeStatus.NotStarted => 4,
+        LeadTimeStatus.CompletedLate => 0,
+        LeadTimeStatus.CompletedOnTime => 1,
         _ => 5 // UntrackedLegacy, including completed tasks without historical timing.
     };
 }

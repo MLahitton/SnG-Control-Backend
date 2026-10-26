@@ -188,8 +188,8 @@ Never use server local timezone as business truth.
 Prefer TimeProvider for new time-sensitive behavior.
 Tests involving time must use controllable time.
 Do not sleep in tests.
-15. Leak Time rules
-Current approved Leak Time policy:
+15. Lead Time rules
+Current approved Lead Time policy:
 - PrepareQuotation = 5 business days
 - ReviewQuotation = 5 business days
 - PresentQuotationToClient = 5 business days
@@ -252,7 +252,7 @@ The agreed future rule is: if an active task is reassigned:
 - preserve prior history;
 - new assignee receives a new TaskAssigned notification;
 - future notifications target the new Subject;
-- Leak Time restarts;
+- Lead Time restarts;
 - a new deadline is calculated from the reassignment cycle.
 Do not implement APIs or data structures for this prematurely.
 20. Configuration rules

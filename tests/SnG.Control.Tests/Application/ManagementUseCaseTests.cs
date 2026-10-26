@@ -20,25 +20,25 @@ public class ManagementUseCaseTests
         var project = new Project(client.Id, name, "City", ProductLine.Classic, "synthetic-creator");
         project.SetSgCode("SG005"); projects.Items.Add(project); return project;
     }
-    private ProjectTask Task(Project project, LeakTimeStatus status, OperationalArea area = OperationalArea.Budgets)
+    private ProjectTask Task(Project project, LeadTimeStatus status, OperationalArea area = OperationalArea.Budgets)
     {
         var task = new ProjectTask(project.Id, area, area == OperationalArea.Budgets ? ProjectTaskType.PrepareQuotation : ProjectTaskType.ReviewQuotation,
             "synthetic-assignee", Now.AddDays(-15));
-        if (status != LeakTimeStatus.NotStarted)
+        if (status != LeadTimeStatus.NotStarted)
         {
             var deadline = status switch
             {
-                LeakTimeStatus.Overdue => Now.AddDays(-1),
-                LeakTimeStatus.CompletedLate or LeakTimeStatus.CompletedOnTime => Now.AddDays(-2),
-                LeakTimeStatus.DueToday => Now.Date.AddHours(22),
-                LeakTimeStatus.DueSoon => Now.Date.AddDays(2).AddHours(22),
+                LeadTimeStatus.Overdue => Now.AddDays(-1),
+                LeadTimeStatus.CompletedLate or LeadTimeStatus.CompletedOnTime => Now.AddDays(-2),
+                LeadTimeStatus.DueToday => Now.Date.AddHours(22),
+                LeadTimeStatus.DueSoon => Now.Date.AddDays(2).AddHours(22),
                 _ => Now.AddDays(10)
             };
             task.Start(Now.AddDays(-10), deadline);
-            if (status == LeakTimeStatus.UntrackedLegacy)
+            if (status == LeadTimeStatus.UntrackedLegacy)
                 typeof(ProjectTask).GetProperty(nameof(ProjectTask.DeadlineAt))!.SetValue(task, null);
-            if (status is LeakTimeStatus.CompletedLate or LeakTimeStatus.CompletedOnTime)
-                task.Complete(status == LeakTimeStatus.CompletedLate ? deadline.AddTicks(1) : deadline);
+            if (status is LeadTimeStatus.CompletedLate or LeadTimeStatus.CompletedOnTime)
+                task.Complete(status == LeadTimeStatus.CompletedLate ? deadline.AddTicks(1) : deadline);
         }
         tasks.Items.Add(task); return task;
     }
@@ -46,20 +46,20 @@ public class ManagementUseCaseTests
     public async Task Overview_CountsEveryOfficialStatusAndOnlyRepresentedAreas_WithoutMutations()
     {
         var budgets = Project("A"); var commercial = Project("B"); Project("No tasks");
-        foreach (var status in Enum.GetValues<LeakTimeStatus>())
-            Task(status is LeakTimeStatus.CompletedLate or LeakTimeStatus.CompletedOnTime ? commercial : budgets,
-                status, status is LeakTimeStatus.CompletedLate or LeakTimeStatus.CompletedOnTime ? OperationalArea.Commercial : OperationalArea.Budgets);
+        foreach (var status in Enum.GetValues<LeadTimeStatus>())
+            Task(status is LeadTimeStatus.CompletedLate or LeadTimeStatus.CompletedOnTime ? commercial : budgets,
+                status, status is LeadTimeStatus.CompletedLate or LeadTimeStatus.CompletedOnTime ? OperationalArea.Commercial : OperationalArea.Budgets);
         var before = JsonSerializer.Serialize(new { projects.Items, Tasks = tasks.Items, tasks.Notifications });
         var store = new ManagementReadStoreDouble(projects, clients, tasks);
         using var cancellation = new CancellationTokenSource();
         var result = await new GetManagementOverviewUseCase(store, new(store, timing)).ExecuteAsync(cancellation.Token);
         Assert.Equal(3, result.TotalProjects);
         Assert.Equal(new ManagementTaskCounts(1, 5, 2), result.Tasks);
-        Assert.Equal(new ManagementLeakTimeCounts(1, 1, 1, 1, 1, 1, 1, 1), result.LeakTime);
+        Assert.Equal(new ManagementLeadTimeCounts(1, 1, 1, 1, 1, 1, 1, 1), result.LeadTime);
         Assert.Equal(new[] { new ManagementAreaSummary(OperationalArea.Commercial, 0, 0, 2, 0, 0, 0),
             new ManagementAreaSummary(OperationalArea.Budgets, 1, 5, 0, 1, 1, 1) }, result.Areas);
         Assert.Equal(3, result.Attention.Total);
-        Assert.Equal(new[] { LeakTimeStatus.Overdue, LeakTimeStatus.DueToday, LeakTimeStatus.DueSoon }, result.Attention.Items.Select(t => t.LeakTimeStatus));
+        Assert.Equal(new[] { LeadTimeStatus.Overdue, LeadTimeStatus.DueToday, LeadTimeStatus.DueSoon }, result.Attention.Items.Select(t => t.LeadTimeStatus));
         Assert.All(result.Attention.Items, item =>
         {
             var task = tasks.Items.Single(t => t.Id == item.TaskId);
@@ -76,34 +76,34 @@ public class ManagementUseCaseTests
     public async Task Attention_TotalIsUncapped_ItemsAreTen_InPriorityDeadlineOrdinalNameAndIdOrder()
     {
         var z = Project("Z"); var a = Project("a");
-        var soon = Task(a, LeakTimeStatus.DueSoon);
-        var today = Task(z, LeakTimeStatus.DueToday);
-        var early = Task(a, LeakTimeStatus.Overdue);
+        var soon = Task(a, LeadTimeStatus.DueSoon);
+        var today = Task(z, LeadTimeStatus.DueToday);
+        var early = Task(a, LeadTimeStatus.Overdue);
         typeof(ProjectTask).GetProperty(nameof(ProjectTask.DeadlineAt))!.SetValue(early, Now.AddDays(-2));
-        var tieA = Task(z, LeakTimeStatus.Overdue); var tieB = Task(z, LeakTimeStatus.Overdue);
-        var lower = Task(a, LeakTimeStatus.Overdue);
-        for (var i = 0; i < 9; i++) Task(a, LeakTimeStatus.DueSoon);
+        var tieA = Task(z, LeadTimeStatus.Overdue); var tieB = Task(z, LeadTimeStatus.Overdue);
+        var lower = Task(a, LeadTimeStatus.Overdue);
+        for (var i = 0; i < 9; i++) Task(a, LeadTimeStatus.DueSoon);
         var store = new ManagementReadStoreDouble(projects, clients, tasks);
         var result = await new GetManagementOverviewUseCase(store, new(store, timing)).ExecuteAsync(default);
         Assert.Equal(15, result.Attention.Total); Assert.Equal(10, result.Attention.Items.Count);
         Assert.Equal(new[] { early.Id }.Concat(new[] { tieA.Id, tieB.Id }.Order()).Append(lower.Id).Append(today.Id),
             result.Attention.Items.Take(5).Select(t => t.TaskId));
-        Assert.All(result.Attention.Items.Skip(5), t => Assert.Equal(LeakTimeStatus.DueSoon, t.LeakTimeStatus));
+        Assert.All(result.Attention.Items.Skip(5), t => Assert.Equal(LeadTimeStatus.DueSoon, t.LeadTimeStatus));
     }
     [Fact]
     public async Task List_PreservesContextAndOfficialTiming_OrdersCurrentThenCompleted_WithoutWrites()
     {
         var project = Project();
-        foreach (var status in Enum.GetValues<LeakTimeStatus>().Reverse()) Task(project, status);
-        var completedLegacy = Task(project, LeakTimeStatus.UntrackedLegacy); completedLegacy.Complete(Now);
-        var newerLate = Task(project, LeakTimeStatus.CompletedLate);
+        foreach (var status in Enum.GetValues<LeadTimeStatus>().Reverse()) Task(project, status);
+        var completedLegacy = Task(project, LeadTimeStatus.UntrackedLegacy); completedLegacy.Complete(Now);
+        var newerLate = Task(project, LeadTimeStatus.CompletedLate);
         typeof(ProjectTask).GetProperty(nameof(ProjectTask.CompletedAt))!.SetValue(newerLate, Now.AddDays(-1));
         var before = JsonSerializer.Serialize(tasks.Items);
         var store = new ManagementReadStoreDouble(projects, clients, tasks);
         var result = await new ListManagementTasksUseCase(store, timing).ExecuteAsync(default);
-        Assert.Equal(new[] { LeakTimeStatus.Overdue, LeakTimeStatus.DueToday, LeakTimeStatus.DueSoon, LeakTimeStatus.OnTrack,
-            LeakTimeStatus.NotStarted, LeakTimeStatus.UntrackedLegacy, LeakTimeStatus.CompletedLate, LeakTimeStatus.CompletedLate,
-            LeakTimeStatus.CompletedOnTime, LeakTimeStatus.UntrackedLegacy }, result.Select(t => t.LeakTimeStatus));
+        Assert.Equal(new[] { LeadTimeStatus.Overdue, LeadTimeStatus.DueToday, LeadTimeStatus.DueSoon, LeadTimeStatus.OnTrack,
+            LeadTimeStatus.NotStarted, LeadTimeStatus.UntrackedLegacy, LeadTimeStatus.CompletedLate, LeadTimeStatus.CompletedLate,
+            LeadTimeStatus.CompletedOnTime, LeadTimeStatus.UntrackedLegacy }, result.Select(t => t.LeadTimeStatus));
         Assert.Equal(newerLate.Id, result[6].TaskId); Assert.Equal(completedLegacy.Id, result[^1].TaskId);
         Assert.All(result, row =>
         {
@@ -114,7 +114,7 @@ public class ManagementUseCaseTests
             Assert.Equal(source.Area, row.Area); Assert.Equal(source.Type, row.Type); Assert.Equal(source.Status, row.Status);
             Assert.Equal(source.AssignedAt, row.AssignedAt); Assert.Equal(source.StartedAt, row.StartedAt);
             Assert.Equal(source.CompletedAt, row.CompletedAt); Assert.Equal(source.DeadlineAt, row.DeadlineAt); Assert.Equal(source.WasOverdue, row.WasOverdue);
-            Assert.Equal(timing.Status(source, Now), row.LeakTimeStatus);
+            Assert.Equal(timing.Status(source, Now), row.LeadTimeStatus);
         });
         Assert.DoesNotContain("subject", JsonSerializer.Serialize(result), StringComparison.OrdinalIgnoreCase);
         Assert.Equal(before, JsonSerializer.Serialize(tasks.Items)); Assert.Empty(tasks.Notifications);
@@ -129,7 +129,7 @@ public class ManagementUseCaseTests
         var result = await new GetManagementOverviewUseCase(store, new(store, timing)).ExecuteAsync(default);
         Assert.Equal(0, result.TotalProjects); Assert.Empty(result.Areas); Assert.Empty(result.Attention.Items);
         Assert.Equal(new ManagementTaskCounts(0, 0, 0), result.Tasks);
-        Assert.Equal(new ManagementLeakTimeCounts(0, 0, 0, 0, 0, 0, 0, 0), result.LeakTime);
+        Assert.Equal(new ManagementLeadTimeCounts(0, 0, 0, 0, 0, 0, 0, 0), result.LeadTime);
         Assert.Equal(0, result.Attention.Total);
     }
 }
