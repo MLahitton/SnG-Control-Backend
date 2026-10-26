@@ -28,13 +28,13 @@ public class ProjectTaskStoreDouble : IProjectTaskStore
     }
 
     public Task<IReadOnlyList<ProjectTask>> ListByAreaAsync(
-        OperationalArea area, ProjectTaskStatus status, SnG.Control.Application.Access.ProjectReadScope scope, CancellationToken cancellationToken)
+        OperationalArea area, ProjectTaskStatus status, SnG.Control.Application.Access.TaskInboxScope scope, CancellationToken cancellationToken)
     {
         ReceivedTokens.Add(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         return Task.FromResult<IReadOnlyList<ProjectTask>>(
-            Items.Where(task => task.Area == area && task.Status == status
-                && Projects.Items.Any(p => p.Id == task.ProjectId && scope.CanRead(p, Items))).ToArray());
+            Items.AsQueryable().Where(scope.Filter()).Where(task => task.Area == area && task.Status == status
+                && Projects.Items.Any(p => p.Id == task.ProjectId && new SnG.Control.Application.Access.ProjectReadScope(scope.Subject, scope.Role).CanRead(p, Items))).ToArray());
     }
 
     public Task<IReadOnlyList<ProjectTask>> ListByProjectAsync(Guid projectId, CancellationToken cancellationToken)

@@ -96,7 +96,12 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
             var tasks = await fixture.Http.GetFromJsonAsync<JsonElement>($"/api/projects/{id}/tasks");
             Assert.Contains(tasks.EnumerateArray(), t => t.GetProperty("type").GetString() == "PresentQuotationToClient");
             var filtered = await fixture.Http.GetFromJsonAsync<JsonElement>("/api/project-tasks?area=Commercial&status=InProgress");
-            Assert.Contains(filtered.EnumerateArray(), t => t.GetProperty("type").GetString() == "PresentQuotationToClient");
+            Assert.DoesNotContain(filtered.EnumerateArray(), t => t.GetProperty("type").GetString() == "PresentQuotationToClient");
+            using var advisor = new HttpClient { BaseAddress = fixture.Http.BaseAddress };
+            advisor.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, "other");
+            advisor.DefaultRequestHeaders.Add("X-SnG-Active-Role", "CommercialAdvisor");
+            var advisorTasks = await advisor.GetFromJsonAsync<JsonElement>("/api/project-tasks?area=Commercial&status=InProgress");
+            Assert.Contains(advisorTasks.EnumerateArray(), t => t.GetProperty("projectId").GetGuid() == id && t.GetProperty("type").GetString() == "PresentQuotationToClient");
             var state = scenario.State;
             fixture.Handoff = new() { State = new(state.Project, state.Tasks, state.Version, state.Catalog, state.Items, state.Extractions) };
             using var old = await fixture.Http.GetAsync($"/api/projects/{id}/budget-quotation/commercial-file");

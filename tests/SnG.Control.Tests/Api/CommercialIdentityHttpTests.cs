@@ -133,7 +133,8 @@ public class CommercialIdentityHttpTests(ApiFixture fixture) : IClassFixture<Api
         Assert.Equal(JsonValueKind.Null, fetched.GetProperty("createdBy").ValueKind);
         var projects = await fixture.Http.GetFromJsonAsync<JsonElement>("/api/projects");
         Assert.Equal(JsonValueKind.Null, Assert.Single(projects.EnumerateArray(), p => p.GetProperty("id").GetGuid() == project.Id).GetProperty("createdBy").ValueKind);
-        foreach (var route in new[] { $"/api/projects/{project.Id}/tasks", "/api/project-tasks?area=Commercial&status=InProgress" })
+        Assert.Equal(HttpStatusCode.Forbidden, (await fixture.Http.GetAsync("/api/project-tasks?area=Commercial&status=InProgress")).StatusCode);
+        foreach (var route in new[] { $"/api/projects/{project.Id}/tasks" })
         {
             var tasks = await fixture.Http.GetFromJsonAsync<JsonElement>(route);
             Assert.Equal("google-test-subject", Assert.Single(tasks.EnumerateArray(), t => t.GetProperty("id").GetGuid() == assigned.Id).GetProperty("assignedToGoogleSubject").GetString());

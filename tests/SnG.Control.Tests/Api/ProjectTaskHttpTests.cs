@@ -40,7 +40,7 @@ public class ProjectTaskHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture
         Assert.Equal(JsonValueKind.Null, task.GetProperty("startedAt").ValueKind);
         Assert.Equal(JsonValueKind.Null, task.GetProperty("completedAt").ValueKind);
 
-        using var listed = await fixture.Http.GetAsync("/api/project-tasks?area=Budgets&status=Pending");
+        using var listed = await fixture.BudgetsHttp.GetAsync("/api/project-tasks?area=Budgets&status=Pending");
         Assert.Equal(HttpStatusCode.OK, listed.StatusCode);
         var tasks = await listed.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Contains(tasks.EnumerateArray(), item => item.GetProperty("id").GetGuid() == task.GetProperty("id").GetGuid());

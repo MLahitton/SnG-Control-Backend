@@ -114,6 +114,6 @@ public class PreviewBudgetQuotationUseCaseTests
         public Task AddAsync(Project project, CancellationToken cancellationToken) => throw new InvalidOperationException("Unexpected write");
         public Task<bool> TryAddPrepareQuotationAsync(ProjectTask task, CancellationToken cancellationToken) => throw new InvalidOperationException("Unexpected write");
         public Task<IReadOnlyList<Project>> ListAsync(CancellationToken cancellationToken) => throw new InvalidOperationException("Unexpected read");
-        public Task<IReadOnlyList<ProjectTask>> ListByAreaAsync(OperationalArea area, ProjectTaskStatus status, SnG.Control.Application.Access.ProjectReadScope scope, CancellationToken cancellationToken) => throw new InvalidOperationException("Unexpected read");
+        public Task<IReadOnlyList<ProjectTask>> ListByAreaAsync(OperationalArea area, ProjectTaskStatus status, SnG.Control.Application.Access.TaskInboxScope scope, CancellationToken cancellationToken) => throw new InvalidOperationException("Unexpected read");
     }
 }

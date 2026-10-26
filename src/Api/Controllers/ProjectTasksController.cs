@@ -13,6 +13,7 @@ public class ProjectTasksController(ListProjectTasksByAreaUseCase list) : Contro
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<ProjectTaskResponse>>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<ActionResult<IReadOnlyList<ProjectTaskResponse>>> List(
         [FromQuery, BindRequired] string area,
         [FromQuery, BindRequired] string status,
@@ -31,7 +32,8 @@ public class ProjectTasksController(ListProjectTasksByAreaUseCase list) : Contro
             return ValidationProblem(ModelState);
         }
 
-        return Ok(await list.ExecuteAsync(parsedArea, parsedStatus, cancellationToken));
+        var result = await list.ExecuteAsync(parsedArea, parsedStatus, cancellationToken);
+        return result is null ? Forbid() : Ok(result);
     }
 
     private static bool TryParseName<TEnum>(string value, out TEnum parsed) where TEnum : struct, Enum =>

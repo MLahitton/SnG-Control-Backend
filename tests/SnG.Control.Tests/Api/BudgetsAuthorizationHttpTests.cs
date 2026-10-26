@@ -122,7 +122,7 @@ public class BudgetsAuthorizationHttpTests(ApiFixture fixture) : IClassFixture<A
             "/api/notifications", $"/api/projects/{project.Id}/notifications" })
         {
             using var response = await client.GetAsync(route);
-            Assert.Equal(mode == "other" && route.Contains(project.Id.ToString()) ? HttpStatusCode.NotFound : HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(route.StartsWith("/api/project-tasks") ? HttpStatusCode.Forbidden : mode == "other" && route.Contains(project.Id.ToString()) ? HttpStatusCode.NotFound : HttpStatusCode.OK, response.StatusCode);
         }
     }
 }

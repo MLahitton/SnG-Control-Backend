@@ -4,7 +4,7 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 ## Funcionalidad actualmente implementada
 
-El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, donde se asigna o corrige su código SG, consultar las tareas por área y estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede obtener un preview técnico de una cotización XLSX estándar y confirmar sus valores corregidos para crear el catálogo comercial base oficial. El preview no persiste; la confirmación conserva datos en PostgreSQL y archivos en almacenamiento local configurado. Una acción posterior envía la cotización a Comercial y genera su Excel operativo temporal. El Jefe Comercial puede subir su revisión, consultar importes y diferencias técnicas y confirmar el archivo final, iniciando la presentación al cliente.
+El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, donde se asigna o corrige su código SG, consultar las tareas propias del área activa por estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede obtener un preview técnico de una cotización XLSX estándar y confirmar sus valores corregidos para crear el catálogo comercial base oficial. El preview no persiste; la confirmación conserva datos en PostgreSQL y archivos en almacenamiento local configurado. Una acción posterior envía la cotización a Comercial y genera su Excel operativo temporal. El Jefe Comercial puede subir su revisión, consultar importes y diferencias técnicas y confirmar el archivo final, iniciando la presentación al cliente.
 
 La API requiere configuración de autenticación Google, identidades del Jefe Comercial, de la cuenta compartida de Presupuestos y de Gerencia, conexión y carpeta de almacenamiento, además de todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. Este repositorio contiene solo el backend; permite quitar documentos vigentes antes del envío, pero no eliminar clientes ni proyectos. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa ni acceso a Google.
 
@@ -84,8 +84,8 @@ No se permite asignar SG antes de enviar el proyecto a Presupuestos. Los estados
 2. Se crea un proyecto indicando el identificador de ese cliente, nombre, ciudad y línea de producto.
 3. El sistema valida los datos y la existencia del cliente, normaliza los textos y guarda el proyecto con su identificador, creador autenticado y fechas; su código SG queda sin asignar.
 4. Se puede consultar cada cliente o proyecto por su identificador, o listar la colección correspondiente. La respuesta de un proyecto incluye el identificador de su cliente, sin incrustar el objeto cliente completo.
-5. El responsable Comercial o el Jefe Comercial carga la documentación del cliente y ejecuta **Enviar a Presupuestos**. Se exige al menos un documento vigente; crear el proyecto no ejecuta este envío automáticamente.
-6. El envío conserva el snapshot documental inicial y crea una tarea de **preparar cotización**, asignada a Presupuestos y en estado **Pendiente**. Se puede consultar la bandeja de tareas por área y estado, y el historial completo de tareas de cada proyecto.
+5. El Asesor Comercial activo propietario carga la documentación del cliente y ejecuta **Enviar a Presupuestos**. Se exige al menos un documento vigente; crear el proyecto no ejecuta este envío automáticamente.
+6. El envío conserva el snapshot documental inicial y crea una tarea de **preparar cotización**, asignada a Presupuestos y en estado **Pendiente**. Se puede consultar la bandeja de trabajo propio del área activa por estado, y el historial completo autorizado de tareas de cada proyecto.
 7. Cada proyecto solo puede enviarse una vez al flujo inicial de Presupuestos. Un nuevo intento responde conflicto si el proyecto ya tiene esa tarea, cualquiera que sea su estado. La garantía también se mantiene ante solicitudes simultáneas: solo una crea la tarea y las demás responden conflicto. No existe reenvío ni retrabajo en el flujo actual.
 8. Presupuestos asigna manualmente SG y la tarea pasa a En proceso. Puede corregir el código mediante la misma operación sin cambiar la fecha original de inicio.
 9. Presupuestos prepara la cotización fuera de SnG Control, en Excel, y carga el XLSX estándar para revisar su preview técnico. El sistema comprueba el SG y conserva la tarea En proceso.
@@ -98,7 +98,19 @@ No se permite asignar SG antes de enviar el proyecto a Presupuestos. Los estados
 
 Las creaciones de clientes y proyectos devuelven el registro guardado y una referencia para consultarlo; el envío devuelve la tarea creada. Las consultas o envíos sobre proyectos inexistentes, o la creación de un proyecto para un cliente inexistente, responden como recurso no encontrado. Las entradas inválidas se rechazan sin crear registros. El historial de un proyecto existente sin tareas es una colección vacía.
 
-Los identificadores, las fechas, el código SG y la identidad del creador no pueden suministrarse en las solicitudes de creación. Los listados de clientes y proyectos y el historial de tareas no tienen filtros. La bandeja de tareas exige área y estado. No hay paginación ni orden garantizado. La información persiste entre ejecuciones; la preparación de la base se realiza explícitamente y no al iniciar la API.
+Los identificadores, las fechas, el código SG y la identidad del creador no pueden suministrarse en las solicitudes de creación. Los listados de clientes y proyectos y el historial de tareas no tienen filtros. La bandeja de tareas exige área compatible con el rol activo y estado.
+
+Proyectos representa el contexto operacional que se puede leer; Tareas representa únicamente trabajo asignado al Subject actual dentro de su rol activo. El historial de tareas dentro de un proyecto conserva todas sus áreas y tipos autorizados.
+
+| Rol activo | Tipo de tarea en su bandeja | Área | Estado inicial en Frontend |
+| --- | --- | --- | --- |
+| CommercialAdvisor | PresentQuotationToClient | Commercial | InProgress |
+| Budgets | PrepareQuotation | Budgets | Pending |
+| CommercialHead | ReviewQuotation | Commercial | InProgress |
+
+Los tres estados Pending/InProgress/Completed son consultables para tareas propias. Compartir Subject entre roles no mezcla bandejas. Management no usa esta bandeja: GET /api/project-tasks responde 403; su consulta transversal permanece en /api/management/tasks. Una petición con área incompatible también responde 403.
+
+No hay paginación ni orden garantizado. La información persiste entre ejecuciones; la preparación de la base se realiza explícitamente y no al iniciar la API.
 
 ## Documentos del proyecto
 

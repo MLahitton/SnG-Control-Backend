@@ -6,7 +6,7 @@ namespace SnG.Control.Application.Features.ProjectTasks.ListByArea;
 
 public class ListProjectTasksByAreaUseCase(IProjectTaskStore tasks, TaskTiming timing, ProjectReadAccess access)
 {
-    public async Task<IReadOnlyList<ProjectTaskResponse>> ExecuteAsync(
+    public async Task<IReadOnlyList<ProjectTaskResponse>?> ExecuteAsync(
         OperationalArea area, ProjectTaskStatus status, CancellationToken cancellationToken)
     {
         if (!Enum.IsDefined(area))
@@ -18,7 +18,9 @@ public class ListProjectTasksByAreaUseCase(IProjectTaskStore tasks, TaskTiming t
             throw new ArgumentOutOfRangeException(nameof(status), status, "Status must be a defined value.");
         }
 
-        var entities = await tasks.ListByAreaAsync(area, status, access.Scope, cancellationToken);
+        var scope = new TaskInboxScope(access.Scope.Subject, access.Scope.Role);
+        if (!scope.Allows(area)) return null;
+        var entities = await tasks.ListByAreaAsync(area, status, scope, cancellationToken);
         return entities.Select(task => ProjectTaskResponse.FromEntity(task, timing)).ToArray();
     }
 }

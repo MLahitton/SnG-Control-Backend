@@ -43,7 +43,9 @@ public class SharedReadAccessTests(MultiRoleFixture fixture) : IClassFixture<Mul
         using var http = Client(role);
         var listed = await http.GetFromJsonAsync<JsonElement[]>("/api/projects");
         var clients = await http.GetFromJsonAsync<JsonElement[]>("/api/clients");
-        var areaTasks = await http.GetFromJsonAsync<JsonElement[]>("/api/project-tasks?area=Budgets&status=Completed");
+        using var inbox = await http.GetAsync("/api/project-tasks?area=Budgets&status=Completed");
+        Assert.Equal(role == "Budgets" ? HttpStatusCode.OK : HttpStatusCode.Forbidden, inbox.StatusCode);
+        var areaTasks = role == "Budgets" ? await inbox.Content.ReadFromJsonAsync<JsonElement[]>() : [];
         foreach (var project in projects)
         {
             var allowed = role == "Management" || (role, project.Name) is ("CommercialAdvisor", "owner") or ("Budgets", "budget") or ("CommercialHead", "review");
@@ -54,7 +56,7 @@ public class SharedReadAccessTests(MultiRoleFixture fixture) : IClassFixture<Mul
             foreach (var suffix in new[] { "", "/tasks", "/notifications" })
                 Assert.Equal(allowed ? HttpStatusCode.OK : HttpStatusCode.NotFound, (await http.GetAsync($"/api/projects/{project.Id}{suffix}")).StatusCode);
             Assert.Equal(allowed ? HttpStatusCode.OK : HttpStatusCode.Forbidden, (await http.GetAsync($"/api/projects/{project.Id}/documents")).StatusCode);
-            Assert.Equal(allowed && project.Name is "budget" or "foreign", areaTasks!.Any(t => t.GetProperty("projectId").GetGuid() == project.Id));
+            Assert.Equal(role == "Budgets" && project.Name == "budget", areaTasks!.Any(t => t.GetProperty("projectId").GetGuid() == project.Id));
         }
         Assert.Equal(before, JsonSerializer.Serialize(new { projects, tasks = fixture.Tasks.Items }));
     }

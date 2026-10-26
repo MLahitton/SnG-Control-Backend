@@ -656,7 +656,7 @@ El flujo de datos persistidos es `HTTP → Controller → UseCase → Store EF �
 
 Crear cliente construye la entidad validada, la guarda y mapea `ClientResponse`. CreateProjectUseCase obtiene Subject, Email y Name exclusivamente de ICurrentUser y construye la entidad validada; verifica explícitamente la existencia del cliente con `ExistsAsync`, guarda y mapea `ProjectResponse`. Devuelve `null` si el cliente no existe, sin intentar guardar ni esperar un error de FK. El Subject se conserva exactamente; Email y Name son snapshots informativos nullable, con empty/whitespace normalizados a null, sin actualizaciones posteriores. El creador es el responsable comercial actual, sin campos duplicados ni reasignación. Get/List de clientes y proyectos reciben ProjectReadAccess y ejecutan GetReadableByIdAsync/ListReadableAsync. ProjectReadScope construye un predicado reutilizado por EF y por los estados documentales/cotizaciones: Advisor propietario, Budgets con PrepareQuotation asignada, Head con ReviewQuotation asignada y Management transversal. No filtra por estado de tarea. Clientes se restringen mediante EXISTS de proyecto accesible para Budgets/Head; Advisor conserva el registro compartido y Management lee todos. Consultas SQL AsNoTracking, sin migración ni nuevas columnas. Obtener por Id devuelve `null`/404 si no existe o queda fuera del ámbito; listar devuelve una colección vacía cuando no hay registros visibles.
 
-ListByArea aplica el mismo ámbito de proyecto además de Area/Status. ListByProject y el historial de notificaciones comprueban acceso al proyecto antes de consultar. Documentos y vistas persistentes mantienen su 403 de acceso denegado; snapshots inexistentes mantienen 404. El estado de Presupuestos y las descargas XLSX también filtran antes de devolver metadata o leer storage. Las escrituras conservan políticas de área, assignment y workflow; pertenecer a varias áreas nunca combina permisos en una petición.
+ListByArea aplica TaskInboxScope por rol/tipo/área/Subject, además de Status y el ámbito de lectura del proyecto. ListByProject y el historial de notificaciones comprueban acceso al proyecto antes de consultar. Documentos y vistas persistentes mantienen su 403 de acceso denegado; snapshots inexistentes mantienen 404. El estado de Presupuestos y las descargas XLSX también filtran antes de devolver metadata o leer storage. Las escrituras conservan políticas de área, assignment y workflow; pertenecer a varias áreas nunca combina permisos en una petición.
 
 Las respuestas de Application se mapean explícitamente con `FromEntity`, compartido por los casos de uso de cada feature. Los Controllers reciben requests propios de Api y devuelven esos DTO de respuesta, nunca entidades del dominio. No hay AutoMapper, repositorios genéricos ni Unit of Work adicional.
 
@@ -666,7 +666,7 @@ Las respuestas de Application se mapean explícitamente con `FromEntity`, compar
 
 `SendProjectToBudgetsUseCase` delega el envío formal en `IProjectDocumentStore.SendToBudgetsAsync`. El store bloquea Project y revalida: inexistente → ProjectNotFound; actor sin CommercialAdvisor activo o distinto del creador → Forbidden; PrepareQuotation o snapshot existentes → AlreadySent; ningún documento vigente → DocumentsRequired. El éxito crea snapshot exacto, tarea Pending asignada a Presupuestos y TaskAssigned en una transacción/SaveChanges. No inicia StartedAt ni DeadlineAt. Crear Project no invoca este caso de uso.
 
-`ListProjectTasksByAreaUseCase` valida los enums y consulta por igualdad de Area y Status. `ListProjectTasksByProjectUseCase` verifica primero el proyecto: devuelve null si no existe, colección vacía si no tiene tareas o todas sus tareas en otro caso. No hay paginación ni orden garantizado en ninguna consulta.
+`ListProjectTasksByAreaUseCase` valida los enums y construye TaskInboxScope con Subject y rol activo validados. La regla cerrada permite Advisor → Commercial/PresentQuotationToClient, Budgets → Budgets/PrepareQuotation y Head → Commercial/ReviewQuotation. Management y roles no implementados carecen de bandeja personal. Un área incompatible retorna null y el Controller responde 403 antes de consultar el store; nombres de enums inválidos mantienen 400. EF filtra Type, Area, AssignedToGoogleSubject exacto y Status, junto con el ProjectReadScope existente. La regla no depende de email ni del resto de membresías. Completed conserva consulta histórica propia. `ListProjectTasksByProjectUseCase` verifica primero el proyecto: devuelve null si no existe, colección vacía si no tiene tareas o todas sus tareas en otro caso. No hay paginación ni orden garantizado en ninguna consulta.
 
 PostgreSQL conserva el índice único parcial de PrepareQuotation y la unicidad de ProjectDocumentHandoffs.ProjectId. Las operaciones documentales y el envío se serializan con SELECT FOR UPDATE sobre Project antes de consultar documentos/tarea; así un segundo envío ve el primero confirmado y responde AlreadySent. El método de inserción aislada de EfProjectTaskStore conserva su detector específico de 23505, pero ya no es la ruta del handoff HTTP.
 
@@ -798,7 +798,7 @@ Antes de guardar, Infrastructure ajusta únicamente UpdatedAt y StartedAt modifi
 | GET `/api/projects` | Sin body | 200, colección de ProjectResponse | Colección vacía |
 | GET `/api/projects/{id}` | Guid en ruta | 200, ProjectResponse | 404 |
 | POST `/api/projects/{id}/send-to-budgets` | Sin body; creador o Jefe; ≥1 vigente | 201, ProjectTaskResponse; 403 otro actor; 409 AlreadySent/DocumentsRequired | 404 |
-| GET `/api/project-tasks?area=Budgets&status=Pending` | area y status requeridos como nombres | 200, colección de ProjectTaskResponse | Colección vacía |
+| GET `/api/project-tasks?area=Budgets&status=Pending` | area compatible con ActiveRole y status requeridos como nombres | 200, tareas propias del rol; 403 para área incompatible/Management | Colección vacía |
 | GET `/api/projects/{id}/tasks` | Guid en ruta, sin filtros | 200, colección de ProjectTaskResponse | 404 |
 | PUT `/api/projects/{id}/sg-code` | `sgCode`; BudgetsAssignee | 200, AssignProjectSgCodeResponse; 409 por workflow o SG ocupado | 404 |
 | POST `/api/projects/{id}/budget-quotation/preview` | multipart, un archivo `file`; BudgetsAssignee | 200, BudgetQuotationPreviewResponse; 400 archivo inválido; 409 workflow o SG distinto | 404 |
@@ -1235,6 +1235,7 @@ Con la API iniciada por el perfil HTTPS y `$authHeaders` definido con un ID toke
 
 ```powershell
 $baseUrl = 'https://localhost:7265'
+$authHeaders['X-SnG-Active-Role'] = 'CommercialAdvisor'
 $clientBody = @{ name = 'Cliente Demo' } | ConvertTo-Json
 $client = Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$baseUrl/api/clients" -ContentType 'application/json' -Body $clientBody
 
@@ -1252,19 +1253,19 @@ Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/clients"
 Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects"
 
 # Antes del envío, cargar al menos un documento mediante el contrato batch documentado.
-# El token del envío debe pertenecer al creador o al Jefe.
+# El token del envío debe pertenecer al Asesor creador con CommercialAdvisor activo.
 # Debe estar vacío: crear Project no lo envía a Presupuestos.
 Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects/$($project.id)/tasks"
 $task = Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
 $task # Budgets / PrepareQuotation / Pending; fechas de inicio y fin nulas.
-Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/project-tasks?area=Budgets&status=Pending"
+$budgetsHeaders = @{ Authorization = "Bearer <GOOGLE_ID_TOKEN_PRESUPUESTOS>"; 'X-SnG-Active-Role' = 'Budgets' }
+Invoke-RestMethod -Headers $budgetsHeaders "$baseUrl/api/project-tasks?area=Budgets&status=Pending"
 Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/projects/$($project.id)/tasks"
 # Este segundo envío debe producir HTTP 409 (Invoke-RestMethod informa el error).
 Invoke-RestMethod -Headers $authHeaders -Method Post -Uri "$baseUrl/api/projects/$($project.id)/send-to-budgets"
 
 # Usar códigos libres; el sistema no calcula el siguiente SG.
 # Desde aquí, usar un token de la cuenta de Presupuestos configurada.
-$budgetsHeaders = @{ Authorization = "Bearer <GOOGLE_ID_TOKEN_PRESUPUESTOS>" }
 $sgUrl = "$baseUrl/api/projects/$($project.id)/sg-code"
 $assignment = Invoke-RestMethod -Headers $budgetsHeaders -Method Put -Uri $sgUrl -ContentType 'application/json' -Body '{"sgCode":" sg0012 "}'
 $originalStart = $assignment.prepareQuotationTask.startedAt
@@ -1273,7 +1274,7 @@ $repeat = Invoke-RestMethod -Headers $budgetsHeaders -Method Put -Uri $sgUrl -Co
 $originalStart -eq $correction.prepareQuotationTask.startedAt # True
 $originalStart -eq $repeat.prepareQuotationTask.startedAt # True
 $correction.project.updatedAt -eq $repeat.project.updatedAt # True
-Invoke-RestMethod -Headers $authHeaders "$baseUrl/api/project-tasks?area=Budgets&status=InProgress"
+Invoke-RestMethod -Headers $budgetsHeaders "$baseUrl/api/project-tasks?area=Budgets&status=InProgress"
 ```
 
 Los POST de creación y el primer envío generan registros reales y responden 201; los GET del ejemplo responden 200. El segundo envío responde 409 sin escribir otra tarea. Un Guid válido inexistente responde 404 al consultar entidades, enviar o consultar su historial. Cambiar `productLine`, `area` o `status` por un número o nombre desconocido, omitir área/estado, dejar `name`/`city` en blanco o enviar `Guid.Empty` como `clientId` produce 400. Un proyecto con cliente inexistente produce 404 sin insertar el proyecto.
@@ -1370,7 +1371,13 @@ La regla futura de reasignación conserva historia, emite otro TaskAssigned y re
 - Validar herramientas, restore, build, tests y migraciones; corregir warnings atribuibles al código sin ocultarlos mediante configuración. Reportar los que legítimamente permanezcan y cualquier supuesto o impedimento.
 - No incluir secretos reales en archivos versionados. No aplicar migraciones automáticamente al arrancar.
 
-Siguen pendientes la aprobación del cliente, anticipo, finalización de PresentQuotationToClient, reasignación de asesor/tareas y, en alcance posterior, la edición de otros campos, eliminación de proyectos/clientes, generación automática de SG, auditoría/historial de cambios SG, nuevas versiones y edición posterior de cotizaciones, revisiones comerciales posteriores, devolución de tareas y demás módulos funcionales. El preview XLSX de Presupuestos es stateless; su confirmación crea el catálogo base y conserva el documento inicial, sin implementar versión 2 ni edición posterior. Los filtros de tareas son Area+Status dentro del ámbito de lectura del proyecto; notificaciones personales se filtran exclusivamente por la identidad autenticada; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation, ReviewQuotation y PresentQuotationToClient por proyecto.
+Siguen pendientes la aprobación del cliente, anticipo, finalización de PresentQuotationToClient, reasignación de asesor/tareas y, en alcance posterior, la edición de otros campos, eliminación de proyectos/clientes, generación automática de SG, auditoría/historial de cambios SG, nuevas versiones y edición posterior de cotizaciones, revisiones comerciales posteriores, devolución de tareas y demás módulos funcionales. El preview XLSX de Presupuestos es stateless; su confirmación crea el catálogo base y conserva el documento inicial, sin implementar versión 2 ni edición posterior. La bandeja personal filtra rol activo, tipo, área, Subject asignado y estado, dentro del ámbito de lectura del proyecto; notificaciones personales se filtran exclusivamente por la identidad autenticada; no hay paginación, búsqueda ni orden configurable. Las reglas de reenvío/retrabajo requieren definición posterior; el flujo inicial vigente admite una sola PrepareQuotation, ReviewQuotation y PresentQuotationToClient por proyecto.
+
+### Verificación de la bandeja personal
+
+TaskInboxTests usa un mismo Subject multirol para comprobar los tres estados, tipo/área/assignee exactos, tareas ajenas o sin asignación, 403 de área incompatible/Management y conservación del historial completo por proyecto. SharedReadAccessPostgresTests verifica el filtro SQL con las tres tareas asignadas al mismo Subject y rollback sintético. No hay migración ni cambios de ownership, assignment, handoffs, deadlines o notificaciones.
+
+Smoke: Presupuestos → Tareas abre Pending; después del envío, PrepareQuotation aparece al elegir Completed pero ReviewQuotation nunca aparece en esa bandeja. Jefe → Tareas abre InProgress con ReviewQuotation; Asesor → Tareas abre InProgress con PresentQuotationToClient después de 4E. El expediente continúa mostrando las tres tareas según su historial. Gerencia usa Operación.
 
 ### Verificación de lectura compartida por área
 

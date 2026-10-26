@@ -38,7 +38,7 @@ public class SharedReadAccessPostgresTests
                 var allowedIndex = role == SystemRole.CommercialAdvisor ? 0 : role == SystemRole.Budgets ? 1 : 2;
                 var listed = await projectStore.ListReadableAsync(scope, default);
                 var listedClients = await clientStore.ListReadableAsync(scope, default);
-                var tasks = await taskStore.ListByAreaAsync(OperationalArea.Budgets, ProjectTaskStatus.Completed, scope, default);
+                var tasks = await taskStore.ListByAreaAsync(OperationalArea.Budgets, ProjectTaskStatus.Completed, new TaskInboxScope(subject, role), default);
                 for (var i = 0; i < projects.Length; i++)
                 {
                     var allowed = role == SystemRole.Management || i == allowedIndex;
@@ -47,9 +47,24 @@ public class SharedReadAccessPostgresTests
                     var clientAllowed = allowed || role == SystemRole.CommercialAdvisor;
                     Assert.Equal(clientAllowed, listedClients.Any(c => c.Id == clients[i].Id));
                     Assert.Equal(clientAllowed, await clientStore.GetReadableByIdAsync(clients[i].Id, scope, default) is not null);
-                    Assert.Equal(allowed && i is 1 or 3, tasks.Any(t => t.ProjectId == projects[i].Id));
+                    Assert.Equal(role == SystemRole.Budgets && i == 1, tasks.Any(t => t.ProjectId == projects[i].Id));
                 }
             }
+            // One readable project with all three task types assigned to the same Subject.
+            var instant = new DateTime(2026, 10, 14, 15, 0, 0, DateTimeKind.Utc);
+            var ownTasks = new[] {
+                new ProjectTask(projects[0].Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation, subject, instant),
+                new ProjectTask(projects[0].Id, OperationalArea.Commercial, ProjectTaskType.ReviewQuotation, subject, instant),
+                new ProjectTask(projects[0].Id, OperationalArea.Commercial, ProjectTaskType.PresentQuotationToClient, subject, instant)
+            };
+            foreach (var task in ownTasks) { task.Start(instant, instant.AddDays(6)); task.Complete(instant.AddDays(1)); }
+            db.AddRange(ownTasks); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+            foreach (var (role, task) in new[] { (SystemRole.Budgets, ownTasks[0]), (SystemRole.CommercialHead, ownTasks[1]), (SystemRole.CommercialAdvisor, ownTasks[2]) })
+            {
+                var inbox = await taskStore.ListByAreaAsync(task.Area, ProjectTaskStatus.Completed, new TaskInboxScope(subject, role), default);
+                Assert.Equal(task.Id, Assert.Single(inbox, t => t.ProjectId == projects[0].Id).Id);
+            }
+            Assert.Equal(3, (await taskStore.ListByProjectAsync(projects[0].Id, default)).Count);
             Assert.Empty(await projectStore.ListReadableAsync(new(subject, null), default));
             Assert.Empty(db.ChangeTracker.Entries());
         }
