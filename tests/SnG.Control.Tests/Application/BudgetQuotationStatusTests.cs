@@ -4,11 +4,18 @@ using SnG.Control.Domain.Enums;
 using SnG.Control.Tests.Fixtures;
 
 namespace SnG.Control.Tests.Application;
+
 public class BudgetQuotationStatusTests
 {
     [Theory]
-    [InlineData("ready")][InlineData("missing-extraction")][InlineData("extra-extraction")]
-    [InlineData("empty")][InlineData("catalog")][InlineData("sg")][InlineData("workflow")][InlineData("version")]
+    [InlineData("ready")]
+    [InlineData("missing-extraction")]
+    [InlineData("extra-extraction")]
+    [InlineData("empty")]
+    [InlineData("catalog")]
+    [InlineData("sg")]
+    [InlineData("workflow")]
+    [InlineData("version")]
     public async Task ReadAndCommandShareTheSameReadiness(string change)
     {
         var scenario = await CommercialHandoffScenario.CreateAsync();

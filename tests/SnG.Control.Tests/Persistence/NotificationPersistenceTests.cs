@@ -26,7 +26,7 @@ public class NotificationPersistenceTests
         Assert.Equal(3, entity.GetCheckConstraints().Count());
         Assert.All(entity.GetProperties(), p => Assert.Equal(p.Name == nameof(ProjectNotification.ResolvedAt), p.IsNullable));
         var task = model.FindEntityType(typeof(ProjectTask))!; Assert.True(task.FindProperty("DeadlineAt")!.IsNullable); Assert.True(task.FindProperty("WasOverdue")!.IsNullable);
-        Assert.Equal(10, db.Database.GetMigrations().Count()); Assert.False(db.Database.HasPendingModelChanges());
+        Assert.Equal(11, db.Database.GetMigrations().Count()); Assert.False(db.Database.HasPendingModelChanges());
         Assert.Equal(13, model.GetEntityTypes().Count()); Assert.DoesNotContain(model.GetEntityTypes(), e => e.Name.Contains("User"));
         Assert.Contains("ProjectNotifications", db.ProjectNotifications.ToQueryString());
         var queries = new EfProjectNotificationStore(db);
@@ -38,7 +38,8 @@ public class NotificationPersistenceTests
     }
     [Theory]
     [InlineData("23505", ProjectNotificationConfiguration.EventKeyIndex, true)]
-    [InlineData("23505", "OtherIndex", false)][InlineData("23514", ProjectNotificationConfiguration.EventKeyIndex, false)]
+    [InlineData("23505", "OtherIndex", false)]
+    [InlineData("23514", ProjectNotificationConfiguration.EventKeyIndex, false)]
     public void OnlyKnownUniqueViolation_IsRecognized(string code, string constraint, bool expected) =>
         Assert.Equal(expected, EfProjectNotificationSweepStore.IsDuplicateEvent(new("Synthetic", new PostgresException("Synthetic", "ERROR", "ERROR", code, constraintName: constraint))));
 

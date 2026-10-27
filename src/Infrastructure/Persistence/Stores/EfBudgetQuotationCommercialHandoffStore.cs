@@ -97,8 +97,11 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
             context.Entry(version).State = EntityState.Detached;
             context.Entry(commercial).State = EntityState.Detached;
             if (errors.Count > 0) throw new AggregateException("Commercial handoff failed; compensation requires inspection.", new[] { failure }.Concat(errors));
-            if (failure is DbUpdateException { InnerException: PostgresException
-                { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: ProjectTaskConfiguration.ReviewQuotationIndexName } })
+            if (failure is DbUpdateException
+                {
+                    InnerException: PostgresException
+                    { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: ProjectTaskConfiguration.ReviewQuotationIndexName }
+                })
                 return new(CommercialHandoffStatus.AlreadySent);
             if (failure is OperationCanceledException) throw;
             throw new InvalidOperationException("Commercial handoff could not be stored.", failure);

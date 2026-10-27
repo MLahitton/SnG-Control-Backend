@@ -26,7 +26,9 @@ public class ProjectUseCaseTests
     }
 
     [Theory]
-    [InlineData(null)][InlineData("")][InlineData(" ")]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
     public async Task Create_DoesNotFallBackToEmailWhenSubjectMissing(string? subject)
     {
         var projects = new ProjectStoreDouble();

@@ -10,7 +10,8 @@ namespace SnG.Control.Tests.Api;
 public class NotificationHttpTests
 {
     [Theory]
-    [InlineData("/api/notifications")][InlineData("/api/projects/00000000-0000-0000-0000-000000000001/notifications")]
+    [InlineData("/api/notifications")]
+    [InlineData("/api/projects/00000000-0000-0000-0000-000000000001/notifications")]
     public async Task Notifications_RequireAuthentication(string url)
     {
         var fixture = new ApiFixture(); await fixture.InitializeAsync();

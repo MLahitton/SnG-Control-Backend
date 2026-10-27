@@ -26,6 +26,7 @@ public sealed record CommercialQuotationPreviewItem(CommercialItemSection Sectio
     CatalogItemValues Values, decimal UnitPrice, decimal TotalPrice, IReadOnlyList<TechnicalDifference> TechnicalDifferences);
 public sealed record CommercialQuotationPreviewResponse(Guid ProjectId, decimal ProjectTotal, IReadOnlyList<CommercialQuotationPreviewItem> Items)
 {
+    public string CurrencyCode => Money.CurrencyCode;
     public int TechnicalDifferencesCount => Items.Sum(item => item.TechnicalDifferences.Count);
     public bool HasTechnicalDifferences => TechnicalDifferencesCount > 0;
 }
@@ -33,7 +34,10 @@ public sealed record CommercialQuotationPreviewResult(CommercialQuotationStatus 
     IReadOnlyList<CommercialItemKey>? MissingItems = null, IReadOnlyList<CommercialItemKey>? UnexpectedItems = null, BudgetQuotationFileError? FileError = null);
 public sealed record CommercialQuotationConfirmationResponse(Guid ProjectId, Guid CommercialQuotationId, decimal ProjectTotal,
     bool CommercialFileAvailable, ProjectTaskResponse ReviewTask, ProjectTaskResponse PresentQuotationToClientTask,
-    bool HasTechnicalDifferences, int TechnicalDifferencesCount);
+    bool HasTechnicalDifferences, int TechnicalDifferencesCount)
+{
+    public string CurrencyCode => Money.CurrencyCode;
+}
 public sealed record CommercialQuotationConfirmationResult(CommercialQuotationStatus Status, CommercialQuotationConfirmationResponse? Response = null,
     CommercialQuotationPreviewResult? Validation = null);
 public sealed record CommercialQuotationDownloadResult(CommercialQuotationStatus Status, byte[]? Bytes = null, string? FileName = null);

@@ -9,6 +9,7 @@ using SnG.Control.Infrastructure.Persistence.Stores;
 using SnG.Control.Tests.Fixtures;
 
 namespace SnG.Control.Tests.Persistence;
+
 public sealed class QuotationPostgresFactAttribute : FactAttribute
 {
     public QuotationPostgresFactAttribute()

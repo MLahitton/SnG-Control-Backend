@@ -219,3 +219,13 @@ El contexto conocido contempla procesos comerciales, técnicos, operativos y ger
 PresentQuotationToClient está iniciada para el asesor, pero todavía no hay confirmación de presentación, aprobación del cliente ni anticipo. Los módulos futuros no están implementados. Sus reglas y flujos se definirán en sus respectivas fases, sin anticiparlos en el núcleo actual.
 
 Para ejecutar o continuar el backend, consultar [README_TECHNICAL.md](README_TECHNICAL.md).
+
+
+### Moneda y precisión comercial
+
+Las cotizaciones comerciales declaran `currencyCode: "COP"` en preview, confirmación y lectura.
+ProjectTotal, UnitPrice y TotalPrice usan decimal con dos decimales, redondeados explícitamente
+con AwayFromZero antes de persistir (numeric(20,2)). El workbook sigue determinando cada importe;
+no se suman ni recalculan los totales. Las medidas técnicas conservan su precisión original.
+La migración FormalizeCommercialQuotationMoney normaliza importes existentes sin borrar registros.
+Debe aplicarse manualmente y desplegarse con los contratos actualizados de Intelligence/Frontend.

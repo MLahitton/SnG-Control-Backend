@@ -18,7 +18,10 @@ namespace SnG.Control.Tests.Api;
 public class NotificationWorkerAndConfigTests
 {
     [Theory]
-    [InlineData(null)][InlineData("")][InlineData("   ")][InlineData(" Synthetic-Subject ")]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(" Synthetic-Subject ")]
     public async Task BudgetsConfiguration_IsRequiredAtStartup_AndOpaque(string? subject)
     {
         using var storage = new TemporaryStorage();

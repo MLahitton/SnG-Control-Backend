@@ -61,10 +61,10 @@ public sealed class QuotationReadStorePostgresTests
             Assert.Equal(CommercialItemSection.Additional, budget.Items[2].Section); Assert.Equal(CatalogItemImageStatus.Ambiguous, budget.Items[2].ImageStatus); Assert.False(budget.Items[2].HasImage);
             var commercial = (await store.GetCommercialAsync(project.Id, default))!;
             Assert.Equal(final.Id, commercial.CommercialQuotationId); Assert.Equal(final.ConfirmedAt, commercial.ConfirmedAt);
-            Assert.Equal(987.6543m, commercial.ProjectTotal);
+            Assert.Equal(987.65m, commercial.ProjectTotal);
             var row = Assert.Single(commercial.Items);
             Assert.Equal(item.Id, row.CommercialCatalogItemId); Assert.Equal(20, row.SourceRow); Assert.Equal(item.Section, row.Section);
-            Assert.Equal(Values("Commercial glass"), row.Values); Assert.Equal(1.2345m, row.UnitPrice); Assert.Equal(456.789m, row.TotalPrice);
+            Assert.Equal(Values("Commercial glass"), row.Values); Assert.Equal(1.23m, row.UnitPrice); Assert.Equal(456.79m, row.TotalPrice);
             Assert.True(row.HasImage); Assert.Equal(CatalogItemImageStatus.Stored, row.ImageStatus);
             Assert.Equal("Confirmed glass", Assert.Single(row.TechnicalDifferences).PreviousValue);
             Assert.Equal("Commercial glass", Assert.Single(row.TechnicalDifferences).CurrentValue);

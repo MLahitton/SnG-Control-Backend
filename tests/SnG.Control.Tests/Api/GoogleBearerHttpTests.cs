@@ -30,7 +30,8 @@ public class GoogleBearerHttpTests
         using var directory = new TemporaryStorage();
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
-            ApplicationName = typeof(AuthController).Assembly.GetName().Name, EnvironmentName = "Testing"
+            ApplicationName = typeof(AuthController).Assembly.GetName().Name,
+            EnvironmentName = "Testing"
         });
         builder.WebHost.UseUrls("http://127.0.0.1:0"); builder.Logging.ClearProviders();
         builder.Services.AddApiServices();

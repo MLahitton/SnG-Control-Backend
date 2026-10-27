@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using SnG.Control.Domain.Entities;
+using SnG.Control.Domain.ValueObjects;
 
 namespace SnG.Control.Infrastructure.Persistence.Configurations;
 
@@ -16,7 +17,7 @@ public sealed class CommercialQuotationItemConfiguration : IEntityTypeConfigurat
         });
         builder.HasKey(i => i.Id); builder.Property(i => i.Id).ValueGeneratedNever();
         builder.Property(i => i.Section).HasConversion<int>();
-        builder.Property(i => i.UnitPrice).HasColumnType("numeric"); builder.Property(i => i.TotalPrice).HasColumnType("numeric");
+        builder.Property(i => i.UnitPrice).HasPrecision(Money.Precision, Money.Scale); builder.Property(i => i.TotalPrice).HasPrecision(Money.Precision, Money.Scale);
         builder.HasOne<CommercialQuotation>().WithMany().HasForeignKey(i => i.CommercialQuotationId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne<CommercialCatalogItem>().WithMany().HasForeignKey(i => i.CommercialCatalogItemId).OnDelete(DeleteBehavior.Restrict);
         builder.HasIndex(i => new { i.CommercialQuotationId, i.Section, i.SourceRow }).IsUnique();

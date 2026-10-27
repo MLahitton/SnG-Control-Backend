@@ -64,8 +64,11 @@ public sealed class EfBudgetQuotationConfirmationStore(SnGControlDbContext conte
             foreach (var entity in entities) context.Entry(entity).State = EntityState.Detached;
             if (compensationFailures.Count > 0)
                 throw new AggregateException("Quotation confirmation failed; compensation requires inspection.", new[] { failure }.Concat(compensationFailures));
-            if (failure is DbUpdateException { InnerException: PostgresException
-                { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: BudgetQuotationVersionConfiguration.VersionIndexName } })
+            if (failure is DbUpdateException
+                {
+                    InnerException: PostgresException
+                    { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: BudgetQuotationVersionConfiguration.VersionIndexName }
+                })
                 return new(QuotationConfirmationStatus.AlreadyConfirmed);
             if (failure is OperationCanceledException) throw;
             throw new InvalidOperationException("Quotation confirmation could not be stored.", failure);

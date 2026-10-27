@@ -7,6 +7,7 @@ using SnG.Control.Api.Authorization;
 using SnG.Control.Application.Identity;
 using SnG.Control.Tests.TestDoubles;
 namespace SnG.Control.Tests.Api;
+
 internal static class RoleTestAuthorization
 {
     public static void Register(IServiceCollection services)

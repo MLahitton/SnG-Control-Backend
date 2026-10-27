@@ -55,8 +55,10 @@ public sealed class XlsxBudgetQuotationWorkbookGenerator(IBudgetQuotationParser 
                     WriteNumber("M", values.Quantity);
                     var labels = new Dictionary<string, string>
                     {
-                        ["SISTEMA"] = values.System, ["CRISTAL"] = values.Glass,
-                        ["ACABADO ALUMINIO"] = values.AluminumFinish, ["CERRADURA"] = values.LockType,
+                        ["SISTEMA"] = values.System,
+                        ["CRISTAL"] = values.Glass,
+                        ["ACABADO ALUMINIO"] = values.AluminumFinish,
+                        ["CERRADURA"] = values.LockType,
                         ["OBSERVACIONES"] = values.Observations
                     };
                     // The parser validated the complete layout. Stop at the next header/section, including empty blocks.

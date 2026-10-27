@@ -13,7 +13,9 @@ namespace SnG.Control.Tests.Api;
 public class CommercialHeadPolicyTests
 {
     [Theory]
-    [InlineData(null)][InlineData("")][InlineData(" \t")]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t")]
     public async Task Startup_RejectsMissingHeadWithOnlyTheRequiredKey(string? subject)
     {
         var builder = Host.CreateApplicationBuilder(); builder.Configuration.Sources.Clear(); builder.Logging.ClearProviders();
@@ -37,7 +39,7 @@ public class CommercialHeadPolicyTests
     {
         var services = new ServiceCollection(); services.AddLogging();
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            { ["Authentication:CommercialHeadSubject"] = "google-test-subject" }).Build());
+        { ["Authentication:CommercialHeadSubject"] = "google-test-subject" }).Build());
         services.AddCommercialHeadAuthorization();
         RoleTestAuthorization.Register(services);
         using var provider = services.BuildServiceProvider();

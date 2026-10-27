@@ -1,3 +1,5 @@
+using SnG.Control.Domain.ValueObjects;
+
 namespace SnG.Control.Domain.Entities;
 
 public sealed class CommercialQuotation
@@ -15,7 +17,7 @@ public sealed class CommercialQuotation
         OriginalFileName = originalFileName.Replace('\\', '/').Split('/').Last();
         ArgumentException.ThrowIfNullOrWhiteSpace(OriginalFileName);
         FileStorageKey = $"projects/{ProjectId:D}/commercial-quotations/{Id:D}/commercial.xlsx";
-        ProjectTotal = projectTotal; ConfirmedByGoogleSubject = confirmedByGoogleSubject;
+        ProjectTotal = Money.Normalize(projectTotal); ConfirmedByGoogleSubject = confirmedByGoogleSubject;
         ConfirmedByEmail = string.IsNullOrWhiteSpace(confirmedByEmail) ? null : confirmedByEmail;
         ConfirmedByName = string.IsNullOrWhiteSpace(confirmedByName) ? null : confirmedByName;
         var now = DateTime.UtcNow; ConfirmedAt = new(now.Ticks - now.Ticks % 10, DateTimeKind.Utc);

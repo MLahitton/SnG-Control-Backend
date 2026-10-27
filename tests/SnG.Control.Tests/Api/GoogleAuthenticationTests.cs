@@ -16,7 +16,9 @@ namespace SnG.Control.Tests.Api;
 public class GoogleAuthenticationTests
 {
     [Theory]
-    [InlineData(null)][InlineData("")][InlineData(" ")]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
     public async Task Startup_RejectsMissingClientIdWithoutPrintingValues(string? clientId)
     {
         var builder = Host.CreateApplicationBuilder();
@@ -77,7 +79,8 @@ public class GoogleAuthenticationTests
     }
 
     [Theory]
-    [InlineData(false, true)][InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
     public void CurrentUser_RejectsUnauthenticatedOrMissingSubjectWithoutFallback(bool authenticated, bool hasSub)
     {
         var claims = new List<Claim> { new("email", "test@example.com"), new(ClaimTypes.NameIdentifier, "mapped-identity") };
@@ -91,7 +94,7 @@ public class GoogleAuthenticationTests
     {
         var services = new ServiceCollection(); services.AddLogging();
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
-            { ["Authentication:Google:ClientId"] = "synthetic-client" }).Build());
+        { ["Authentication:Google:ClientId"] = "synthetic-client" }).Build());
         services.AddGoogleAuthentication();
         return services.BuildServiceProvider();
     }

@@ -20,8 +20,10 @@ public sealed class CommercialQuotationController(PreviewCommercialQuotationUseC
     [DisableFormValueModelBinding]
     [ProducesResponseType<CommercialQuotationPreviewResponse>(200)]
     [ProducesResponseType<ProblemDetails>(400)]
-    [ProducesResponseType(401)] [ProducesResponseType(403)]
-    [ProducesResponseType<ProblemDetails>(404)] [ProducesResponseType<ProblemDetails>(409)]
+    [ProducesResponseType(401)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType<ProblemDetails>(404)]
+    [ProducesResponseType<ProblemDetails>(409)]
     public async Task<IActionResult> Preview(Guid id, CancellationToken token)
     {
         var upload = await QuotationMultipartReader.ReadAsync(Request, false, options.Value.MaxUploadBytes, token);
@@ -35,8 +37,10 @@ public sealed class CommercialQuotationController(PreviewCommercialQuotationUseC
     [DisableFormValueModelBinding]
     [ProducesResponseType<CommercialQuotationConfirmationResponse>(201)]
     [ProducesResponseType<ProblemDetails>(400)]
-    [ProducesResponseType(401)] [ProducesResponseType(403)]
-    [ProducesResponseType<ProblemDetails>(404)] [ProducesResponseType<ProblemDetails>(409)]
+    [ProducesResponseType(401)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType<ProblemDetails>(404)]
+    [ProducesResponseType<ProblemDetails>(409)]
     public async Task<IActionResult> Confirm(Guid id, CancellationToken token)
     {
         var upload = await QuotationMultipartReader.ReadAsync(Request, false, options.Value.MaxUploadBytes, token);
@@ -47,8 +51,11 @@ public sealed class CommercialQuotationController(PreviewCommercialQuotationUseC
 
     [HttpGet("file")]
     [ProducesResponseType<FileContentResult>(200, DownloadCommercialQuotationUseCase.ContentType)]
-    [ProducesResponseType(401)] [ProducesResponseType(403)]
-    [ProducesResponseType<ProblemDetails>(404)] [ProducesResponseType<ProblemDetails>(409)] [ProducesResponseType<ProblemDetails>(500)]
+    [ProducesResponseType(401)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType<ProblemDetails>(404)]
+    [ProducesResponseType<ProblemDetails>(409)]
+    [ProducesResponseType<ProblemDetails>(500)]
     public async Task<IActionResult> File(Guid id, CancellationToken token)
     {
         var result = await download.ExecuteAsync(id, token);
@@ -59,8 +66,12 @@ public sealed class CommercialQuotationController(PreviewCommercialQuotationUseC
     private IActionResult Failure(CommercialQuotationStatus status, CommercialQuotationPreviewResult? validation = null)
     {
         if (status == CommercialQuotationStatus.Forbidden) return Forbid();
-        var code = status switch { CommercialQuotationStatus.ProjectNotFound => 404,
-            CommercialQuotationStatus.InvalidWorkbook or CommercialQuotationStatus.InvalidEconomics => 400, _ => 409 };
+        var code = status switch
+        {
+            CommercialQuotationStatus.ProjectNotFound => 404,
+            CommercialQuotationStatus.InvalidWorkbook or CommercialQuotationStatus.InvalidEconomics => 400,
+            _ => 409
+        };
         var details = new Dictionary<string, object?> { ["code"] = status.ToString() };
         if (validation?.MissingItems is not null) details["missingItems"] = validation.MissingItems;
         if (validation?.UnexpectedItems is not null) details["unexpectedItems"] = validation.UnexpectedItems;

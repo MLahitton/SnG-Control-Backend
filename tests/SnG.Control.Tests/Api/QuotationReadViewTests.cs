@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
@@ -36,11 +36,17 @@ public sealed class QuotationReadViewTests(QuotationReadFixture fixture) : IClas
         return client;
     }
     [Theory]
-    [InlineData("CommercialAdvisor", "budget", 200)] [InlineData("Budgets", "budget", 200)]
-    [InlineData("CommercialHead", "budget", 200)] [InlineData("Management", "budget", 200)]
-    [InlineData("CommercialAdvisor", "commercial", 200)] [InlineData("CommercialHead", "commercial", 200)]
-    [InlineData("Management", "commercial", 200)] [InlineData("Budgets", "commercial", 403)]
-    [InlineData("Accounting", "budget", 403)] [InlineData("1", "budget", 403)] [InlineData(null, "commercial", 403)]
+    [InlineData("CommercialAdvisor", "budget", 200)]
+    [InlineData("Budgets", "budget", 200)]
+    [InlineData("CommercialHead", "budget", 200)]
+    [InlineData("Management", "budget", 200)]
+    [InlineData("CommercialAdvisor", "commercial", 200)]
+    [InlineData("CommercialHead", "commercial", 200)]
+    [InlineData("Management", "commercial", 200)]
+    [InlineData("Budgets", "commercial", 403)]
+    [InlineData("Accounting", "budget", 403)]
+    [InlineData("1", "budget", 403)]
+    [InlineData(null, "commercial", 403)]
     public async Task SameSubject_ReadMatrix(string? role, string kind, int status)
     {
         using var client = Client(role);
@@ -49,6 +55,13 @@ public sealed class QuotationReadViewTests(QuotationReadFixture fixture) : IClas
         if (status == 200)
         {
             Assert.True(response.Headers.CacheControl?.NoStore);
+            using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+            if (kind == "commercial")
+            {
+                Assert.Equal("COP", payload.RootElement.GetProperty("currencyCode").GetString());
+                Assert.Equal(98.12m, payload.RootElement.GetProperty("projectTotal").GetDecimal());
+            }
+            else Assert.False(payload.RootElement.TryGetProperty("currencyCode", out _));
             var json = await response.Content.ReadAsStringAsync();
             Assert.DoesNotContain("storageKey", json, StringComparison.OrdinalIgnoreCase);
             Assert.DoesNotContain("base64", json, StringComparison.OrdinalIgnoreCase);
@@ -58,7 +71,8 @@ public sealed class QuotationReadViewTests(QuotationReadFixture fixture) : IClas
             Assert.Equal(HttpStatusCode.Forbidden, (await client.PutAsJsonAsync($"/api/projects/{fixture.ReadStore.Project.Id}/sg-code", new { sgCode = "SG2" })).StatusCode);
     }
     [Theory]
-    [InlineData("budget")] [InlineData("commercial")]
+    [InlineData("budget")]
+    [InlineData("commercial")]
     public async Task OutsiderOwnerAndMissingQuotationAreHandled(string kind)
     {
         using var outsider = Client("CommercialAdvisor", "other");
@@ -71,7 +85,8 @@ public sealed class QuotationReadViewTests(QuotationReadFixture fixture) : IClas
         finally { fixture.ReadStore.HasQuotation = true; }
     }
     [Theory]
-    [InlineData("Budgets")] [InlineData("CommercialHead")]
+    [InlineData("Budgets")]
+    [InlineData("CommercialHead")]
     public async Task MembershipWithoutAssignedTaskDoesNotGrantRead(string role)
     {
         using var client = Client(role);
@@ -80,7 +95,10 @@ public sealed class QuotationReadViewTests(QuotationReadFixture fixture) : IClas
         finally { fixture.ReadStore.HasTasks = true; }
     }
     [Theory]
-    [InlineData("CommercialAdvisor")] [InlineData("Budgets")] [InlineData("CommercialHead")] [InlineData("Management")]
+    [InlineData("CommercialAdvisor")]
+    [InlineData("Budgets")]
+    [InlineData("CommercialHead")]
+    [InlineData("Management")]
     public async Task ImageIsScopedToProjectItemAndRole(string role)
     {
         using var client = Client(role);
@@ -129,7 +147,7 @@ public sealed class QuotationReadDouble : IQuotationReadStore
         new(2026, 10, 20, 15, 0, 0, DateTimeKind.Utc), new("synthetic.xlsx", "Client", "Project", "City", "ClientLine", "Production", "Author", "SG9001"),
         [new(ItemId, CommercialItemSection.Main, 20, Values, Values, CatalogItemImageStatus.Stored, true, [])]));
     public Task<ConfirmedCommercialQuotationView?> GetCommercialAsync(Guid id, CancellationToken token) => Task.FromResult(!HasQuotation ? null : new ConfirmedCommercialQuotationView(id, Guid.NewGuid(),
-        new(2026, 10, 21, 15, 0, 0, DateTimeKind.Utc), 98.1234m, [new(CommercialItemSection.Main, 20, ItemId, Values, 1.2345m, 42.5678m, [], CatalogItemImageStatus.Stored, true)]));
+        new(2026, 10, 21, 15, 0, 0, DateTimeKind.Utc), 98.12m, [new(CommercialItemSection.Main, 20, ItemId, Values, 1.23m, 42.57m, [], CatalogItemImageStatus.Stored, true)]));
     public Task<QuotationImageFile?> GetBudgetImageAsync(Guid id, Guid item, CancellationToken token) => Task.FromResult(id == Project.Id && item == ItemId ? new QuotationImageFile("synthetic/image.png", ImageType) : null);
 }
 public sealed class ImageStorageDouble : IStreamingFileStorage

@@ -11,10 +11,17 @@ namespace SnG.Control.Tests.Application;
 public class CommercialQuotationTests
 {
     [Theory]
-    [InlineData(TechnicalField.ItemNumber)][InlineData(TechnicalField.Location)][InlineData(TechnicalField.System)]
-    [InlineData(TechnicalField.Glass)][InlineData(TechnicalField.AluminumFinish)][InlineData(TechnicalField.LockType)]
-    [InlineData(TechnicalField.Observations)][InlineData(TechnicalField.Width)][InlineData(TechnicalField.Height)]
-    [InlineData(TechnicalField.SquareMeters)][InlineData(TechnicalField.Quantity)]
+    [InlineData(TechnicalField.ItemNumber)]
+    [InlineData(TechnicalField.Location)]
+    [InlineData(TechnicalField.System)]
+    [InlineData(TechnicalField.Glass)]
+    [InlineData(TechnicalField.AluminumFinish)]
+    [InlineData(TechnicalField.LockType)]
+    [InlineData(TechnicalField.Observations)]
+    [InlineData(TechnicalField.Width)]
+    [InlineData(TechnicalField.Height)]
+    [InlineData(TechnicalField.SquareMeters)]
+    [InlineData(TechnicalField.Quantity)]
     public void EveryTechnicalField_HasIndependentTypedDifference(TechnicalField field)
     {
         var original = new CatalogItemValues("01", "Zone", "System", "Glass", "Finish", "Lock", "Note", 1, 2, 3, 4);
@@ -40,10 +47,10 @@ public class CommercialQuotationTests
         var before = JsonSerializer.Serialize(state);
         var preview = await scenario.Preview().ExecuteAsync(state.Project.Id, scenario.Bytes, "test.xlsx", default);
         Assert.Equal(CommercialQuotationStatus.Success, preview.Status); Assert.True(preview.Response!.HasTechnicalDifferences);
-        Assert.Equal(1, preview.Response.TechnicalDifferencesCount); Assert.Equal(123.4567m, preview.Response.ProjectTotal);
+        Assert.Equal(1, preview.Response.TechnicalDifferencesCount); Assert.Equal(123.46m, preview.Response.ProjectTotal);
         Assert.Equal(before, JsonSerializer.Serialize(state)); Assert.Equal(0, scenario.SaveCalls); Assert.Equal(0, scenario.DeleteCalls);
         var result = await scenario.Confirm(new IdentityDouble("google-test-subject", "changed@example.com", "Actor")).ExecuteAsync(state.Project.Id, scenario.Bytes, "folder/test.xlsx", default);
-        Assert.Equal(CommercialQuotationStatus.Success, result.Status); Assert.Equal(123.4567m, result.Response!.ProjectTotal);
+        Assert.Equal(CommercialQuotationStatus.Success, result.Status); Assert.Equal(123.46m, result.Response!.ProjectTotal);
         var quotation = scenario.State!.Quotation!;
         Assert.Equal("google-test-subject", quotation.ConfirmedByGoogleSubject); Assert.Equal("changed@example.com", quotation.ConfirmedByEmail); Assert.Equal("Actor", quotation.ConfirmedByName);
         Assert.Equal(DateTimeKind.Utc, quotation.ConfirmedAt.Kind); Assert.Equal("test.xlsx", quotation.OriginalFileName);
@@ -60,7 +67,7 @@ public class CommercialQuotationTests
         Assert.Equal(history, JsonSerializer.Serialize(new { state.Project, state.Catalog, state.Items, state.Extractions }));
         Assert.Equal(state.Items.Count, scenario.Items.Count);
         var item = scenario.Items.Single(i => i.SourceRow == 15);
-        Assert.Equal("Changed glass", item.Glass); Assert.Equal(7.125m, item.UnitPrice); Assert.Equal(99.9876m, item.TotalPrice);
+        Assert.Equal("Changed glass", item.Glass); Assert.Equal(7.13m, item.UnitPrice); Assert.Equal(99.99m, item.TotalPrice);
         Assert.Contains(state.Items, old => old.Id == item.CommercialCatalogItemId && old.Glass != item.Glass);
         Assert.Equal(CommercialQuotationStatus.AlreadyConfirmed, (await scenario.Confirm().ExecuteAsync(state.Project.Id, scenario.Bytes, "test.xlsx", default)).Status);
         Assert.Equal(1, scenario.SaveCalls); Assert.Equal(1, scenario.DeleteCalls);
@@ -106,7 +113,11 @@ public class CommercialQuotationTests
     }
 
     [Theory]
-    [InlineData("missing-main")][InlineData("extra-main")][InlineData("missing-additional")][InlineData("extra-additional")][InlineData("moved")]
+    [InlineData("missing-main")]
+    [InlineData("extra-main")]
+    [InlineData("missing-additional")]
+    [InlineData("extra-additional")]
+    [InlineData("moved")]
     public async Task StructuralChanges_BlockPreviewAndConfirmation(string change)
     {
         using var scenario = new CommercialQuotationScenario(); await scenario.InitializeAsync();

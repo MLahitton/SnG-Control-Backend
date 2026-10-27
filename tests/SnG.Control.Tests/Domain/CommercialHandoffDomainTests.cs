@@ -44,8 +44,14 @@ public class CommercialHandoffDomainTests
         Assert.Throws<InvalidOperationException>(() => version.SetConfirmedFileStorageKey("projects/b/confirmed.xlsx"));
     }
     [Theory]
-    [InlineData("")][InlineData(" ")][InlineData("/absolute.xlsx")][InlineData("C:/absolute.xlsx")]
-    [InlineData("../confirmed.xlsx")][InlineData("a/../confirmed.xlsx")][InlineData("a\\confirmed.xlsx")][InlineData("a//confirmed.xlsx")]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData("/absolute.xlsx")]
+    [InlineData("C:/absolute.xlsx")]
+    [InlineData("../confirmed.xlsx")]
+    [InlineData("a/../confirmed.xlsx")]
+    [InlineData("a\\confirmed.xlsx")]
+    [InlineData("a//confirmed.xlsx")]
     public async Task ConfirmedKey_RejectsUnsafePaths(string key)
     {
         var version = (await CommercialHandoffScenario.CreateAsync()).State!.Version!;

@@ -25,10 +25,14 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
         return form;
     }
     [Theory]
-    [InlineData("preview", null, 401)][InlineData("confirm", null, 401)]
-    [InlineData("preview", "other", 403)][InlineData("confirm", "other", 403)]
-    [InlineData("preview", "missing-sub", 401)][InlineData("confirm", "missing-sub", 401)]
-    [InlineData("preview", "head-other-email", 200)][InlineData("confirm", "head-other-email", 201)]
+    [InlineData("preview", null, 401)]
+    [InlineData("confirm", null, 401)]
+    [InlineData("preview", "other", 403)]
+    [InlineData("confirm", "other", 403)]
+    [InlineData("preview", "missing-sub", 401)]
+    [InlineData("confirm", "missing-sub", 401)]
+    [InlineData("preview", "head-other-email", 200)]
+    [InlineData("confirm", "head-other-email", 201)]
     public async Task UploadAuthorization_PrecedesMultipartAndBusinessLogic(string action, string? identity, int expected)
     {
         var scenario = await Scenario();
@@ -39,7 +43,8 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
         if (expected >= 400) { Assert.Equal(0, scenario.ConfirmCalls); Assert.Equal(0, scenario.SaveCalls); Assert.Equal(0, scenario.DeleteCalls); }
     }
     [Theory]
-    [InlineData("preview")][InlineData("confirm")]
+    [InlineData("preview")]
+    [InlineData("confirm")]
     public async Task StrictMultipart_RejectsEditableCorrections_AndMissingProjectIs404(string action)
     {
         var scenario = await Scenario();
@@ -51,8 +56,11 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode); Assert.Equal(0, scenario.SaveCalls);
     }
     [Theory]
-    [InlineData("valid", 200)][InlineData("other", 200)][InlineData("creator-other-email", 200)]
-    [InlineData("outsider", 403)][InlineData(null, 401)]
+    [InlineData("valid", 200)]
+    [InlineData("other", 200)]
+    [InlineData("creator-other-email", 200)]
+    [InlineData("outsider", 403)]
+    [InlineData(null, 401)]
     public async Task FinalDownload_UsesSubject_ExactBytesAndSafeFilename(string? identity, int expected)
     {
         var scenario = await Scenario(); var id = scenario.State!.Project.Id;
@@ -88,7 +96,7 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
             Assert.Equal("PresentQuotationToClient", json.GetProperty("presentQuotationToClientTask").GetProperty("type").GetString());
             Assert.Equal("other-google-subject", json.GetProperty("presentQuotationToClientTask").GetProperty("assignedToGoogleSubject").GetString());
             Assert.Equal("Completed", json.GetProperty("reviewTask").GetProperty("status").GetString());
-            Assert.True(json.GetProperty("hasTechnicalDifferences").GetBoolean()); Assert.Equal(123.4567m, json.GetProperty("projectTotal").GetDecimal());
+            Assert.True(json.GetProperty("hasTechnicalDifferences").GetBoolean()); Assert.Equal(123.46m, json.GetProperty("projectTotal").GetDecimal()); Assert.Equal("COP", json.GetProperty("currencyCode").GetString());
             Assert.Single(scenario.State!.Tasks, t => t.Type == ProjectTaskType.PresentQuotationToClient);
             using var retry = Upload(scenario.Bytes); using var repeated = await fixture.Http.PostAsync(url, retry);
             Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode); Assert.Equal(1, scenario.SaveCalls); Assert.Equal(1, scenario.DeleteCalls);
@@ -117,7 +125,7 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync(); using var json = JsonDocument.Parse(body);
         Assert.Equal(1, json.RootElement.GetProperty("technicalDifferencesCount").GetInt32());
-        var item = json.RootElement.GetProperty("items")[0]; Assert.Equal(7.125m, item.GetProperty("unitPrice").GetDecimal());
+        var item = json.RootElement.GetProperty("items")[0]; Assert.Equal(7.13m, item.GetProperty("unitPrice").GetDecimal());
         Assert.Equal("Glass", item.GetProperty("technicalDifferences")[0].GetProperty("field").GetString());
         Assert.DoesNotContain("StorageKey", body, StringComparison.OrdinalIgnoreCase); Assert.DoesNotContain("token", body, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain(scenario.Directory.Root, body); Assert.Equal(0, scenario.SaveCalls); Assert.Equal(0, scenario.DeleteCalls);

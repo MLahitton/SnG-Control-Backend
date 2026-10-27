@@ -73,8 +73,12 @@ public class CommercialIdentityHttpTests(ApiFixture fixture) : IClassFixture<Api
     }
 
     [Theory]
-    [InlineData("createdBy")][InlineData("createdByGoogleSubject")][InlineData("createdByEmail")][InlineData("createdByName")]
-    [InlineData("subject")][InlineData("responsibleCommercialSubject")]
+    [InlineData("createdBy")]
+    [InlineData("createdByGoogleSubject")]
+    [InlineData("createdByEmail")]
+    [InlineData("createdByName")]
+    [InlineData("subject")]
+    [InlineData("responsibleCommercialSubject")]
     public async Task Body_CannotSupplyIdentity(string field)
     {
         fixture.Http.DefaultRequestHeaders.Authorization = new(TestAuthenticationHandler.SchemeName, "valid");

@@ -82,14 +82,19 @@ public class ConfirmBudgetQuotationUseCaseTests
         var scenario = new ConfirmationScenario(); var request = await scenario.RequestAsync(); var first = request.Items![0];
         request = kind switch
         {
-            "missing" => new([first]), "extra" => new([.. request.Items, first with { SourceRow = 100 }]),
+            "missing" => new([first]),
+            "extra" => new([.. request.Items, first with { SourceRow = 100 }]),
             "unknown-row" => new([first with { SourceRow = 100 }, request.Items[1]]),
-            "duplicate" => new([first, first]), "section" => new([first with { Section = CommercialItemSection.Additional }, request.Items[1]]),
+            "duplicate" => new([first, first]),
+            "section" => new([first with { Section = CommercialItemSection.Additional }, request.Items[1]]),
             "undefined-section" => new([first with { Section = (CommercialItemSection)99 }, request.Items[1]]),
             "empty-number" => new([first with { ItemNumber = " " }, request.Items[1]]),
-            "width" => new([first with { Width = 0 }, request.Items[1]]), "height" => new([first with { Height = -1 }, request.Items[1]]),
-            "area" => new([first with { SquareMeters = 0 }, request.Items[1]]), "quantity" => new([first with { Quantity = -1 }, request.Items[1]]),
-            "null-items" => new(null), _ => new([null!, request.Items[1]])
+            "width" => new([first with { Width = 0 }, request.Items[1]]),
+            "height" => new([first with { Height = -1 }, request.Items[1]]),
+            "area" => new([first with { SquareMeters = 0 }, request.Items[1]]),
+            "quantity" => new([first with { Quantity = -1 }, request.Items[1]]),
+            "null-items" => new(null),
+            _ => new([null!, request.Items[1]])
         };
         Assert.Equal(QuotationConfirmationStatus.InvalidConfirmation, (await scenario.ExecuteAsync(request)).Status);
         Assert.Equal(0, scenario.Store.Calls); Assert.Empty(scenario.Store.Confirmations);

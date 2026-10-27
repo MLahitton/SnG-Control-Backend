@@ -6,7 +6,9 @@ namespace SnG.Control.Tests.Domain;
 public class CommercialIdentityTests
 {
     [Theory]
-    [InlineData(null)][InlineData("")][InlineData(" \t")]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t")]
     public void NewProject_RejectsMissingSubjectEvenWithEmail(string? subject)
     {
         Assert.ThrowsAny<ArgumentException>(() => new Project(Guid.NewGuid(), "Project", "City", ProductLine.Classic,
@@ -15,7 +17,9 @@ public class CommercialIdentityTests
     }
 
     [Theory]
-    [InlineData(null, null)][InlineData("", " ")][InlineData("a@example.com", "Name")]
+    [InlineData(null, null)]
+    [InlineData("", " ")]
+    [InlineData("a@example.com", "Name")]
     public void Creator_PreservesOpaqueSubjectAndOptionalSnapshotsAcrossChanges(string? email, string? name)
     {
         var project = new Project(Guid.NewGuid(), "Project", "City", ProductLine.Classic, "  Opaque-SUB-001  ", email, name);
@@ -37,7 +41,8 @@ public class CommercialIdentityTests
     }
 
     [Theory]
-    [InlineData("")][InlineData(" \t")]
+    [InlineData("")]
+    [InlineData(" \t")]
     public void Task_RejectsBlankPersonalAssignment(string subject) => Assert.ThrowsAny<ArgumentException>(() =>
         new ProjectTask(Guid.NewGuid(), OperationalArea.Commercial, ProjectTaskType.ReviewQuotation, subject));
 }

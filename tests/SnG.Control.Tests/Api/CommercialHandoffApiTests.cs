@@ -15,7 +15,8 @@ public class CommercialHandoffApiTests : IClassFixture<ApiFixture>
         fixture.Http.DefaultRequestHeaders.Add("X-SnG-Active-Role", "CommercialHead");
     }
     [Theory]
-    [InlineData("send-to-commercial")][InlineData("budget-quotation/commercial-file")]
+    [InlineData("send-to-commercial")]
+    [InlineData("budget-quotation/commercial-file")]
     public async Task MissingProject_Is404(string route)
     {
         using var response = route == "send-to-commercial" ? await fixture.BudgetsHttp.PostAsync($"/api/projects/{Guid.NewGuid()}/{route}", null)
@@ -23,7 +24,9 @@ public class CommercialHandoffApiTests : IClassFixture<ApiFixture>
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
     [Theory]
-    [InlineData("workflow")][InlineData("confirmation")][InlineData("sg")]
+    [InlineData("workflow")]
+    [InlineData("confirmation")]
+    [InlineData("sg")]
     public async Task NotReady_Is409(string reason)
     {
         fixture.Handoff = await CommercialHandoffScenario.CreateAsync(); var state = fixture.Handoff.State!;

@@ -8,23 +8,42 @@ public class LeadTimeCalendarTests
 {
     private readonly ColombiaBusinessCalendar calendar = new();
     [Theory]
-    [InlineData("2026-01-01")][InlineData("2026-01-12")][InlineData("2026-03-23")]
-    [InlineData("2026-04-02")][InlineData("2026-04-03")][InlineData("2026-05-01")]
-    [InlineData("2026-05-18")][InlineData("2026-06-08")][InlineData("2026-06-15")]
-    [InlineData("2026-06-29")][InlineData("2026-07-13")][InlineData("2026-07-20")]
-    [InlineData("2026-08-07")][InlineData("2026-08-17")][InlineData("2026-10-12")]
-    [InlineData("2026-11-02")][InlineData("2026-11-16")][InlineData("2026-12-08")][InlineData("2026-12-25")]
+    [InlineData("2026-01-01")]
+    [InlineData("2026-01-12")]
+    [InlineData("2026-03-23")]
+    [InlineData("2026-04-02")]
+    [InlineData("2026-04-03")]
+    [InlineData("2026-05-01")]
+    [InlineData("2026-05-18")]
+    [InlineData("2026-06-08")]
+    [InlineData("2026-06-15")]
+    [InlineData("2026-06-29")]
+    [InlineData("2026-07-13")]
+    [InlineData("2026-07-20")]
+    [InlineData("2026-08-07")]
+    [InlineData("2026-08-17")]
+    [InlineData("2026-10-12")]
+    [InlineData("2026-11-02")]
+    [InlineData("2026-11-16")]
+    [InlineData("2026-12-08")]
+    [InlineData("2026-12-25")]
     public void NationalHolidays2026_AreNotWorkingDays(string date) => Assert.False(calendar.IsBusinessDay(DateOnly.Parse(date)));
 
     [Theory]
-    [InlineData("2026-10-17", true)][InlineData("2026-10-18", false)]
-    [InlineData("2026-03-19", true)][InlineData("2026-06-29", false)]
-    [InlineData("2025-07-14", true)][InlineData("2026-07-09", true)]
+    [InlineData("2026-10-17", true)]
+    [InlineData("2026-10-18", false)]
+    [InlineData("2026-03-19", true)]
+    [InlineData("2026-06-29", false)]
+    [InlineData("2025-07-14", true)]
+    [InlineData("2026-07-09", true)]
     public void BusinessDays_IncludeSaturdaysAndRespectObservedDates(string date, bool expected) => Assert.Equal(expected, calendar.IsBusinessDay(DateOnly.Parse(date)));
 
     [Theory]
-    [InlineData(2024, "2024-03-31")][InlineData(2025, "2025-04-20")][InlineData(2026, "2026-04-05")]
-    [InlineData(2000, "2000-04-23")][InlineData(2100, "2100-03-28")]
+    [InlineData(2024, "2024-03-31")]
+    [InlineData(2025, "2025-04-20")]
+    [InlineData(2026, "2026-04-05")]
+    [InlineData(2000, "2000-04-23")]
+    [InlineData(2100, "2100-03-28")]
     public void GregorianEaster_KnownDates(int year, string date) => Assert.Equal(DateOnly.Parse(date), ColombiaBusinessCalendar.EasterSunday(year));
 
     [Theory]
@@ -59,7 +78,9 @@ public class LeadTimeCalendarTests
         Assert.Throws<ArgumentException>(() => calendar.LocalDate(new(2026, 10, 14)));
     }
     [Theory]
-    [InlineData(-1, false)][InlineData(0, false)][InlineData(1, true)]
+    [InlineData(-1, false)]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
     public void Completion_UsesStrictDeadlineBoundary(long ticks, bool late)
     {
         var task = NewTask(); var start = new DateTime(2026, 10, 14, 15, 0, 0, DateTimeKind.Utc);
@@ -82,8 +103,12 @@ public class LeadTimeCalendarTests
         Assert.Equal(LeadTimeStatus.UntrackedLegacy, TestTiming.Value.Status(legacy, now.AddYears(1)));
     }
     [Theory]
-    [InlineData("utc-start")][InlineData("utc-deadline")][InlineData("equal")][InlineData("before")]
-    [InlineData("started")][InlineData("completed")]
+    [InlineData("utc-start")]
+    [InlineData("utc-deadline")]
+    [InlineData("equal")]
+    [InlineData("before")]
+    [InlineData("started")]
+    [InlineData("completed")]
     public void Start_RejectsInvalidInstantsOrPriorState(string mode)
     {
         var task = NewTask(); var start = new DateTime(2026, 10, 14, 15, 0, 0, DateTimeKind.Utc); var deadline = start.AddDays(5);

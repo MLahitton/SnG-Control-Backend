@@ -25,8 +25,19 @@ public sealed class QuotationWorkbook
     public QuotationWorkbook Item(int headerRow = 14, string number = "01", bool image = true, bool additional = false)
     {
         if (additional) Text($"A{headerRow - 1}", " ADICIONALES ");
-        var headers = new Dictionary<string, string> { ["A"] = "ÍTEM", ["B"] = "UBICACIÓN", ["C"] = "CONFIGURACIÓN", ["D"] = "DESCRIPCIÓN",
-            ["J"] = "AN (MT)", ["K"] = "AL (MT)", ["L"] = "M2", ["M"] = "CNT", ["N"] = "VR UNT", ["O"] = "VR TOTAL" };
+        var headers = new Dictionary<string, string>
+        {
+            ["A"] = "ÍTEM",
+            ["B"] = "UBICACIÓN",
+            ["C"] = "CONFIGURACIÓN",
+            ["D"] = "DESCRIPCIÓN",
+            ["J"] = "AN (MT)",
+            ["K"] = "AL (MT)",
+            ["L"] = "M2",
+            ["M"] = "CNT",
+            ["N"] = "VR UNT",
+            ["O"] = "VR TOTAL"
+        };
         foreach (var (column, label) in headers) Text($"{column}{headerRow}", label);
         var row = headerRow + 1;
         Text($"A{row}", number); Text($"B{row}", "Zona sintética");
@@ -76,7 +87,8 @@ public sealed class QuotationWorkbook
             workbook.Workbook = new Workbook();
             var styles = workbook.AddNewPart<WorkbookStylesPart>();
             styles.Stylesheet = new Stylesheet(new NumberingFormats(new NumberingFormat { NumberFormatId = 164, FormatCode = "00" },
-                new NumberingFormat { NumberFormatId = 165, FormatCode = "0.00%" }) { Count = 2 },
+                new NumberingFormat { NumberFormatId = 165, FormatCode = "0.00%" })
+            { Count = 2 },
                 new CellFormats(new CellFormat { NumberFormatId = 0 }, new CellFormat { NumberFormatId = 164 }, new CellFormat { NumberFormatId = 165 }) { Count = 3 });
             var worksheet = workbook.AddNewPart<WorksheetPart>();
             var data = new SheetData();

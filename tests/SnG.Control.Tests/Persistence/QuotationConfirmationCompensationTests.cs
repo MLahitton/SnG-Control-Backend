@@ -64,11 +64,14 @@ public class QuotationConfirmationCompensationTests
         var scenario = new ConfirmationScenario(); await scenario.ExecuteAsync(await scenario.RequestAsync()); var data = scenario.Store.Confirmations[scenario.Project.Id];
         using var directory = new TemporaryStorage(); var storage = new FailingStorage(directory.Root);
         await using var db = new SaveContext();
-        await using var transaction = new TransactionDouble { BeforeCommit = () =>
+        await using var transaction = new TransactionDouble
+        {
+            BeforeCommit = () =>
         {
             Assert.Equal(1, db.SaveCalls);
             foreach (var file in data.Files) Assert.Equal(file.Bytes.ToArray(), File.ReadAllBytes(Path.Combine(directory.Root, file.StorageKey)));
-        }};
+        }
+        };
         var result = await new EfBudgetQuotationConfirmationStore(db, storage).PersistAsync(data, scenario.Task, transaction, default);
         Assert.Equal(QuotationConfirmationStatus.Created, result.Status); Assert.True(transaction.Committed); Assert.False(transaction.RolledBack);
     }

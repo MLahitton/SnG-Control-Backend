@@ -4,7 +4,7 @@
 
 La solución `SnG.Control.sln` utiliza .NET 10 (`net10.0`), C#, ASP.NET Core Web API con Controllers tradicionales y Clean Architecture. El núcleo de negocio contiene `Client`, `Project`, `ProjectTask`, la versión de cotización de Presupuestos, el catálogo base histórico y la cotización comercial confirmada con sus ítems; sus reglas se describen en [README.md](README.md).
 
-La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las diez migraciones, desde `InitialCreate` hasta `AddProjectDocumentsAndHandoff`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
+La persistencia utiliza Entity Framework Core 10 y el proveedor Npgsql para PostgreSQL. El modelo y las once migraciones, desde `InitialCreate` hasta `FormalizeCommercialQuotationMoney`, están en Infrastructure. La base esperada es **`sng_control`**, creada previamente por el administrador. Su host, puerto y credenciales deben suministrarse explícitamente.
 
 Application implementa veintiún casos de uso: crear, obtener por Id y listar clientes y proyectos; enviar un proyecto a Presupuestos; listar tareas por área/estado y por proyecto; asignar o corregir SG; obtener un preview técnico de cotización XLSX y confirmar sus valores revisados; enviar la cotización a Comercial y descargar su Excel temporal; obtener preview comercial, confirmar su revisión y descargar el XLSX comercial final; listar notificaciones personales y el historial por proyecto; obtener el resumen gerencial y listar la operación completa. ProjectDocumentService coordina las operaciones documentales y QuotationReadService las vistas persistentes de cotizaciones. ProjectNotificationSweepService coordina adicionalmente una iteración recuperable. Los Controllers delegan en estos casos de uso, que acceden a PostgreSQL mediante interfaces específicas implementadas en Infrastructure. El preview solo consulta datos y utiliza un parser de Infrastructure, sin persistir catálogo ni documentos. La autenticación Google protege las operaciones y `/api/auth/me` consulta la identidad mediante ICurrentUser e IRoleResolver, sin persistencia ni otro caso de uso de negocio. No hay repositorios genéricos, Unit of Work propio ni Docker. La API exige configuración de autenticación, conexión y almacenamiento, y no aplica migraciones al arrancar. El worker inicia una consulta de notificaciones en segundo plano; una falla de DB se registra por tipo y se reintenta sin detener la API.
 
@@ -614,6 +614,7 @@ El modelo tiene exactamente diez migraciones, en orden:
 8. `20261014201256_AddCommercialQuotationConfirmation`
 9. `20261015141208_AddLeakTimesAndNotifications`
 10. `20261016051339_AddProjectDocumentsAndHandoff`
+11. `20261027211911_FormalizeCommercialQuotationMoney`
 
 Cada instalación debe comprobar su historial en `__EFMigrationsHistory` antes de operar. Los comandos de inspección offline no verifican si una base concreta tiene migraciones aplicadas.
 
@@ -1184,7 +1185,7 @@ Los POST comerciales reciben **solo una parte file**, reutilizando QuotationMult
 
 UnitPrice viene de **N{SourceRow}** y TotalPrice de **O{SourceRow}**, también para Additional. ProjectTotal se lee de O en la única fila cuya N, tras Trim y comparación sin distinguir case, dice exactamente VALOR TOTAL y precede al único marcador ADICIONALES de A. Cero o varios totales principales y valores no numéricos producen 400 InvalidEconomics. Un marcador ADICIONALES ausente o ambiguo produce 400 InvalidWorkbook con UnsupportedWorkbookFormat. El total posterior no se agrega ni sustituye al principal. No hay referencias a O169, filas derivadas del número de ítems ni sumas propias.
 
-Los importes usan decimal y CultureInfo.InvariantCulture, leyendo representación OOXML numérica y cached values de fórmulas. Se acepta cero, se rechazan negativos, texto económico y fórmulas sin caché numérica. No se usa double, texto formateado, redondeo a dos decimales, Excel ni LibreOffice. UnitPrice, TotalPrice y ProjectTotal se mapean a **PostgreSQL numeric sin precisión/escala impuestas**. No se calcula precio por cantidad, sumatorias, IVA ni descuentos.
+Los importes usan decimal y CultureInfo.InvariantCulture, leyendo representación OOXML numérica y cached values de fórmulas. Se acepta cero, se rechazan negativos, texto económico y fórmulas sin caché numérica. No se usa double, texto formateado, Excel ni LibreOffice. Money.Normalize aplica escala 2 con MidpointRounding.AwayFromZero en el parser y el dominio. UnitPrice, TotalPrice y ProjectTotal se mapean a **PostgreSQL numeric(20,2)**. No se calcula precio por cantidad, sumatorias, IVA ni descuentos.
 
 **Matching y diferencias:** CommercialItemKey es Section+SourceRow. Debe coincidir exactamente el conjunto del XLSX con el catálogo; duplicados, claves ausentes o adicionales producen 409 StructuralMismatch con missingItems/unexpectedItems. No hay matching aproximado, por ItemNumber, Location ni orden. Insertar/eliminar ítems o desplazar su estructura no está soportado. Cambiar ItemNumber sí está permitido si conserva la clave.
 
@@ -1384,3 +1385,43 @@ Smoke: Presupuestos → Tareas abre Pending; después del envío, PrepareQuotati
 SharedReadAccessTests cubre listados y URLs directas con un mismo Subject multirol, assignments completados, proyectos ajenos y legacy; IdentityAreasTests conserva aislamiento de escrituras. SharedReadAccessPostgresTests verifica la traducción SQL de los ámbitos y clientes relacionados con filas sintéticas y rollback, sin cambios persistentes ni archivos. Para ejecutarlo localmente: SNG_RUN_POSTGRES_SMOKE=1 y dotnet test --filter FullyQualifiedName~SharedReadAccessPostgresTests. No requiere corpus XLSX ni migración.
 
 Smoke manual: seleccionar Presupuestos, entrar directamente a Clientes y Proyectos y abrir un expediente asignado; verificar documentos, snapshot y acciones Budget según estado, sin creación ni envío inicial. Completar el handoff y comprobar que el expediente sigue visible. Cambiar a Jefe Comercial y comprobar lectura con ReviewQuotation asignada, snapshot de Presupuestos y revisión Comercial, sin SG ni edición documental; completar ReviewQuotation y comprobar acceso histórico. Cambiar a Gerencia y consultar cualquier cliente/proyecto sin escrituras. Una URL ajena en Budgets/Head debe responder 403/404 y no mostrar información. Repetir tras reload y en 375/768/1024 px y desktop.
+
+
+## Money Contract V1
+
+Commercial expone `currencyCode: "COP"` en preview, confirmación y vista persistente
+`GET /api/projects/{id}/commercial-quotation/view`. Es una propiedad contractual derivada de
+`Money.CurrencyCode`, no una columna repetida ni una moneda inferida por clientes.
+Budget no añade moneda: su vista técnica no incluye importes.
+
+`Money.Normalize` es la política única: decimal no negativo, dos decimales y
+`MidpointRounding.AwayFromZero`. Máximo `999999999999999999.99`, correspondiente a numeric(20,2).
+Parser y constructores de dominio la aplican a ProjectTotal, UnitPrice y TotalPrice, incluso
+si el caller no usa XLSX. Los valores fuera de rango se rechazan. No se recalculan totales,
+precios por cantidad, IVA ni descuentos; las medidas Width/Height/SquareMeters no cambian.
+El archivo comercial conserva sus bytes originales, aunque el snapshot normalice sus importes.
+
+La nueva migración `FormalizeCommercialQuotationMoney` ejecuta ROUND explícito sobre esos
+campos antes de cambiar sus columnas. PostgreSQL numeric resuelve empates alejándose de cero,
+igual que la política del dominio ([documentación](https://www.postgresql.org/docs/16/datatype-numeric.html)).
+Conserva filas, PK, FK e índices únicos; no cambia migraciones anteriores. Un valor fuera del
+rango impide la migración transaccional, no se recorta silenciosamente. Down amplía el tipo,
+pero no puede recuperar los decimales ya redondeados.
+
+Tras publicar, aplicar manualmente a la base configurada:
+
+```powershell
+dotnet ef database update --configuration Release --project src/Infrastructure --startup-project src/Api -- --environment Development
+```
+
+No se aplica automáticamente en startup ni desde tests. Las pruebas opcionales
+`MoneyMigrationPostgresTests` requieren SNG_MONEY_TEST_DATABASE apuntando a un clúster aislado
+loopback con una base vacía `money_contract_test`; no leen User Secrets ni configuración de la API.
+`MoneyCorpusTests` usa SNG_MONEY_CORPUS_ZIP, abre el ZIP externo en solo lectura y comprueba
+únicamente los contadores del corpus aprobado y la escala monetaria. No copia documentos a Git.
+La suite normal omite estos dos smokes si sus variables no están definidas.
+
+Frontend requiere el pequeño ajuste de sus contratos cerrados para aceptar y exigir currencyCode;
+el payload nuevo y los consumidores actualizados deben desplegarse juntos. Intelligence valida
+COP y precisión, no vuelve a redondear. La consulta global de precios de todas las cotizaciones
+(quotation portfolio analytics) queda fuera de Money Contract V1.

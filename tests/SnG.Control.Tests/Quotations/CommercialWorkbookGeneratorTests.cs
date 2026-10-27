@@ -11,9 +11,19 @@ namespace SnG.Control.Tests.Quotations;
 public class CommercialWorkbookGeneratorTests
 {
     [Theory]
-    [InlineData("none")][InlineData("ItemNumber")][InlineData("Location")][InlineData("System")][InlineData("Glass")]
-    [InlineData("AluminumFinish")][InlineData("LockType")][InlineData("Observations")][InlineData("Width")]
-    [InlineData("Height")][InlineData("SquareMeters")][InlineData("Quantity")][InlineData("all")]
+    [InlineData("none")]
+    [InlineData("ItemNumber")]
+    [InlineData("Location")]
+    [InlineData("System")]
+    [InlineData("Glass")]
+    [InlineData("AluminumFinish")]
+    [InlineData("LockType")]
+    [InlineData("Observations")]
+    [InlineData("Width")]
+    [InlineData("Height")]
+    [InlineData("SquareMeters")]
+    [InlineData("Quantity")]
+    [InlineData("all")]
     public async Task WritesExactlyConfirmedTechnicalValuesInBothSections(string field)
     {
         var scenario = await CommercialHandoffScenario.CreateAsync();
@@ -87,7 +97,13 @@ public class CommercialWorkbookGeneratorTests
     }
 
     [Theory]
-    [InlineData("row")][InlineData("section")][InlineData("missing")][InlineData("duplicate")][InlineData("extraction")][InlineData("sg")][InlineData("corrupt")]
+    [InlineData("row")]
+    [InlineData("section")]
+    [InlineData("missing")]
+    [InlineData("duplicate")]
+    [InlineData("extraction")]
+    [InlineData("sg")]
+    [InlineData("corrupt")]
     public async Task RejectsInconsistentMappingBeforeProducingFile(string change)
     {
         var scenario = await CommercialHandoffScenario.CreateAsync(); var items = scenario.State!.WorkbookItems().ToArray();

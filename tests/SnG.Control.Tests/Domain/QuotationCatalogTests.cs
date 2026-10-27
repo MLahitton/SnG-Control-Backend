@@ -48,13 +48,19 @@ public class QuotationCatalogTests
         {
             _ = invalid switch
             {
-                "project" => (object)Version(Guid.Empty), "version-zero" => Version(Guid.NewGuid(), 0), "version-negative" => Version(Guid.NewGuid(), -1),
+                "project" => (object)Version(Guid.Empty),
+                "version-zero" => Version(Guid.NewGuid(), 0),
+                "version-negative" => Version(Guid.NewGuid(), -1),
                 "catalog" => new CommercialCatalog(Guid.Empty),
                 "item-catalog" => new CommercialCatalogItem(Guid.Empty, CommercialItemSection.Main, 15, Values()),
                 "section" => new CommercialCatalogItem(Guid.NewGuid(), (CommercialItemSection)0, 15, Values()),
                 "row" => new CommercialCatalogItem(Guid.NewGuid(), CommercialItemSection.Main, 0, Values()),
                 "extraction-item" => new CommercialCatalogItemExtraction(Guid.Empty, Values(), CatalogItemImageStatus.Missing, null, null),
-                "number" => Values(" "), "width" => Values(width: 0), "height" => Values(height: -1), "area" => Values(area: 0), _ => Values(quantity: 0)
+                "number" => Values(" "),
+                "width" => Values(width: 0),
+                "height" => Values(height: -1),
+                "area" => Values(area: 0),
+                _ => Values(quantity: 0)
             };
         });
     }

@@ -26,7 +26,9 @@ public class NotificationSweepTests
         scenario.Clock.Now = scenario.Clock.Now.AddYears(1); await scenario.Sweep(); Assert.Equal(4, scenario.History.Count);
     }
     [Theory]
-    [InlineData(0, NotificationKind.DueInTwoBusinessDays)][InlineData(1, NotificationKind.DueToday)][InlineData(2, NotificationKind.Overdue)]
+    [InlineData(0, NotificationKind.DueInTwoBusinessDays)]
+    [InlineData(1, NotificationKind.DueToday)]
+    [InlineData(2, NotificationKind.Overdue)]
     public async Task Recovery_OnlyCreatesMostRelevantMissedTemporalEvent(int stage, NotificationKind kind)
     {
         var scenario = new Scenario(); var deadline = scenario.Task.DeadlineAt!.Value;
@@ -38,14 +40,18 @@ public class NotificationSweepTests
         Assert.Equal(Start, Assert.Single(scenario.History, n => n.Kind == NotificationKind.TaskAssigned).ScheduledAt);
     }
     [Theory]
-    [InlineData(-1, false)][InlineData(0, true)][InlineData(1, true)]
+    [InlineData(-1, false)]
+    [InlineData(0, true)]
+    [InlineData(1, true)]
     public async Task DueDay_BeginsAtEightBogota(long ticks, bool expected)
     {
         var scenario = new Scenario(); scenario.Clock.Now = scenario.Timing.DueToday(scenario.Task.DeadlineAt!.Value).AddTicks(ticks);
         await scenario.Sweep(); Assert.Equal(expected, scenario.History.Any(n => n.Kind == NotificationKind.DueToday));
     }
     [Theory]
-    [InlineData(-1, false)][InlineData(0, false)][InlineData(1, true)]
+    [InlineData(-1, false)]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
     public async Task Sweep_UsesStrictClockBoundaryWithoutRoundingBeforeComparison(long ticks, bool expected)
     {
         var scenario = new Scenario(); scenario.Clock.Now = scenario.Task.DeadlineAt!.Value.AddTicks(ticks);
@@ -53,7 +59,9 @@ public class NotificationSweepTests
         Assert.Equal(expected, scenario.History.Any(n => n.Kind == NotificationKind.Overdue));
     }
     [Theory]
-    [InlineData(-10, false)][InlineData(0, false)][InlineData(10, true)]
+    [InlineData(-10, false)]
+    [InlineData(0, false)]
+    [InlineData(10, true)]
     public async Task CompletedBeforeSweep_CreatesOnlyLateEvidenceWhenNeeded(long ticks, bool late)
     {
         var scenario = new Scenario(); scenario.Task.Complete(scenario.Task.DeadlineAt!.Value.AddTicks(ticks));
@@ -93,7 +101,9 @@ public class NotificationSweepTests
         await scenario.Sweep(); Assert.Empty(scenario.History);
     }
     [Theory]
-    [InlineData(ProjectTaskType.PrepareQuotation)][InlineData(ProjectTaskType.ReviewQuotation)][InlineData(ProjectTaskType.PresentQuotationToClient)]
+    [InlineData(ProjectTaskType.PrepareQuotation)]
+    [InlineData(ProjectTaskType.ReviewQuotation)]
+    [InlineData(ProjectTaskType.PresentQuotationToClient)]
     public void AssignmentAndOperationalTexts_AreSpecificToEveryTask(ProjectTaskType type)
     {
         var task = new ProjectTask(Guid.NewGuid(), OperationalArea.Commercial, type, "assigned-subject", Start);

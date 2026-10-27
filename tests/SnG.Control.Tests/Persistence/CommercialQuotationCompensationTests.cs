@@ -11,8 +11,16 @@ namespace SnG.Control.Tests.Persistence;
 public class CommercialQuotationCompensationTests
 {
     [Theory]
-    [InlineData("save-db")][InlineData("save-file")][InlineData("delete-before")][InlineData("delete-after")]
-    [InlineData("commit")][InlineData("rollback")][InlineData("cleanup")][InlineData("restore")][InlineData("cancel")][InlineData("uncertain")]
+    [InlineData("save-db")]
+    [InlineData("save-file")]
+    [InlineData("delete-before")]
+    [InlineData("delete-after")]
+    [InlineData("commit")]
+    [InlineData("rollback")]
+    [InlineData("cleanup")]
+    [InlineData("restore")]
+    [InlineData("cancel")]
+    [InlineData("uncertain")]
     public async Task Failure_CompensatesOnlyOwnFiles_OrReportsUncertainState(string phase)
     {
         using var scenario = new CommercialQuotationScenario(); await scenario.InitializeAsync(); var state = scenario.State!;

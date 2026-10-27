@@ -13,7 +13,7 @@ public sealed class CommercialQuotationItem
         if (sourceRow <= 0) throw new ArgumentOutOfRangeException(nameof(sourceRow));
         ArgumentNullException.ThrowIfNull(values);
         if (unitPrice < 0 || totalPrice < 0) throw new ArgumentOutOfRangeException(nameof(unitPrice));
-        UnitPrice = unitPrice; TotalPrice = totalPrice;
+        UnitPrice = Money.Normalize(unitPrice); TotalPrice = Money.Normalize(totalPrice);
         Id = Guid.NewGuid(); CommercialQuotationId = commercialQuotationId; CommercialCatalogItemId = commercialCatalogItemId; Section = section; SourceRow = sourceRow;
         ItemNumber = values.ItemNumber; Location = values.Location; System = values.System; Glass = values.Glass; AluminumFinish = values.AluminumFinish; LockType = values.LockType; Observations = values.Observations; Width = values.Width; Height = values.Height; SquareMeters = values.SquareMeters; Quantity = values.Quantity;
     }

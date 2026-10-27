@@ -46,8 +46,13 @@ public class IdentityAreasTests(MultiRoleFixture fixture) : IClassFixture<MultiR
     }
 
     [Theory]
-    [InlineData(null)] [InlineData("")] [InlineData("SuperAdmin")] [InlineData("1")]
-    [InlineData("commercialadvisor")] [InlineData("Budgets,Management")] [InlineData("Accounting")]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("SuperAdmin")]
+    [InlineData("1")]
+    [InlineData("commercialadvisor")]
+    [InlineData("Budgets,Management")]
+    [InlineData("Accounting")]
     public async Task InvalidOrUnavailableRole_IsForbiddenBeforeOperationalAccess(string? role)
     {
         using var client = Client(role);
@@ -66,7 +71,10 @@ public class IdentityAreasTests(MultiRoleFixture fixture) : IClassFixture<MultiR
     }
 
     [Theory]
-    [InlineData("CommercialAdvisor")] [InlineData("Budgets")] [InlineData("CommercialHead")] [InlineData("Management")]
+    [InlineData("CommercialAdvisor")]
+    [InlineData("Budgets")]
+    [InlineData("CommercialHead")]
+    [InlineData("Management")]
     public async Task SameSubject_OnlyActiveAreaCanUseItsPolicy(string role)
     {
         using var client = Client(role);
@@ -114,7 +122,8 @@ public class IdentityAreasTests(MultiRoleFixture fixture) : IClassFixture<MultiR
     }
 
     [Theory]
-    [InlineData(null)] [InlineData("different-assignee")]
+    [InlineData(null)]
+    [InlineData("different-assignee")]
     public async Task BudgetsRoleWithoutTaskAssignment_CannotStartTask(string? assignee)
     {
         var project = new Project(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic, "google-test-subject");
@@ -127,8 +136,10 @@ public class IdentityAreasTests(MultiRoleFixture fixture) : IClassFixture<MultiR
     }
 
     [Theory]
-    [InlineData("advisor", SystemRole.CommercialAdvisor)] [InlineData("budgets", SystemRole.Budgets)]
-    [InlineData("head", SystemRole.CommercialHead)] [InlineData("management", SystemRole.Management)]
+    [InlineData("advisor", SystemRole.CommercialAdvisor)]
+    [InlineData("budgets", SystemRole.Budgets)]
+    [InlineData("head", SystemRole.CommercialHead)]
+    [InlineData("management", SystemRole.Management)]
     public void Resolver_UsesExactSubjectAndOnlyConfiguredMembership(string subject, SystemRole expected)
     {
         var resolver = new ConfiguredRoleResolver(Options.Create(new CommercialAdvisorOptions { CommercialAdvisorSubjects = ["advisor"] }),
@@ -140,7 +151,10 @@ public class IdentityAreasTests(MultiRoleFixture fixture) : IClassFixture<MultiR
     }
 
     [Theory]
-    [InlineData(" Budgets")] [InlineData("Budgets ")] [InlineData("Budgets, Management")] [InlineData("2")]
+    [InlineData(" Budgets")]
+    [InlineData("Budgets ")]
+    [InlineData("Budgets, Management")]
+    [InlineData("2")]
     public void Parser_DoesNotNormalizeHeader(string value)
     {
         var http = new DefaultHttpContext { User = new(new ClaimsIdentity([new Claim("sub", "budgets")], "test")) };
@@ -149,7 +163,10 @@ public class IdentityAreasTests(MultiRoleFixture fixture) : IClassFixture<MultiR
         Assert.Null(new HttpActiveRoleContext(new HttpContextAccessor { HttpContext = http }, resolver).Role);
     }
     [Theory]
-    [InlineData("")] [InlineData(" ")] [InlineData(" advisor ")] [InlineData("duplicate")]
+    [InlineData("")]
+    [InlineData(" ")]
+    [InlineData(" advisor ")]
+    [InlineData("duplicate")]
     public void AdvisorConfiguration_RejectsInvalidEntriesWithoutRevealingValues(string value)
     {
         var services = new ServiceCollection();

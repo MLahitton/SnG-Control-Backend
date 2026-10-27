@@ -30,7 +30,8 @@ public sealed class TestAuthenticationHandler(IOptionsMonitor<AuthenticationSche
         // Apply the production post-validation subject rule to this synthetic identity.
         var google = googleOptions.Get(JwtBearerDefaults.AuthenticationScheme);
         var validated = new TokenValidatedContext(Context, new AuthenticationScheme(JwtBearerDefaults.AuthenticationScheme,
-            null, typeof(JwtBearerHandler)), google) { Principal = principal };
+            null, typeof(JwtBearerHandler)), google)
+        { Principal = principal };
         await google.Events.TokenValidated(validated);
         if (validated.Result?.Failure is not null) return AuthenticateResult.Fail(validated.Result.Failure);
         return AuthenticateResult.Success(new AuthenticationTicket(principal, SchemeName));

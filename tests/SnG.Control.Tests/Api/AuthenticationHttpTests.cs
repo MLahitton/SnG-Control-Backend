@@ -39,7 +39,9 @@ public class AuthenticationHttpTests(ApiFixture fixture) : IClassFixture<ApiFixt
     }
 
     [Theory]
-    [InlineData("missing-sub")][InlineData("empty-sub")][InlineData("invalid")]
+    [InlineData("missing-sub")]
+    [InlineData("empty-sub")]
+    [InlineData("invalid")]
     public async Task InvalidIdentity_Is401WithoutEmailFallback(string mode)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/auth/me");
@@ -49,7 +51,8 @@ public class AuthenticationHttpTests(ApiFixture fixture) : IClassFixture<ApiFixt
     }
 
     [Theory]
-    [InlineData("subject-only")][InlineData("unverified")]
+    [InlineData("subject-only")]
+    [InlineData("unverified")]
     public async Task OptionalProfileClaims_DoNotAddAuthorizationRestrictions(string mode)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, "/api/auth/me");

@@ -12,7 +12,10 @@ public sealed record BudgetQuotationReadItem(Guid Id, CommercialItemSection Sect
 public sealed record ConfirmedBudgetQuotationView(Guid ProjectId, Guid QuotationVersionId, int VersionNumber,
     DateTime ConfirmedAt, BudgetQuotationDocument Document, IReadOnlyList<BudgetQuotationReadItem> Items);
 public sealed record ConfirmedCommercialQuotationView(Guid ProjectId, Guid CommercialQuotationId, DateTime ConfirmedAt,
-    decimal ProjectTotal, IReadOnlyList<CommercialQuotationReadItem> Items);
+    decimal ProjectTotal, IReadOnlyList<CommercialQuotationReadItem> Items)
+{
+    public string CurrencyCode => Money.CurrencyCode;
+}
 public sealed record CommercialQuotationReadItem(CommercialItemSection Section, int SourceRow, Guid CommercialCatalogItemId,
     CatalogItemValues Values, decimal UnitPrice, decimal TotalPrice, IReadOnlyList<TechnicalDifference> TechnicalDifferences,
     CatalogItemImageStatus? ImageStatus, bool HasImage);

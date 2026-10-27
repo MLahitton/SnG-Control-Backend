@@ -18,8 +18,10 @@ public class SharedReadAccessTests(MultiRoleFixture fixture) : IClassFixture<Mul
     }
 
     [Theory]
-    [InlineData("CommercialAdvisor")] [InlineData("Budgets")]
-    [InlineData("CommercialHead")] [InlineData("Management")]
+    [InlineData("CommercialAdvisor")]
+    [InlineData("Budgets")]
+    [InlineData("CommercialHead")]
+    [InlineData("Management")]
     public async Task SameSubject_ListsAndDirectReadsShareScopeIncludingCompletedAssignments(string role)
     {
         var cases = new[] { "owner", "budget", "review", "foreign", "legacy" };

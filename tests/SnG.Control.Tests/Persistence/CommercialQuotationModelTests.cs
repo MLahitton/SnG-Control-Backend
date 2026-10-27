@@ -14,11 +14,11 @@ public class CommercialQuotationModelTests
     [InlineData(typeof(CommercialQuotation), "ProjectTotal")]
     [InlineData(typeof(CommercialQuotationItem), "UnitPrice")]
     [InlineData(typeof(CommercialQuotationItem), "TotalPrice")]
-    public void Economics_UseUnconstrainedNumeric(Type entityType, string name)
+    public void Economics_UseMonetaryPrecisionAndScale(Type entityType, string name)
     {
         using var db = Context(); var property = db.Model.FindEntityType(entityType)!.FindProperty(name)!;
-        Assert.Equal(typeof(decimal), property.ClrType); Assert.Equal("numeric", property.GetColumnType());
-        Assert.False(property.IsNullable); Assert.Null(property.GetPrecision()); Assert.Null(property.GetScale());
+        Assert.Equal(typeof(decimal), property.ClrType); Assert.Equal("numeric(20,2)", property.GetColumnType());
+        Assert.False(property.IsNullable); Assert.Equal(20, property.GetPrecision()); Assert.Equal(2, property.GetScale());
     }
     [Fact]
     public void Schema_HasTwoSpecificTablesRestrictiveRelationsAndUsefulUniqueIndexes()
@@ -40,11 +40,15 @@ public class CommercialQuotationModelTests
         Assert.Contains(model.FindEntityType(typeof(CommercialQuotationItem))!.GetCheckConstraints(), c => c.Sql.Contains("\"UnitPrice\" >= 0"));
     }
     [Theory]
-    [InlineData(null)][InlineData("")][InlineData(" ")]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" ")]
     public void CommercialQuotation_RequiresActorSubject(string? subject) => Assert.ThrowsAny<ArgumentException>(() =>
         new CommercialQuotation(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "test.xlsx", 0, subject!, "test@example.com", "Name"));
     [Theory]
-    [InlineData("project")][InlineData("unit")][InlineData("total")]
+    [InlineData("project")]
+    [InlineData("unit")]
+    [InlineData("total")]
     public void NegativeEconomics_AreRejectedByDomain(string field)
     {
         if (field == "project") Assert.Throws<ArgumentOutOfRangeException>(() => new CommercialQuotation(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "test.xlsx", -1, "subject", null, null));

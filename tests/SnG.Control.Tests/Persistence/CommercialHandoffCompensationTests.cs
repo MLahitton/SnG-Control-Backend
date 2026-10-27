@@ -17,7 +17,12 @@ namespace SnG.Control.Tests.Persistence;
 public class CommercialHandoffCompensationTests
 {
     [Theory]
-    [InlineData("save")][InlineData("file")][InlineData("commit")][InlineData("cancel")][InlineData("cleanup")][InlineData("uncertain")]
+    [InlineData("save")]
+    [InlineData("file")]
+    [InlineData("commit")]
+    [InlineData("cancel")]
+    [InlineData("cleanup")]
+    [InlineData("uncertain")]
     public async Task FailedHandoff_RestoresStateAndPreservesOriginalAndImages(string phase)
     {
         var scenario = await CommercialHandoffScenario.CreateAsync(); var state = scenario.State!;
@@ -60,10 +65,13 @@ public class CommercialHandoffCompensationTests
         using var directory = new TemporaryStorage(); var storage = new FailingStorage(directory.Root);
         await using var db = new SaveContext();
         var before = System.Text.Json.JsonSerializer.Serialize(new { state.Project, state.Catalog, state.Items, state.Extractions });
-        await using var transaction = new TransactionDouble { BeforeCommit = () =>
+        await using var transaction = new TransactionDouble
+        {
+            BeforeCommit = () =>
         {
             Assert.Equal(1, db.SaveCalls); Assert.True(File.Exists(Path.Combine(directory.Root, state.Version!.ConfirmedFileStorageKey!)));
-        }};
+        }
+        };
         var result = await new EfBudgetQuotationCommercialHandoffStore(db, storage, TestTiming.Value, new NotificationWriterDouble(db)).PersistAsync(state, new byte[] { 1, 2 }, transaction, "google-test-subject", default);
         Assert.Equal(CommercialHandoffStatus.Sent, result.Status); Assert.True(transaction.Committed);
         var storedReview = Assert.Single(db.ChangeTracker.Entries<ProjectTask>(), entry => entry.Entity.Type == ProjectTaskType.ReviewQuotation).Entity;

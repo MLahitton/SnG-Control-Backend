@@ -32,10 +32,10 @@ public sealed class XlsxCommercialQuotationParser(IBudgetQuotationParser technic
             var totals = rows.Where(r => r.Key < additional[0].Key
                 && string.Equals(reader.Text(r.Value.GetValueOrDefault("N")).Trim(), "VALOR TOTAL", StringComparison.OrdinalIgnoreCase)).ToArray();
             if (totals.Length != 1) return new(CommercialQuotationStatus.InvalidEconomics);
-            var total = reader.NonnegativeDecimal(totals[0].Value.GetValueOrDefault("O"));
+            var total = Money.Normalize(reader.NonnegativeDecimal(totals[0].Value.GetValueOrDefault("O")));
             var items = document.Items.Select(i => new CommercialParsedItem(new(i.Section, i.SourceRow),
                 new CatalogItemValues(i.ItemNumber, i.Location, i.System, i.Glass, i.AluminumFinish, i.LockType, i.Observations, i.Width, i.Height, i.SquareMeters, i.Quantity),
-                reader.NonnegativeDecimal(rows[i.SourceRow].GetValueOrDefault("N")), reader.NonnegativeDecimal(rows[i.SourceRow].GetValueOrDefault("O")))).ToArray();
+                Money.Normalize(reader.NonnegativeDecimal(rows[i.SourceRow].GetValueOrDefault("N"))), Money.Normalize(reader.NonnegativeDecimal(rows[i.SourceRow].GetValueOrDefault("O"))))).ToArray();
             return new(CommercialQuotationStatus.Success, new(document.Document.FileName, document.Document.SgCode, total, items));
         }
         catch (Exception error) when (error is UnsupportedQuotationException or OpenXmlPackageException or InvalidDataException
