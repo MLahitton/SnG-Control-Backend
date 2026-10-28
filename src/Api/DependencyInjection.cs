@@ -47,6 +47,7 @@ public static class DependencyInjection
         services.AddScoped<IManagementReadStore, EfManagementReadStore>();
         services.AddScoped<ListManagementTasksUseCase>();
         services.AddScoped<GetManagementOverviewUseCase>();
+        services.AddScoped<GetManagementQuotationPortfolioUseCase>();
         services.AddScoped<ProjectDocumentAccess>();
         services.AddScoped<ProjectDocumentService>();
         services.AddScoped<IProjectDocumentStore, EfProjectDocumentStore>();

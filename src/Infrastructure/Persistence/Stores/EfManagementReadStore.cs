@@ -3,7 +3,7 @@ using SnG.Control.Application.Features.Management;
 
 namespace SnG.Control.Infrastructure.Persistence.Stores;
 
-public sealed class EfManagementReadStore(SnGControlDbContext context) : IManagementReadStore
+public sealed partial class EfManagementReadStore(SnGControlDbContext context) : IManagementReadStore
 {
     public Task<int> CountProjectsAsync(CancellationToken cancellationToken) =>
         context.Projects.AsNoTracking().CountAsync(cancellationToken);

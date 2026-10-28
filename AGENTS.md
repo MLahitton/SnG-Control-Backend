@@ -385,3 +385,12 @@ Efficiency means:
 - avoiding over-engineering.
 Efficiency must never mean skipping the final validation actually required by the task.
 Identity & Areas V1: Google Subject is identity; configuration defines membership; exactly one owned X-SnG-Active-Role authorizes each operational request. Auth/me is exempt from active-role selection. CommercialAdvisorSubjects is explicit; do not infer advisor access from Google authentication. Never bypass active-role checks because one Subject owns several roles. Project ownership and task assignments remain unchanged when switching area. Management is always read-only while active.
+
+
+Quotation Portfolio Analytics V1: Cross-project quotation analytics use the official Management
+portfolio capability. Never emulate them by iterating projects. Backend owns exact aggregate
+sums and deterministic bounded rankings over current confirmed Commercial quotations, not
+sales/revenue/margin or a historical version archive. No UnitPrice × Quantity or item-total
+recalculation. Use Money.CurrencyCode, preserve monetary precision and reject aggregate overflow.
+Queries are read-only, AsNoTracking and constant in count; preserve a consistent read snapshot.
+No arbitrary limit, new migration, entity changes or storage identifiers in the public projection.

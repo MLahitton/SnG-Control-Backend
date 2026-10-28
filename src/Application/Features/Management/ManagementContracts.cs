@@ -9,6 +9,7 @@ public sealed record ManagementTaskData(ProjectTask Task, string ProjectName, Gu
 
 public interface IManagementReadStore
 {
+    Task<QuotationPortfolioData> GetQuotationPortfolioAsync(CancellationToken cancellationToken);
     Task<int> CountProjectsAsync(CancellationToken cancellationToken);
     Task<IReadOnlyList<ManagementTaskData>> ListTasksAsync(CancellationToken cancellationToken);
 }

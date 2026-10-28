@@ -229,3 +229,25 @@ con AwayFromZero antes de persistir (numeric(20,2)). El workbook sigue determina
 no se suman ni recalculan los totales. Las medidas técnicas conservan su precisión original.
 La migración FormalizeCommercialQuotationMoney normaliza importes existentes sin borrar registros.
 Debe aplicarse manualmente y desplegarse con los contratos actualizados de Intelligence/Frontend.
+
+
+## Quotation Portfolio Analytics V1
+
+`GET /api/management/quotation-portfolio` requiere autenticación y área activa Management.
+Devuelve agregados de las cotizaciones comerciales confirmadas actualmente almacenadas: COP,
+quotationCount (cotizaciones), itemCount (renglones), totalQuantity (unidades) y totalQuotedValue
+(suma exacta de CommercialQuotation.ProjectTotal). No representa ventas, ingresos, facturación,
+márgenes ni el historial completo de versiones comerciales. No hay filtros temporales en V1.
+
+Rankings: highestValueItems por TotalPrice, highestUnitPriceItems por UnitPrice y
+highestValueProjects por ProjectTotal, todos descendentes y con desempates determinísticos.
+Cada ranking incluye total/returned/hasMore/items; máximo 10, sin limit arbitrario del cliente.
+Un portfolio vacío devuelve ceros (importe 0.00) y rankings vacíos. No se calcula UnitPrice × Quantity
+ni se reemplaza ProjectTotal por suma de renglones. Los importes usan decimal/COP y escala 2;
+si la suma supera numeric(20,2), falla en lugar de recortarse o alterar Money Contract.
+
+La consulta usa cinco SELECT de agregados/joins con AsNoTracking en una transacción RepeatableRead;
+el número es constante con cualquier cantidad de proyectos. El orden usa collation C para nombre
+proyecto e ItemNumber; luego SourceRow, ProjectId y Section para ítems, ProjectId para proyectos.
+Solo se exponen identificadores de proyecto, no IDs internos de cotización/catálogo ni storage.
+No hay nueva migración, cambio de entidades ni acceso a archivos XLSX.

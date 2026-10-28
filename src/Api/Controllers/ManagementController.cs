@@ -10,7 +10,7 @@ namespace SnG.Control.Api.Controllers;
 [Authorize(Policy = ManagementRequirement.PolicyName)]
 [ProducesResponseType(StatusCodes.Status401Unauthorized)]
 [ProducesResponseType(StatusCodes.Status403Forbidden)]
-public class ManagementController(GetManagementOverviewUseCase overview, ListManagementTasksUseCase tasks) : ControllerBase
+public class ManagementController(GetManagementOverviewUseCase overview, ListManagementTasksUseCase tasks, GetManagementQuotationPortfolioUseCase portfolio) : ControllerBase
 {
     [HttpGet("overview")]
     [ProducesResponseType<ManagementOverviewResponse>(StatusCodes.Status200OK)]
@@ -21,4 +21,8 @@ public class ManagementController(GetManagementOverviewUseCase overview, ListMan
     [ProducesResponseType<IReadOnlyList<ManagementTaskResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<ManagementTaskResponse>>> Tasks(CancellationToken cancellationToken) =>
         Ok(await tasks.ExecuteAsync(cancellationToken));
+    [HttpGet("quotation-portfolio")]
+    [ProducesResponseType<ManagementQuotationPortfolioResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ManagementQuotationPortfolioResponse>> QuotationPortfolio(CancellationToken cancellationToken) =>
+        Ok(await portfolio.ExecuteAsync(cancellationToken));
 }

@@ -34,12 +34,14 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
     {
         using var client = Client(mode);
         var calls = fixture.Management.ListCalls;
-        foreach (var route in new[] { "overview", "tasks" })
+        var portfolioCalls = fixture.Management.PortfolioCalls;
+        foreach (var route in new[] { "overview", "tasks", "quotation-portfolio" })
         {
             using var response = await client.GetAsync("/api/management/" + route);
             Assert.Equal(expected, (int)response.StatusCode);
         }
         Assert.Equal(calls + (expected == 200 ? 2 : 0), fixture.Management.ListCalls);
+        Assert.Equal(portfolioCalls + (expected == 200 ? 1 : 0), fixture.Management.PortfolioCalls);
     }
     [Theory]
     [InlineData("management", true, "test@example.com")]
@@ -173,7 +175,7 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
         var document = await client.GetFromJsonAsync<JsonElement>("/openapi/v1.json");
         Assert.Equal("bearer", document.GetProperty("components").GetProperty("securitySchemes").GetProperty("Bearer").GetProperty("scheme").GetString());
         Assert.True(document.GetProperty("security")[0].TryGetProperty("Bearer", out _));
-        foreach (var route in new[] { "/api/management/overview", "/api/management/tasks" })
+        foreach (var route in new[] { "/api/management/overview", "/api/management/tasks", "/api/management/quotation-portfolio" })
         {
             var operation = document.GetProperty("paths").GetProperty(route).GetProperty("get");
             foreach (var status in new[] { "200", "401", "403" }) Assert.True(operation.GetProperty("responses").TryGetProperty(status, out _));
@@ -187,6 +189,6 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
             foreach (var status in new[] { "200", "401", "403", "404" }) Assert.True(read.GetProperty("responses").TryGetProperty(status, out _));
             Assert.False(read.TryGetProperty("requestBody", out _));
         }
-        Assert.Equal(32, document.GetProperty("paths").EnumerateObject().Sum(p => p.Value.EnumerateObject().Count(o => o.Name is "get" or "post" or "put" or "delete")));
+        Assert.Equal(33, document.GetProperty("paths").EnumerateObject().Sum(p => p.Value.EnumerateObject().Count(o => o.Name is "get" or "post" or "put" or "delete")));
     }
 }

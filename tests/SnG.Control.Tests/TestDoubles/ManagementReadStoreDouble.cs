@@ -4,6 +4,13 @@ namespace SnG.Control.Tests.TestDoubles;
 
 public sealed class ManagementReadStoreDouble(ProjectStoreDouble projects, ClientStoreDouble clients, ProjectTaskStoreDouble tasks) : IManagementReadStore
 {
+    public QuotationPortfolioData Portfolio { get; set; } = new(new(0, 0.00m), new(0, 0), [], [], []);
+    public int PortfolioCalls { get; private set; }
+    public Task<QuotationPortfolioData> GetQuotationPortfolioAsync(CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested(); Tokens.Add(token); PortfolioCalls++;
+        return Task.FromResult(Portfolio);
+    }
     public int CountCalls { get; private set; }
     public int ListCalls { get; private set; }
     public List<CancellationToken> Tokens { get; } = [];

@@ -1425,3 +1425,19 @@ Frontend requiere el pequeño ajuste de sus contratos cerrados para aceptar y ex
 el payload nuevo y los consumidores actualizados deben desplegarse juntos. Intelligence valida
 COP y precisión, no vuelve a redondear. La consulta global de precios de todas las cotizaciones
 (quotation portfolio analytics) queda fuera de Money Contract V1.
+
+
+### Lectura agregada de cotizaciones
+
+ManagementController expone GET /api/management/quotation-portfolio bajo ManagementRequirement.
+GetManagementQuotationPortfolioUseCase arma cobertura y aplica Money.CurrencyCode;
+IManagementReadStore.GetQuotationPortfolioAsync obtiene dos queries de resumen y tres top 10
+server-side en EfManagementReadStore.Portfolio. RepeatableRead conserva una única vista entre
+los SELECT, secuenciales sobre el mismo DbContext, con CancellationToken. No hay N+1 ni tracking.
+
+Los tests normales verifican autorización, OpenAPI y traducción Npgsql de las cinco queries.
+El test optativo QuotationPortfolioTests.RealQueriesAreBoundedExactStableAndDoNotExposeInternalIds
+requiere SNG_PORTFOLIO_TEST_DATABASE: exclusivamente loopback 127.0.0.1, base vacía
+quotation_portfolio_test en cluster temporal sintético. Aplica migraciones solo en esa base,
+verifica resultados, empates, cobertura y cinco lecturas constantes. Nunca usa configuración de
+la aplicación. El ejecutor del smoke debe detener y eliminar su cluster temporal al finalizar.
