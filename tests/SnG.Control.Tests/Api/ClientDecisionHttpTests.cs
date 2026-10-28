@@ -94,7 +94,7 @@ public class ClientDecisionHttpTests
         public Guid Id { get; } = Guid.NewGuid();
         public bool Recorded => value is not null;
         private ClientQuotationDecision? value;
-        public Task<DecisionResult> ReadAsync(Guid id, ProjectReadScope scope, CancellationToken token) => Task.FromResult(new DecisionResult(DecisionStatus.Success, DecisionResponse.From(Id, value)));
+        public Task<DecisionResult> ReadAsync(Guid id, ProjectReadScope scope, CancellationToken token) => Task.FromResult(new DecisionResult(DecisionStatus.Success, DecisionResponse.From(Id, value, 1)));
         public Task<DecisionResult> RecordAsync(Guid id, ClientQuotationDecisionType decision, string? note, DecisionActor actor, CancellationToken token)
         {
             if (actor.Subject != "other-google-subject") return Task.FromResult(new DecisionResult(DecisionStatus.Forbidden));
@@ -103,7 +103,7 @@ public class ClientDecisionHttpTests
             var task = new ProjectTask(Id, OperationalArea.Commercial, ProjectTaskType.PresentQuotationToClient, actor.Subject, now.AddDays(-1));
             task.Start(now.AddDays(-1), now.AddDays(1)); task.Complete(now);
             value = new(Id, Guid.NewGuid(), task.Id, decision, note, now, actor.Subject, actor.Email, actor.Name);
-            return Task.FromResult(new DecisionResult(DecisionStatus.Success, Recorded: new(DecisionResponse.From(Id, value), ProjectTaskResponse.FromEntity(task, TestTiming.Value))));
+            return Task.FromResult(new DecisionResult(DecisionStatus.Success, Recorded: new(DecisionResponse.From(Id, value, 1), ProjectTaskResponse.FromEntity(task, TestTiming.Value))));
         }
     }
 }

@@ -11,13 +11,13 @@ public sealed class BudgetsWorkflowStoreDouble(ProjectStoreDouble projects, Proj
     public bool RejectSave { get; set; }
     public int SaveCalls { get; private set; }
 
-    public Task<(Project? Project, ProjectTask? PrepareQuotationTask)> LoadAsync(Guid projectId, CancellationToken cancellationToken)
+    public Task<(Project? Project, ProjectTask? PrepareQuotationTask, bool ValidState)> LoadAsync(Guid projectId, CancellationToken cancellationToken)
     {
         ReceivedTokens.Add(cancellationToken);
         cancellationToken.ThrowIfCancellationRequested();
         var project = projects.Items.SingleOrDefault(project => project.Id == projectId);
         var task = tasks.Items.SingleOrDefault(task => task.ProjectId == projectId && task.Type == ProjectTaskType.PrepareQuotation);
-        return Task.FromResult((Copy(project), Copy(task)));
+        return Task.FromResult((Copy(project), Copy(task), true));
     }
 
     public Task<bool> TrySaveAsync(Project project, ProjectTask task, CancellationToken cancellationToken)

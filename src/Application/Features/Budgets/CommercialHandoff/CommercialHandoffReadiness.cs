@@ -10,10 +10,12 @@ public sealed record CommercialHandoffReadiness(int? VersionNumber, bool HasOper
 {
     public CommercialHandoffStatus Validate(Project project, IReadOnlyList<ProjectTask> tasks)
     {
-        if (tasks.Any(task => task.Type == ProjectTaskType.ReviewQuotation) || HasOperationalFile
-            || tasks.Any(task => task.Type == ProjectTaskType.PrepareQuotation && task.Status == ProjectTaskStatus.Completed))
+        var round = BudgetQuotationWorkflow.CurrentRound(tasks, ProjectTaskType.PrepareQuotation);
+        var currentTasks = tasks.Where(t => t.QuotationRound == round).ToArray();
+        if (currentTasks.Any(task => task.Type == ProjectTaskType.ReviewQuotation) || (HasOperationalFile && VersionNumber == round)
+            || currentTasks.Any(task => task.Type == ProjectTaskType.PrepareQuotation && task.Status == ProjectTaskStatus.Completed))
             return CommercialHandoffStatus.AlreadySent;
-        if (BudgetQuotationWorkflow.ReadyTask(project, tasks) is null || VersionNumber != 1
+        if (BudgetQuotationWorkflow.ReadyTask(project, tasks) is null || VersionNumber != round
             || !HasCatalog || ItemCount == 0 || ExtractionCount != ItemCount
             || DistinctExtractionItems != ItemCount || !AllItemsCovered)
             return CommercialHandoffStatus.InvalidState;

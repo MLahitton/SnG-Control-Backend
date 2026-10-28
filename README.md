@@ -306,3 +306,30 @@ nueva tarea de Accounting/Presupuestos ni nuevo estado de proyecto.
 Pruebas normales offline; el smoke optativo SNG_DECISION_TEST_DATABASE exige un cluster
 sintético loopback vacío con base client_decision_test. Valida migración, concurrencia,
 rollback y acceso compartido. Nunca usar la base operacional para ese smoke.
+
+## Versioned Requotation Loop V2
+
+Las tareas de cotización llevan `quotationRound` positivo. La ronda inicial sigue pendiente
+hasta el primer SG; las siguientes empiezan en Presupuestos con el SG conservado y el
+calendario oficial. Solo el asesor asignado, con CommercialAdvisor activo, puede abrirlas
+mediante `POST /api/projects/{id}/requotation-request` con `{requestedChanges}` (1–4000
+caracteres, sin campos adicionales), después de ChangesRequested y presentación completada.
+La solicitud es inmutable y se inserta con tarea y notificaciones en una transacción.
+Duplicados devuelven 409 AlreadyRequested. Approved no significa pago; Rejected no cierra
+el proyecto y ChangesRequested no crea una ronda automáticamente.
+
+`GET /api/projects/{id}/quotation-rounds` usa el acceso compartido y devuelve las primeras
+20 rondas ascendentes, con total/returned/hasMore. Incluye estados oficiales, versiones,
+decisiones y cambios formalizados por el asesor en la ronda destino. No calcula diferencias
+entre ítems. Preview/status distinguen `quotationRound` activa de `versionNumber` confirmada.
+La lectura de Presupuestos toma la mayor versión confirmada; Comercial, sus descargas y
+Portfolio/Mix toman la mayor versión con cotización comercial confirmada por proyecto.
+Abrir una nueva preparación conserva la comercial anterior. Los archivos y versiones
+anteriores siguen almacenados; los conteos de tareas incluyen todas las rondas.
+
+Migración: `20261028160515_AddVersionedRequotationRounds`, posterior a
+`20261028152306_AddClientQuotationDecisions`. Hace backfill a ronda 1, cambia unicidad de
+tareas a proyecto+ronda y agrega RequotationRequests. No se aplica automáticamente a la
+base operativa. El downgrade rechaza bases con recotizaciones para no destruir historia.
+El smoke opt-in RequotationPostgresTests requiere SNG_REQUOTATION_TEST_DATABASE apuntando
+exclusivamente a PostgreSQL local aislado, base `requotation_test`, sin datos de producto.

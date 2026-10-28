@@ -17,7 +17,7 @@ public interface IManagementReadStore
 public sealed record ManagementTaskResponse(Guid TaskId, Guid ProjectId, string ProjectName,
     Guid ClientId, string ClientName, string? SgCode, string City, ProductLine ProductLine,
     OperationalArea Area, ProjectTaskType Type, ProjectTaskStatus Status, DateTime AssignedAt,
-    DateTime? StartedAt, DateTime? CompletedAt, DateTime? DeadlineAt, bool? WasOverdue, LeadTimeStatus LeadTimeStatus);
+    DateTime? StartedAt, DateTime? CompletedAt, DateTime? DeadlineAt, bool? WasOverdue, LeadTimeStatus LeadTimeStatus, int? QuotationRound = 1);
 
 public sealed record ManagementTaskCounts(int Pending, int InProgress, int Completed);
 public sealed record ManagementLeadTimeCounts(int NotStarted, int OnTrack, int DueSoon, int DueToday,

@@ -22,10 +22,10 @@ public sealed class EfBudgetQuotationConfirmationStore(SnGControlDbContext conte
         if (project is null) return new(QuotationConfirmationStatus.ProjectNotFound);
         var task = BudgetQuotationWorkflow.ReadyTask(project, await context.ProjectTasks.AsNoTracking()
             .Where(value => value.ProjectId == project.Id).ToArrayAsync(cancellationToken));
-        if (task is null) return new(QuotationConfirmationStatus.InvalidWorkflowState);
+        if (task is null || task.QuotationRound != confirmation.Version.VersionNumber) return new(QuotationConfirmationStatus.InvalidWorkflowState);
         if (!string.Equals(project.SgCode, confirmation.Version.DocumentSgCode, StringComparison.Ordinal))
             return new(QuotationConfirmationStatus.SgCodeMismatch);
-        if (await context.BudgetQuotationVersions.AnyAsync(value => value.ProjectId == project.Id && value.VersionNumber == 1, cancellationToken))
+        if (await context.BudgetQuotationVersions.AnyAsync(value => value.ProjectId == project.Id && value.VersionNumber == confirmation.Version.VersionNumber, cancellationToken))
             return new(QuotationConfirmationStatus.AlreadyConfirmed);
         return await PersistAsync(confirmation, task, transaction, cancellationToken);
     }

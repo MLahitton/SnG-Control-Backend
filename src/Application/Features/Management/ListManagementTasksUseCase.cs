@@ -14,7 +14,7 @@ public sealed class ListManagementTasksUseCase(IManagementReadStore store, TaskT
             var task = row.Task;
             return new ManagementTaskResponse(task.Id, task.ProjectId, row.ProjectName, row.ClientId,
                 row.ClientName, row.SgCode, row.City, row.ProductLine, task.Area, task.Type, task.Status,
-                task.AssignedAt, task.StartedAt, task.CompletedAt, task.DeadlineAt, task.WasOverdue, timing.Status(task, now));
+                task.AssignedAt, task.StartedAt, task.CompletedAt, task.DeadlineAt, task.WasOverdue, timing.Status(task, now), task.QuotationRound);
         }).OrderBy(row => row.Status == ProjectTaskStatus.Completed)
             .ThenBy(row => Priority(row.LeadTimeStatus))
             .ThenBy(row => row.Status == ProjectTaskStatus.Completed ? (DateTime?)null : row.DeadlineAt ?? DateTime.MaxValue)

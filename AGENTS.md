@@ -410,3 +410,12 @@ Use the existing project/task lock order and an atomic insert + task.Complete + 
 reconciliation transaction. Preserve Lead Time rules. Shared reads remain scope-filtered.
 No decision inference from Completed; Approved != paid, ChangesRequested != requotation,
 Rejected != closed project. No downstream task or project lifecycle in this block.
+
+Versioned Requotation Loop V2: ChangesRequested allows, but never automatically starts,
+a new round. Only the assigned active advisor explicitly submits immutable requestedChanges.
+Lock project then tasks then source decision; atomically persist request, new started Budgets
+task and notifications. Existing round tasks, decisions, versions and files are immutable.
+Use QuotationRound for workflow selection; reject multiple eligible active tasks. Latest
+confirmed Budget differs from latest confirmed Commercial. Portfolio/Mix uses one latest
+Commercial per project by Budget VersionNumber, never confirmation time. History reads are
+bounded first 20 ascending with coverage; no implied current state from truncated history.

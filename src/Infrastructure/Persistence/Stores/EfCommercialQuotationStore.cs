@@ -1,3 +1,4 @@
+using SnG.Control.Application.Features.Budgets;
 using SnG.Control.Application.Access;
 using SnG.Control.Application.Scheduling;
 using Microsoft.EntityFrameworkCore;
@@ -22,14 +23,17 @@ public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFil
         var project = await projects.AsNoTracking().SingleOrDefaultAsync(token);
         if (project is null) return null;
         var tasks = locked ? context.ProjectTasks.FromSqlInterpolated($"SELECT * FROM \"ProjectTasks\" WHERE \"ProjectId\" = {id} FOR UPDATE") : context.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == id);
-        var versions = locked ? context.BudgetQuotationVersions.FromSqlInterpolated($"SELECT * FROM \"BudgetQuotationVersions\" WHERE \"ProjectId\" = {id} AND \"VersionNumber\" = 1 FOR UPDATE")
-            : context.BudgetQuotationVersions.AsNoTracking().Where(v => v.ProjectId == id && v.VersionNumber == 1);
-        var taskList = await tasks.ToArrayAsync(token); var version = await versions.SingleOrDefaultAsync(token);
+        var taskList = await tasks.ToArrayAsync(token);
+        var round = BudgetQuotationWorkflow.CurrentRound(taskList, ProjectTaskType.ReviewQuotation);
+        var versions = locked ? context.BudgetQuotationVersions.FromSqlInterpolated(
+            $"SELECT * FROM \"BudgetQuotationVersions\" WHERE \"ProjectId\" = {id} AND \"VersionNumber\" = {round} FOR UPDATE")
+            : context.BudgetQuotationVersions.AsNoTracking().Where(v => v.ProjectId == id && v.VersionNumber == round);
+        var version = await versions.SingleOrDefaultAsync(token);
         var catalog = version is null ? null : await context.CommercialCatalogs.AsNoTracking().SingleOrDefaultAsync(c => c.BudgetQuotationVersionId == version.Id, token);
         var items = catalog is null ? [] : await context.CommercialCatalogItems.AsNoTracking().Where(i => i.CommercialCatalogId == catalog.Id).ToArrayAsync(token);
         var ids = items.Select(i => i.Id).ToArray();
         var extractions = await context.CommercialCatalogItemExtractions.AsNoTracking().Where(e => ids.Contains(e.CatalogItemId)).ToArrayAsync(token);
-        var quotation = await context.CommercialQuotations.AsNoTracking().SingleOrDefaultAsync(q => q.ProjectId == id, token);
+        var quotation = await context.CommercialQuotations.AsNoTracking().SingleOrDefaultAsync(q => q.ProjectId == id && q.BudgetQuotationVersionId == (version == null ? Guid.Empty : version.Id), token);
         return new(project, taskList, version, catalog, items, extractions, quotation);
     }
 
@@ -57,12 +61,12 @@ public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFil
         try { temporaryBytes = await storage.ReadAsync(temporaryKey, token); }
         catch (FileNotFoundException) { return new(CommercialQuotationStatus.DocumentUnavailable); }
         catch (DirectoryNotFoundException) { return new(CommercialQuotationStatus.DocumentUnavailable); }
-        var review = state.Tasks.Single(t => t.Type == ProjectTaskType.ReviewQuotation);
+        var review = state.Tasks.Single(t => t.Type == ProjectTaskType.ReviewQuotation && t.QuotationRound == version.VersionNumber);
         context.Attach(review); context.Attach(version);
         var reviewBefore = context.Entry(review).CurrentValues.Clone(); var versionBefore = context.Entry(version).CurrentValues.Clone();
         var now = timing.UtcNow;
         EfProjectNotificationWriter.NotificationWriteSet? notificationChanges = null;
-        var present = new ProjectTask(state.Project.Id, OperationalArea.Commercial, ProjectTaskType.PresentQuotationToClient, state.Project.CreatedByGoogleSubject!, now);
+        var present = new ProjectTask(state.Project.Id, OperationalArea.Commercial, ProjectTaskType.PresentQuotationToClient, state.Project.CreatedByGoogleSubject!, now, version.VersionNumber);
         var saved = false; var deleteAttempted = false; var commitStarted = false;
         try
         {
@@ -105,7 +109,7 @@ public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFil
             foreach (var entity in items.Cast<object>().Concat([quotation, present, review, version])) context.Entry(entity).State = EntityState.Detached;
             if (errors.Count > 0) throw new AggregateException("Commercial confirmation failed; file/database state requires inspection.", new[] { failure }.Concat(errors));
             if (failure is DbUpdateException { InnerException: PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } postgres }
-                && postgres.ConstraintName is CommercialQuotationConfiguration.ProjectIndexName or ProjectTaskConfiguration.PresentQuotationIndexName)
+                && postgres.ConstraintName is CommercialQuotationConfiguration.VersionIndexName or CommercialQuotationConfiguration.CatalogIndexName or ProjectTaskConfiguration.PresentQuotationIndexName)
                 return new(CommercialQuotationStatus.AlreadyConfirmed);
             if (failure is OperationCanceledException) throw;
             throw new InvalidOperationException("Commercial quotation could not be stored.", failure);
@@ -125,7 +129,7 @@ public sealed class EfCommercialQuotationStore(SnGControlDbContext context, IFil
     public async Task<CommercialQuotationFileState?> GetFileAsync(Guid id, ProjectReadScope scope, CancellationToken token)
     {
         var project = await context.Projects.AsNoTracking().Where(scope.Filter(context.ProjectTasks)).SingleOrDefaultAsync(p => p.Id == id, token);
-        return project is null ? null : new(project, await context.CommercialQuotations.AsNoTracking().SingleOrDefaultAsync(q => q.ProjectId == id, token));
+        return project is null ? null : new(project, await context.CurrentCommercial().SingleOrDefaultAsync(q => q.ProjectId == id, token));
     }
     private ProjectTaskResponse Response(ProjectTask task) => ProjectTaskResponse.FromEntity(task, timing);
 }

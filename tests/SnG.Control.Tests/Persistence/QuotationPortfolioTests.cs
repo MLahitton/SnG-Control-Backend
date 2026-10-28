@@ -35,7 +35,8 @@ public sealed class QuotationPortfolioTests
             var sql = query.ToQueryString();
             Assert.Contains("LIMIT", sql); Assert.Contains("ORDER BY", sql); Assert.Contains("COLLATE", sql);
             Assert.Contains("INNER JOIN", sql); Assert.DoesNotContain("CommercialCatalogItemId", sql);
-            Assert.Equal(4, query.Expression.ToString().Split("AsNoTracking()").Length - 1);
+            Assert.Contains("NOT EXISTS", sql);
+            Assert.Contains("VersionNumber", sql);
         }
         Assert.Contains("LIMIT", store.QuotationProjectsQuery().ToQueryString());
         foreach (var dimension in Enum.GetValues<MixDimension>())

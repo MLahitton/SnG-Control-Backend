@@ -5,7 +5,7 @@ namespace SnG.Control.Domain.Entities;
 public class ProjectTask
 {
     private ProjectTask() { }
-    public ProjectTask(Guid projectId, OperationalArea area, ProjectTaskType type, string? assignedToGoogleSubject = null, DateTime? assignedAtUtc = null)
+    public ProjectTask(Guid projectId, OperationalArea area, ProjectTaskType type, string? assignedToGoogleSubject = null, DateTime? assignedAtUtc = null, int quotationRound = 1)
     {
         if (projectId == Guid.Empty)
         {
@@ -22,6 +22,8 @@ public class ProjectTask
 
         if (assignedToGoogleSubject is not null) ArgumentException.ThrowIfNullOrWhiteSpace(assignedToGoogleSubject);
         AssignedToGoogleSubject = assignedToGoogleSubject;
+        if (quotationRound <= 0) throw new ArgumentOutOfRangeException(nameof(quotationRound));
+        QuotationRound = quotationRound;
         Id = Guid.NewGuid();
         ProjectId = projectId;
         Area = area;
@@ -33,6 +35,7 @@ public class ProjectTask
         CompletedAt = null;
     }
 
+    public int? QuotationRound { get; private set; }
     public Guid Id { get; private set; }
     public Guid ProjectId { get; private set; }
     public string? AssignedToGoogleSubject { get; private set; }

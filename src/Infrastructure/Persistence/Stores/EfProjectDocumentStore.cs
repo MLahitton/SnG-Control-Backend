@@ -24,10 +24,11 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
     }
     private async Task<ProjectDocumentState> LoadDetailsAsync(Project project, CancellationToken token) => new(project,
         await context.ProjectDocuments.AsNoTracking().Where(d => d.ProjectId == project.Id).OrderBy(d => d.UploadedAt).ThenBy(d => d.Id).ToListAsync(token),
-        await context.ProjectTasks.AsNoTracking().SingleOrDefaultAsync(t => t.ProjectId == project.Id && t.Type == ProjectTaskType.PrepareQuotation, token),
+        await context.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == project.Id && t.Type == ProjectTaskType.PrepareQuotation).OrderByDescending(t => t.QuotationRound).FirstOrDefaultAsync(token),
         await context.ProjectDocumentHandoffs.AsNoTracking().SingleOrDefaultAsync(h => h.ProjectId == project.Id, token),
         await context.ProjectDocumentHandoffItems.AsNoTracking().Where(i => i.ProjectId == project.Id).ToListAsync(token),
-        await context.ProjectTasks.AsNoTracking().SingleOrDefaultAsync(t => t.ProjectId == project.Id && t.Type == ProjectTaskType.ReviewQuotation, token));
+        await context.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == project.Id && t.Type == ProjectTaskType.ReviewQuotation).OrderByDescending(t => t.QuotationRound).FirstOrDefaultAsync(token),
+        await context.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == project.Id).ToArrayAsync(token));
 
     protected virtual Task<IDbContextTransaction> BeginAsync(CancellationToken token) => context.Database.BeginTransactionAsync(token);
     protected virtual async Task<ProjectDocumentState?> LoadLockedAsync(Guid id, CancellationToken token)
@@ -83,7 +84,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
                 }
             }
             if (added.Count == 0) throw new DocumentException(400, "InvalidDocumentBatch");
-            if (state.PrepareQuotation is { } task)
+            if (state.PrepareQuotation is { Status: not ProjectTaskStatus.Completed } task)
             {
                 var notification = ProjectNotification.DocumentsUpdated(task, task.AssignedToGoogleSubject ?? access.BudgetsSubject,
                     batchId, added.Count - replacements.Count, replacements.Count, timing.UtcNow);

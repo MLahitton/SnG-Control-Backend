@@ -66,7 +66,7 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
         var before = JsonSerializer.Serialize(new { fixture.Projects.Items, Tasks = fixture.Tasks.Items, fixture.Tasks.Notifications });
         var rows = await client.GetFromJsonAsync<JsonElement>("/api/management/tasks");
         var row = Assert.Single(rows.EnumerateArray(), t => t.GetProperty("taskId").GetGuid() == task.Id);
-        Assert.Equal(17, row.EnumerateObject().Count());
+        Assert.Equal(18, row.EnumerateObject().Count());
         Assert.Equal(project.Id, row.GetProperty("projectId").GetGuid()); Assert.Equal(project.ClientId, row.GetProperty("clientId").GetGuid());
         Assert.Equal(project.Name, row.GetProperty("projectName").GetString()); Assert.Equal("Management test client", row.GetProperty("clientName").GetString());
         foreach (var (key, value) in new[] { ("sgCode", "SG005"), ("city", "City"), ("productLine", "Classic"),
@@ -189,6 +189,6 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
             foreach (var status in new[] { "200", "401", "403", "404" }) Assert.True(read.GetProperty("responses").TryGetProperty(status, out _));
             Assert.False(read.TryGetProperty("requestBody", out _));
         }
-        Assert.Equal(35, document.GetProperty("paths").EnumerateObject().Sum(p => p.Value.EnumerateObject().Count(o => o.Name is "get" or "post" or "put" or "delete")));
+        Assert.Equal(37, document.GetProperty("paths").EnumerateObject().Sum(p => p.Value.EnumerateObject().Count(o => o.Name is "get" or "post" or "put" or "delete")));
     }
 }

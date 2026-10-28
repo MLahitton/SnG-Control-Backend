@@ -10,8 +10,9 @@ public class AssignProjectSgCodeUseCase(IBudgetsWorkflowStore store, TaskTiming 
 {
     public async Task<AssignProjectSgCodeResult> ExecuteAsync(Guid projectId, string sgCode, CancellationToken cancellationToken)
     {
-        var (project, task) = await store.LoadAsync(projectId, cancellationToken);
+        var (project, task, validSelection) = await store.LoadAsync(projectId, cancellationToken);
         if (project is null) return new AssignProjectSgCodeResult.ProjectNotFound();
+        if (!validSelection) return new AssignProjectSgCodeResult.InvalidWorkflowState();
         if (task is null) return new AssignProjectSgCodeResult.ProjectNotSentToBudgets();
 
         if (!string.Equals(task.AssignedToGoogleSubject, user.Subject, StringComparison.Ordinal))

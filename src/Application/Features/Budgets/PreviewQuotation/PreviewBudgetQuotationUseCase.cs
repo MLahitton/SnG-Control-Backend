@@ -22,6 +22,6 @@ public class PreviewBudgetQuotationUseCase(IProjectStore projects, IProjectTaskS
             return new PreviewBudgetQuotationResult.SgCodeMismatch();
         return new PreviewBudgetQuotationResult.Success(new BudgetQuotationPreviewResponse(
             project.Id, project.SgCode!, parsed.Document, parsed.Items.Count,
-            parsed.Items.Sum(item => (long)item.Quantity), parsed.Items, parsed.Warnings));
+            parsed.Items.Sum(item => (long)item.Quantity), parsed.Items, parsed.Warnings, task.QuotationRound!.Value));
     }
 }

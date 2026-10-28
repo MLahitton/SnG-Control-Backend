@@ -50,10 +50,10 @@ public class CommercialQuotationCompensationTests
     }
 
     [Theory]
-    [InlineData("23505", "UX_CommercialQuotations_ProjectId", true)]
+    [InlineData("23505", "UX_CommercialQuotations_BudgetQuotationVersionId", true)]
     [InlineData("23505", "UX_ProjectTasks_ProjectId_PresentQuotationToClient", true)]
     [InlineData("23505", "OtherConstraint", false)]
-    [InlineData("23514", "UX_CommercialQuotations_ProjectId", false)]
+    [InlineData("23514", "UX_CommercialQuotations_BudgetQuotationVersionId", false)]
     public async Task OnlyKnownUniqueConstraintsBecomeConflict(string sqlState, string constraint, bool expected)
     {
         using var scenario = new CommercialQuotationScenario(); await scenario.InitializeAsync(); var state = scenario.State!;

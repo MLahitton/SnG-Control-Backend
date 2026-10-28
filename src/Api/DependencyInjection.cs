@@ -1,3 +1,4 @@
+using SnG.Control.Application.Features.Requotations;
 using SnG.Control.Application.Features.ClientQuotationDecisions;
 using SnG.Control.Application.Features.Notifications;
 using SnG.Control.Application.Features.ProjectDocuments;
@@ -44,6 +45,8 @@ public static class DependencyInjection
         services.AddScoped<SnG.Control.Application.Features.QuotationViews.QuotationReadService>();
         services.AddScoped<IClientQuotationDecisionStore, EfClientQuotationDecisionStore>();
         services.AddScoped<ClientQuotationDecisionService>();
+        services.AddScoped<IRequotationStore, EfRequotationStore>();
+        services.AddScoped<RequotationService>();
         services.AddActiveRoles();
         services.AddScoped<SnG.Control.Application.Access.ProjectReadAccess>();
         services.AddManagementAuthorization();

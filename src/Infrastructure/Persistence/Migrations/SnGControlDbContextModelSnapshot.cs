@@ -369,16 +369,18 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("BudgetQuotationVersionId");
+                    b.HasIndex("BudgetQuotationVersionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CommercialQuotations_BudgetQuotationVersionId");
 
-                    b.HasIndex("CommercialCatalogId");
+                    b.HasIndex("CommercialCatalogId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_CommercialQuotations_CommercialCatalogId");
 
                     b.HasIndex("FileStorageKey")
                         .IsUnique();
 
-                    b.HasIndex("ProjectId")
-                        .IsUnique()
-                        .HasDatabaseName("UX_CommercialQuotations_ProjectId");
+                    b.HasIndex("ProjectId");
 
                     b.ToTable("CommercialQuotations", null, t =>
                         {
@@ -735,6 +737,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ProjectId")
                         .HasColumnType("uuid");
 
+                    b.Property<int?>("QuotationRound")
+                        .HasColumnType("integer");
+
                     b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -753,19 +758,81 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Area", "Status");
 
-                    b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_ProjectId_PrepareQuotation")
+                    b.HasIndex(new[] { "ProjectId", "QuotationRound" }, "UX_ProjectTasks_ProjectId_PrepareQuotation")
                         .IsUnique()
                         .HasFilter("\"Type\" = 1");
 
-                    b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_ProjectId_PresentQuotationToClient")
+                    b.HasIndex(new[] { "ProjectId", "QuotationRound" }, "UX_ProjectTasks_ProjectId_PresentQuotationToClient")
                         .IsUnique()
                         .HasFilter("\"Type\" = 3");
 
-                    b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_ProjectId_ReviewQuotation")
+                    b.HasIndex(new[] { "ProjectId", "QuotationRound" }, "UX_ProjectTasks_ProjectId_ReviewQuotation")
                         .IsUnique()
                         .HasFilter("\"Type\" = 2");
 
-                    b.ToTable("ProjectTasks", (string)null);
+                    b.ToTable("ProjectTasks", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ProjectTasks_QuotationRound", "\"Type\" NOT IN (1,2,3) OR (\"QuotationRound\" IS NOT NULL AND \"QuotationRound\" > 0)");
+                        });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.RequotationRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PrepareQuotationTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestedByEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequestedByGoogleSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequestedByName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequestedChanges")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<Guid>("SourceClientQuotationDecisionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TargetQuotationRound")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PrepareQuotationTaskId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_RequotationRequests_PrepareTask");
+
+                    b.HasIndex("SourceClientQuotationDecisionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_RequotationRequests_SourceDecision");
+
+                    b.HasIndex("ProjectId", "TargetQuotationRound")
+                        .IsUnique()
+                        .HasDatabaseName("UX_RequotationRequests_ProjectRound");
+
+                    b.ToTable("RequotationRequests", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_RequotationRequests_Changes", "length(btrim(\"RequestedChanges\")) > 0");
+
+                            t.HasCheckConstraint("CK_RequotationRequests_Round", "\"TargetQuotationRound\" > 1");
+
+                            t.HasCheckConstraint("CK_RequotationRequests_Subject", "length(btrim(\"RequestedByGoogleSubject\")) > 0");
+                        });
                 });
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.BudgetQuotationVersion", b =>
@@ -931,6 +998,27 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasOne("SnG.Control.Domain.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.RequotationRequest", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithMany()
+                        .HasForeignKey("PrepareQuotationTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ClientQuotationDecision", null)
+                        .WithMany()
+                        .HasForeignKey("SourceClientQuotationDecisionId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

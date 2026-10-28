@@ -14,9 +14,9 @@ public sealed class EfBudgetQuotationStatusStore(SnGControlDbContext context) : 
         if (project is null) return null;
         var tasks = await context.ProjectTasks.AsNoTracking().Where(t => t.ProjectId == projectId).ToArrayAsync(token);
         var version = await context.BudgetQuotationVersions.AsNoTracking()
-            .Where(v => v.ProjectId == projectId && v.VersionNumber == 1)
+            .Where(v => v.ProjectId == projectId).OrderByDescending(v => v.VersionNumber)
             .Select(v => new { v.Id, v.VersionNumber, v.ConfirmedAt, v.DocumentSgCode, HasOperationalFile = v.ConfirmedFileStorageKey != null })
-            .SingleOrDefaultAsync(token);
+            .FirstOrDefaultAsync(token);
         if (version is null)
             return BudgetQuotationStatusResponse.From(project, tasks, new(null, false, false, 0, 0, 0, false, null), null, 0);
 

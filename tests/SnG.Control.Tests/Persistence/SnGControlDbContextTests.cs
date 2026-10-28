@@ -24,7 +24,7 @@ public class SnGControlDbContextTests
     [Theory]
     [InlineData(typeof(Client), "Clients", 4)]
     [InlineData(typeof(Project), "Projects", 11)]
-    [InlineData(typeof(ProjectTask), "ProjectTasks", 11)]
+    [InlineData(typeof(ProjectTask), "ProjectTasks", 12)]
     public void Model_MapsEntitiesWithDomainGeneratedPrimaryKeys(Type entityType, string tableName, int propertyCount)
     {
         using var context = CreateContext();
@@ -135,7 +135,7 @@ public class SnGControlDbContextTests
     {
         using var context = CreateContext();
 
-        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff", "AddCommercialIdentityAssignments", "AddCommercialQuotationConfirmation", "AddLeakTimesAndNotifications", "AddProjectDocumentsAndHandoff", "FormalizeCommercialQuotationMoney", "AddClientQuotationDecisions" },
+        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff", "AddCommercialIdentityAssignments", "AddCommercialQuotationConfirmation", "AddLeakTimesAndNotifications", "AddProjectDocumentsAndHandoff", "FormalizeCommercialQuotationMoney", "AddClientQuotationDecisions", "AddVersionedRequotationRounds" },
             context.Database.GetMigrations().Select(migration => migration[(migration.IndexOf('_') + 1)..]));
         Assert.False(context.Database.HasPendingModelChanges());
     }
@@ -148,7 +148,7 @@ public class SnGControlDbContextTests
 
         foreach (var property in entity.GetProperties())
         {
-            Assert.Equal(property.Name is nameof(ProjectTask.StartedAt) or nameof(ProjectTask.CompletedAt) or nameof(ProjectTask.AssignedToGoogleSubject) or nameof(ProjectTask.DeadlineAt) or nameof(ProjectTask.WasOverdue), property.IsNullable);
+            Assert.Equal(property.Name is nameof(ProjectTask.StartedAt) or nameof(ProjectTask.CompletedAt) or nameof(ProjectTask.AssignedToGoogleSubject) or nameof(ProjectTask.DeadlineAt) or nameof(ProjectTask.WasOverdue) or nameof(ProjectTask.QuotationRound), property.IsNullable);
             Assert.False(property.IsShadowProperty());
             Assert.True(property.PropertyInfo!.SetMethod!.IsPrivate);
             if (property.ClrType == typeof(DateTime) || property.ClrType == typeof(DateTime?))
@@ -190,7 +190,7 @@ public class SnGControlDbContextTests
         var review = Assert.Single(indexes, index => index.GetDatabaseName() == "UX_ProjectTasks_ProjectId_ReviewQuotation");
         Assert.True(review.IsUnique); Assert.Equal("\"Type\" = 2", review.GetFilter());
         Assert.Equal("UX_ProjectTasks_ProjectId_PrepareQuotation", unique.GetDatabaseName());
-        Assert.Equal(nameof(ProjectTask.ProjectId), Assert.Single(unique.Properties).Name);
+        Assert.Equal(new[] { nameof(ProjectTask.ProjectId), nameof(ProjectTask.QuotationRound) }, unique.Properties.Select(p => p.Name));
         Assert.Equal("\"Type\" = 1", unique.GetFilter());
     }
 

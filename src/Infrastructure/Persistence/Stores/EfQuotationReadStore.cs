@@ -19,8 +19,9 @@ public sealed class EfQuotationReadStore(SnGControlDbContext context) : IQuotati
     {
         var snapshot = await (from v in context.BudgetQuotationVersions.AsNoTracking()
                               join c in context.CommercialCatalogs.AsNoTracking() on v.Id equals c.BudgetQuotationVersionId
-                              where v.ProjectId == projectId && v.VersionNumber == 1
-                              select new { Version = v, CatalogId = c.Id }).SingleOrDefaultAsync(token);
+                              where v.ProjectId == projectId
+                              orderby v.VersionNumber descending
+                              select new { Version = v, CatalogId = c.Id }).FirstOrDefaultAsync(token);
         if (snapshot is null) return null;
         var rows = await (from i in context.CommercialCatalogItems.AsNoTracking()
                           join e in context.CommercialCatalogItemExtractions.AsNoTracking() on i.Id equals e.CatalogItemId into extractions
@@ -45,7 +46,7 @@ public sealed class EfQuotationReadStore(SnGControlDbContext context) : IQuotati
     }
     public async Task<ConfirmedCommercialQuotationView?> GetCommercialAsync(Guid projectId, CancellationToken token)
     {
-        var quotation = await context.CommercialQuotations.AsNoTracking().SingleOrDefaultAsync(q => q.ProjectId == projectId, token);
+        var quotation = await context.CurrentCommercial().SingleOrDefaultAsync(q => q.ProjectId == projectId, token);
         if (quotation is null) return null;
         var rows = await (from i in context.CommercialQuotationItems.AsNoTracking()
                           join b in context.CommercialCatalogItems.AsNoTracking() on i.CommercialCatalogItemId equals b.Id
@@ -63,14 +64,15 @@ public sealed class EfQuotationReadStore(SnGControlDbContext context) : IQuotati
                 i.UnitPrice, i.TotalPrice, CommercialTechnicalDifferences.Compare(CommercialTechnicalDifferences.Values(row.Budget), values),
                 row.Extraction?.ImageStatus, row.Extraction?.ImageStatus == CatalogItemImageStatus.Stored && row.Extraction.ImageStorageKey is not null);
         }).ToArray();
-        return new(projectId, quotation.Id, quotation.ConfirmedAt, quotation.ProjectTotal, items);
+        var round = await context.BudgetQuotationVersions.Where(v => v.Id == quotation.BudgetQuotationVersionId).Select(v => v.VersionNumber).SingleAsync(token);
+        return new(projectId, quotation.Id, quotation.ConfirmedAt, quotation.ProjectTotal, items, round);
     }
     public Task<QuotationImageFile?> GetBudgetImageAsync(Guid projectId, Guid itemId, CancellationToken token) =>
         (from v in context.BudgetQuotationVersions.AsNoTracking()
          join c in context.CommercialCatalogs.AsNoTracking() on v.Id equals c.BudgetQuotationVersionId
          join i in context.CommercialCatalogItems.AsNoTracking() on c.Id equals i.CommercialCatalogId
          join e in context.CommercialCatalogItemExtractions.AsNoTracking() on i.Id equals e.CatalogItemId
-         where v.ProjectId == projectId && v.VersionNumber == 1 && i.Id == itemId
+         where v.ProjectId == projectId && i.Id == itemId
              && e.ImageStatus == CatalogItemImageStatus.Stored && e.ImageStorageKey != null && e.ImageContentType != null
          select new QuotationImageFile(e.ImageStorageKey!, e.ImageContentType!)).SingleOrDefaultAsync(token);
 }

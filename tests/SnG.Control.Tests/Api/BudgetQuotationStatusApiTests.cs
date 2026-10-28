@@ -56,7 +56,7 @@ public class BudgetQuotationStatusApiTests(ApiFixture fixture) : IClassFixture<A
         using var response = await fixture.BudgetsHttp.GetAsync(Url());
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var json = await response.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(10, json.EnumerateObject().Count());
+        Assert.Equal(11, json.EnumerateObject().Count());
         Assert.Equal(status, json.GetProperty("status").GetString());
         Assert.Equal(reason, json.GetProperty("sendBlockReason").GetString());
         Assert.Equal(canSend, json.GetProperty("canSendToCommercial").GetBoolean());

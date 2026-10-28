@@ -82,7 +82,7 @@ public class ProjectDocumentTests
             for (var i = 0; i < additions; i++) uploads.Add(new($"add-{i}", "same.bin", null, null, new GeneratedStream(3)));
             await store.UploadAsync(project.Id, Uploads(uploads.ToArray()), default);
         }
-        Assert.Equal(2, tasks.Notifications.Count); Assert.Equal(2, tasks.Notifications.Select(n => n.EventKey).Distinct().Count());
+        Assert.Equal(completed ? 0 : 2, tasks.Notifications.Count); Assert.Equal(completed ? 0 : 2, tasks.Notifications.Select(n => n.EventKey).Distinct().Count());
         Assert.All(tasks.Notifications, n => { Assert.Equal(NotificationKind.ProjectDocumentsUpdated, n.Kind); Assert.Equal(NotificationState.Informational, n.State); Assert.Equal("budgets", n.RecipientGoogleSubject); Assert.DoesNotContain("budgets", n.EventKey); Assert.Equal("Documentación del proyecto actualizada", n.Title); });
         Assert.Equal(before, JsonSerializer.Serialize(task)); Assert.Single(tasks.Items); Assert.Empty(database.Handoffs);
     }

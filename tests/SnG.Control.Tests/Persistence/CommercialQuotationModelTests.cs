@@ -23,13 +23,13 @@ public class CommercialQuotationModelTests
     [Fact]
     public void Schema_HasTwoSpecificTablesRestrictiveRelationsAndUsefulUniqueIndexes()
     {
-        using var db = Context(); Assert.Equal(14, db.Model.GetEntityTypes().Count());
+        using var db = Context(); Assert.Equal(15, db.Model.GetEntityTypes().Count());
         var quotation = db.Model.FindEntityType(typeof(CommercialQuotation))!;
         var item = db.Model.FindEntityType(typeof(CommercialQuotationItem))!;
         Assert.Equal(11, quotation.GetProperties().Count()); Assert.Equal(18, item.GetProperties().Count());
         Assert.Equal(3, quotation.GetForeignKeys().Count()); Assert.Equal(2, item.GetForeignKeys().Count());
         Assert.All(quotation.GetForeignKeys().Concat(item.GetForeignKeys()), fk => Assert.Equal(DeleteBehavior.Restrict, fk.DeleteBehavior));
-        Assert.Contains(quotation.GetIndexes(), i => i.IsUnique && i.GetDatabaseName() == "UX_CommercialQuotations_ProjectId");
+        Assert.Contains(quotation.GetIndexes(), i => i.IsUnique && i.GetDatabaseName() == "UX_CommercialQuotations_BudgetQuotationVersionId");
         Assert.Contains(item.GetIndexes(), i => i.IsUnique && i.Properties.Select(p => p.Name).SequenceEqual(new[] { "CommercialQuotationId", "Section", "SourceRow" }));
         Assert.Contains(item.GetIndexes(), i => i.IsUnique && i.Properties.Select(p => p.Name).SequenceEqual(new[] { "CommercialQuotationId", "CommercialCatalogItemId" }));
         Assert.All(quotation.GetProperties(), p => Assert.Equal(p.Name is "ConfirmedByEmail" or "ConfirmedByName", p.IsNullable));

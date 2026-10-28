@@ -12,7 +12,7 @@ public sealed class ProjectDocumentAccess(ICurrentUser current, IActiveRoleConte
     public bool CanModify(Project project) => active.Role == SystemRole.CommercialAdvisor && string.Equals(current.Subject, project.CreatedByGoogleSubject, StringComparison.Ordinal);
     public bool CanSendToBudgets(Project project) => active.Role == SystemRole.CommercialAdvisor && CanModify(project);
     public bool CanRead(ProjectDocumentState state) => new ProjectReadScope(current.Subject, active.Role).CanRead(state.Project,
-        new[] { state.PrepareQuotation, state.ReviewQuotation }.OfType<ProjectTask>());
+        state.HistoricalTasks ?? new[] { state.PrepareQuotation, state.ReviewQuotation }.OfType<ProjectTask>().ToArray());
     public void RequireModify(Project project)
     {
         if (!CanModify(project)) throw new DocumentException(403, "DocumentAccessDenied");

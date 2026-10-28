@@ -20,7 +20,7 @@ public sealed partial class EfManagementReadStore
     internal IQueryable<MixRow> MixGroups(MixDimension dimension)
     {
         // CatalogItemValues already trims on write. Keep exact stored labels and case.
-        var source = context.CommercialQuotationItems.AsNoTracking().Select(i => new
+        var source = context.CurrentCommercialItems().Select(i => new
         {
             Value = dimension == MixDimension.Glass ? i.Glass : dimension == MixDimension.Finish ? i.AluminumFinish : i.System,
             Glass = dimension == MixDimension.Combination ? i.Glass : "",

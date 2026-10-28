@@ -43,7 +43,7 @@ public sealed class ConfirmBudgetQuotationUseCase(PreviewBudgetQuotationUseCase 
             return new(QuotationConfirmationStatus.InvalidConfirmation);
 
         var document = extracted.Document;
-        var version = new BudgetQuotationVersion(projectId, 1, document.FileName, document.ClientName, document.ProjectName,
+        var version = new BudgetQuotationVersion(projectId, extracted.QuotationRound, document.FileName, document.ClientName, document.ProjectName,
             document.Location, document.ClientLine, document.ProductionLine, document.PreparedBy, document.SgCode);
         var catalog = new CommercialCatalog(version.Id);
         var items = new List<CommercialCatalogItem>();
@@ -75,7 +75,7 @@ public sealed class ConfirmBudgetQuotationUseCase(PreviewBudgetQuotationUseCase 
         }
         var saved = await store.ConfirmAsync(new BudgetQuotationConfirmation(version, catalog, items, snapshots, files), cancellationToken);
         if (saved.Status != QuotationConfirmationStatus.Created) return new(saved.Status);
-        return new(QuotationConfirmationStatus.Created, new ConfirmedBudgetQuotationResponse(version.Id, 1, catalog.Id, projectId,
+        return new(QuotationConfirmationStatus.Created, new ConfirmedBudgetQuotationResponse(version.Id, version.VersionNumber, catalog.Id, projectId,
             version.ConfirmedAt, document, items.Count, items.Sum(item => (long)item.Quantity), responses, ProjectTaskResponse.FromEntity(saved.Task!, timing)));
     }
 }

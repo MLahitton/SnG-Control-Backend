@@ -26,7 +26,7 @@ public class ProjectTaskHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture
         using var sent = await fixture.Http.PostAsync($"/api/projects/{id}/send-to-budgets", null);
         Assert.Equal(HttpStatusCode.Created, sent.StatusCode);
         var task = await sent.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(12, task.EnumerateObject().Count());
+        Assert.Equal(13, task.EnumerateObject().Count());
         Assert.Equal("budgets-test-subject", task.GetProperty("assignedToGoogleSubject").GetString());
         Assert.Equal(JsonValueKind.Null, task.GetProperty("deadlineAt").ValueKind);
         Assert.Equal(JsonValueKind.Null, task.GetProperty("wasOverdue").ValueKind);

@@ -14,4 +14,4 @@ public sealed record BudgetQuotationPreviewItem(string ItemNumber, CommercialIte
     decimal Width, decimal Height, decimal SquareMeters, int Quantity, BudgetQuotationImage? Image, int SourceRow);
 public sealed record BudgetQuotationPreviewResponse(Guid ProjectId, string ProjectSgCode,
     BudgetQuotationDocument Document, int ItemCount, long TotalQuantity,
-    IReadOnlyList<BudgetQuotationPreviewItem> Items, IReadOnlyList<BudgetQuotationWarning> Warnings);
+    IReadOnlyList<BudgetQuotationPreviewItem> Items, IReadOnlyList<BudgetQuotationWarning> Warnings, int QuotationRound = 1);

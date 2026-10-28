@@ -1,3 +1,4 @@
+using SnG.Control.Application.Features.Budgets;
 using SnG.Control.Application.Access;
 using SnG.Control.Application.Scheduling;
 using Microsoft.EntityFrameworkCore;
@@ -25,10 +26,11 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
         if (project is null) return null;
         var tasks = locked ? context.ProjectTasks.FromSqlInterpolated($"SELECT * FROM \"ProjectTasks\" WHERE \"ProjectId\" = {projectId} FOR UPDATE")
             : context.ProjectTasks.AsNoTracking().Where(value => value.ProjectId == projectId);
-        var versions = locked ? context.BudgetQuotationVersions.FromSqlInterpolated(
-            $"SELECT * FROM \"BudgetQuotationVersions\" WHERE \"ProjectId\" = {projectId} AND \"VersionNumber\" = 1 FOR UPDATE")
-            : context.BudgetQuotationVersions.AsNoTracking().Where(value => value.ProjectId == projectId && value.VersionNumber == 1);
         var taskList = await tasks.ToArrayAsync(token);
+        var round = BudgetQuotationWorkflow.CurrentRound(taskList, ProjectTaskType.PrepareQuotation);
+        var versions = locked ? context.BudgetQuotationVersions.FromSqlInterpolated(
+            $"SELECT * FROM \"BudgetQuotationVersions\" WHERE \"ProjectId\" = {projectId} AND \"VersionNumber\" = {round} FOR UPDATE")
+            : context.BudgetQuotationVersions.AsNoTracking().Where(v => v.ProjectId == projectId && v.VersionNumber == round);
         var version = await versions.SingleOrDefaultAsync(token);
         var catalog = version is null ? null : await context.CommercialCatalogs.AsNoTracking().SingleOrDefaultAsync(value => value.BudgetQuotationVersionId == version.Id, token);
         var items = catalog is null ? [] : await context.CommercialCatalogItems.AsNoTracking().Where(value => value.CommercialCatalogId == catalog.Id).ToArrayAsync(token);
@@ -52,14 +54,14 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
     internal async Task<CommercialHandoffResult> PersistAsync(CommercialHandoffState current, ReadOnlyMemory<byte> workbook,
         IDbContextTransaction transaction, string commercialHeadSubject, CancellationToken cancellationToken)
     {
-        var budget = current.Tasks.Single(value => value.Type == ProjectTaskType.PrepareQuotation);
+        var budget = current.Tasks.Single(value => value.Type == ProjectTaskType.PrepareQuotation && value.QuotationRound == current.Version!.VersionNumber);
         var version = current.Version!;
         context.Attach(budget); context.Attach(version);
         var budgetBefore = context.Entry(budget).CurrentValues.Clone();
         var versionBefore = context.Entry(version).CurrentValues.Clone();
         var now = timing.UtcNow;
         EfProjectNotificationWriter.NotificationWriteSet? notificationChanges = null;
-        var commercial = new ProjectTask(current.Project.Id, OperationalArea.Commercial, ProjectTaskType.ReviewQuotation, commercialHeadSubject, now);
+        var commercial = new ProjectTask(current.Project.Id, OperationalArea.Commercial, ProjectTaskType.ReviewQuotation, commercialHeadSubject, now, version.VersionNumber);
         var key = $"projects/{current.Project.Id:D}/budget-quotations/{version.Id:D}/confirmed.xlsx";
         var created = false;
         var commitStarted = false;
@@ -111,9 +113,9 @@ public sealed class EfBudgetQuotationCommercialHandoffStore(SnGControlDbContext 
     public async Task<CommercialFileState> GetFileAsync(Guid projectId, ProjectReadScope scope, CancellationToken cancellationToken)
     {
         if (!await context.Projects.Where(scope.Filter(context.ProjectTasks)).AnyAsync(value => value.Id == projectId, cancellationToken)) return new(false);
-        var version = await context.BudgetQuotationVersions.AsNoTracking().SingleOrDefaultAsync(value => value.ProjectId == projectId && value.VersionNumber == 1, cancellationToken);
+        var version = await context.BudgetQuotationVersions.AsNoTracking().Where(value => value.ProjectId == projectId).OrderByDescending(value => value.VersionNumber).FirstOrDefaultAsync(cancellationToken);
         var review = await context.ProjectTasks.AnyAsync(value => value.ProjectId == projectId && value.Area == OperationalArea.Commercial
-            && value.Type == ProjectTaskType.ReviewQuotation, cancellationToken);
+            && value.Type == ProjectTaskType.ReviewQuotation && value.QuotationRound == (version == null ? 0 : version.VersionNumber), cancellationToken);
         return new(true, version?.ConfirmedFileStorageKey, version?.OriginalFileName, review);
     }
 

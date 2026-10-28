@@ -24,7 +24,7 @@ public interface ICommercialQuotationParser
 }
 public sealed record CommercialQuotationPreviewItem(CommercialItemSection Section, int SourceRow, Guid CommercialCatalogItemId,
     CatalogItemValues Values, decimal UnitPrice, decimal TotalPrice, IReadOnlyList<TechnicalDifference> TechnicalDifferences);
-public sealed record CommercialQuotationPreviewResponse(Guid ProjectId, decimal ProjectTotal, IReadOnlyList<CommercialQuotationPreviewItem> Items)
+public sealed record CommercialQuotationPreviewResponse(Guid ProjectId, decimal ProjectTotal, IReadOnlyList<CommercialQuotationPreviewItem> Items, int QuotationRound = 1)
 {
     public string CurrencyCode => Money.CurrencyCode;
     public int TechnicalDifferencesCount => Items.Sum(item => item.TechnicalDifferences.Count);

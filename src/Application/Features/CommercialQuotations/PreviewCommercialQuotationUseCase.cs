@@ -30,6 +30,6 @@ public sealed class PreviewCommercialQuotationUseCase(ICommercialQuotationStore 
             return (state, new(CommercialQuotationStatus.StructuralMismatch, MissingItems: missing, UnexpectedItems: extra));
         var items = document.Items.OrderBy(i => i.Key.SourceRow).Select(i => new CommercialQuotationPreviewItem(i.Key.Section, i.Key.SourceRow,
             expected[i.Key].Id, i.Values, i.UnitPrice, i.TotalPrice, CommercialTechnicalDifferences.Compare(CommercialTechnicalDifferences.Values(expected[i.Key]), i.Values))).ToArray();
-        return (state, new(CommercialQuotationStatus.Success, new(projectId, document.ProjectTotal, items)));
+        return (state, new(CommercialQuotationStatus.Success, new(projectId, document.ProjectTotal, items, state.Version.VersionNumber)));
     }
 }

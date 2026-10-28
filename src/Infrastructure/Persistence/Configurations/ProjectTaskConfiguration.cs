@@ -12,7 +12,7 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
 
     public void Configure(EntityTypeBuilder<ProjectTask> builder)
     {
-        builder.ToTable("ProjectTasks");
+        builder.ToTable("ProjectTasks", t => t.HasCheckConstraint("CK_ProjectTasks_QuotationRound", "\"Type\" NOT IN (1,2,3) OR (\"QuotationRound\" IS NOT NULL AND \"QuotationRound\" > 0)"));
         builder.Property(task => task.DeadlineAt).HasColumnType("timestamp with time zone");
         builder.Property(task => task.WasOverdue);
         builder.HasKey(task => task.Id);
@@ -33,12 +33,12 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
 
         builder.HasIndex(task => task.ProjectId);
         builder.HasIndex(task => new { task.Area, task.Status });
-        builder.HasIndex(task => task.ProjectId, PrepareQuotationIndexName)
+        builder.HasIndex(task => new { task.ProjectId, task.QuotationRound }, PrepareQuotationIndexName)
             .IsUnique()
             .HasFilter("\"Type\" = 1");
-        builder.HasIndex(task => task.ProjectId, ReviewQuotationIndexName)
+        builder.HasIndex(task => new { task.ProjectId, task.QuotationRound }, ReviewQuotationIndexName)
             .IsUnique().HasFilter("\"Type\" = 2");
-        builder.HasIndex(task => task.ProjectId, PresentQuotationIndexName)
+        builder.HasIndex(task => new { task.ProjectId, task.QuotationRound }, PresentQuotationIndexName)
             .IsUnique().HasFilter("\"Type\" = 3");
     }
 }

@@ -17,8 +17,10 @@ public sealed class EfClientQuotationDecisionStore(SnGControlDbContext context, 
     {
         if (!await context.Projects.AsNoTracking().Where(scope.Filter(context.ProjectTasks)).AnyAsync(p => p.Id == id, token))
             return new(DecisionStatus.ProjectNotFound);
-        var value = await context.ClientQuotationDecisions.AsNoTracking().SingleOrDefaultAsync(d => d.ProjectId == id, token);
-        return new(DecisionStatus.Success, DecisionResponse.From(id, value));
+        var quotation = await context.CurrentCommercial().SingleOrDefaultAsync(q => q.ProjectId == id, token);
+        var round = quotation is null ? (int?)null : await context.BudgetQuotationVersions.Where(v => v.Id == quotation.BudgetQuotationVersionId).Select(v => v.VersionNumber).SingleAsync(token);
+        var value = quotation is null ? null : await context.ClientQuotationDecisions.AsNoTracking().SingleOrDefaultAsync(d => d.CommercialQuotationId == quotation.Id, token);
+        return new(DecisionStatus.Success, DecisionResponse.From(id, value, round));
     }
     public async Task<DecisionResult> RecordAsync(Guid id, ClientQuotationDecisionType decision, string? note, DecisionActor actor, CancellationToken token)
     {
@@ -26,14 +28,16 @@ public sealed class EfClientQuotationDecisionStore(SnGControlDbContext context, 
         var project = await context.Projects.FromSqlInterpolated($"SELECT * FROM \"Projects\" WHERE \"Id\" = {id} FOR UPDATE").AsNoTracking().SingleOrDefaultAsync(token);
         if (project is null) return new(DecisionStatus.ProjectNotFound);
         var tasks = await context.ProjectTasks.FromSqlInterpolated($"SELECT * FROM \"ProjectTasks\" WHERE \"ProjectId\" = {id} FOR UPDATE").ToArrayAsync(token);
-        var quotation = await context.CommercialQuotations.AsNoTracking().SingleOrDefaultAsync(q => q.ProjectId == id, token);
+        var quotation = await context.CurrentCommercial().SingleOrDefaultAsync(q => q.ProjectId == id, token);
+        if (quotation is null) return new(DecisionStatus.QuotationUnavailable);
+        var round = await context.BudgetQuotationVersions.Where(v => v.Id == quotation.BudgetQuotationVersionId).Select(v => v.VersionNumber).SingleAsync(token);
         // Ownership is checked before revealing whether another request already recorded a decision.
-        var presentations = tasks.Where(t => t.Type == ProjectTaskType.PresentQuotationToClient).ToArray();
+        var presentations = tasks.Where(t => t.Type == ProjectTaskType.PresentQuotationToClient && t.QuotationRound == round).ToArray();
         if (presentations.Length > 1) return new(DecisionStatus.InvalidWorkflowState);
         var presentation = presentations.SingleOrDefault();
         if (presentation is not null && presentation.AssignedToGoogleSubject != actor.Subject) return new(DecisionStatus.Forbidden);
-        if (await context.ClientQuotationDecisions.AnyAsync(d => d.ProjectId == id, token)) return new(DecisionStatus.AlreadyRecorded);
-        var status = DecisionWorkflow.Validate(id, quotation, tasks, actor.Subject);
+        if (await context.ClientQuotationDecisions.AnyAsync(d => d.CommercialQuotationId == quotation.Id, token)) return new(DecisionStatus.AlreadyRecorded);
+        var status = DecisionWorkflow.Validate(id, quotation, tasks, actor.Subject, round);
         if (status != DecisionStatus.Success) return new(status);
         var task = presentation!;
         var instant = timing.UtcNow;
@@ -49,7 +53,7 @@ public sealed class EfClientQuotationDecisionStore(SnGControlDbContext context, 
             changes = await notifications.StageAsync([task], now, token);
             await context.SaveChangesAsync(token);
             await transaction.CommitAsync(token);
-            return new(DecisionStatus.Success, Recorded: new(DecisionResponse.From(id, record), ProjectTaskResponse.FromEntity(task, timing)));
+            return new(DecisionStatus.Success, Recorded: new(DecisionResponse.From(id, record, round), ProjectTaskResponse.FromEntity(task, timing)));
         }
         catch (Exception failure)
         {

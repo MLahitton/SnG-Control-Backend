@@ -10,7 +10,7 @@ public sealed class DocumentException(int status, string code) : Exception(code)
 }
 public sealed record DocumentUpload(string PartName, string FileName, string? ContentType, Guid? ReplacesDocumentId, Stream Content);
 public sealed record ProjectDocumentState(Project Project, IReadOnlyList<ProjectDocument> Documents,
-    ProjectTask? PrepareQuotation, ProjectDocumentHandoff? Handoff, IReadOnlyList<ProjectDocumentHandoffItem> HandoffItems, ProjectTask? ReviewQuotation = null);
+    ProjectTask? PrepareQuotation, ProjectDocumentHandoff? Handoff, IReadOnlyList<ProjectDocumentHandoffItem> HandoffItems, ProjectTask? ReviewQuotation = null, IReadOnlyList<ProjectTask>? HistoricalTasks = null);
 public sealed record DocumentPerson(string? Email, string? Name);
 public sealed record DocumentResponse(Guid Id, string OriginalFileName, string? ContentType, long SizeBytes, DateTime UploadedAt,
     DocumentPerson UploadedBy, Guid UploadBatchId, bool IsCurrent, DateTime? ReplacedAt, Guid? ReplacedByDocumentId, bool InInitialHandoff)

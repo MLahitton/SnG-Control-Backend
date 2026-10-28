@@ -12,15 +12,16 @@ public sealed class EfBudgetsWorkflowStore(SnGControlDbContext context) : IBudge
 {
     private IDbContextTransaction? transaction;
 
-    public async Task<(Project? Project, ProjectTask? PrepareQuotationTask)> LoadAsync(Guid projectId, CancellationToken cancellationToken)
+    public async Task<(Project? Project, ProjectTask? PrepareQuotationTask, bool ValidState)> LoadAsync(Guid projectId, CancellationToken cancellationToken)
     {
         transaction = await context.Database.BeginTransactionAsync(cancellationToken);
         var project = await context.Projects
             .FromSqlInterpolated($"SELECT * FROM \"Projects\" WHERE \"Id\" = {projectId} FOR UPDATE")
             .SingleOrDefaultAsync(cancellationToken);
-        var task = project is null ? null : await context.ProjectTasks.SingleOrDefaultAsync(
-            task => task.ProjectId == projectId && task.Type == ProjectTaskType.PrepareQuotation, cancellationToken);
-        return (project, task);
+        var tasks = await context.ProjectTasks.Where(t => t.ProjectId == projectId && t.Type == ProjectTaskType.PrepareQuotation).ToArrayAsync(cancellationToken);
+        var active = tasks.Where(t => t.Status != ProjectTaskStatus.Completed).ToArray();
+        var task = active.Length == 1 ? active[0] : active.Length == 0 ? tasks.OrderByDescending(t => t.QuotationRound).FirstOrDefault() : null;
+        return (project, task, active.Length <= 1);
     }
 
     public async Task<bool> TrySaveAsync(Project project, ProjectTask task, CancellationToken cancellationToken)
