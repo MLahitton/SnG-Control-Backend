@@ -38,6 +38,13 @@ public sealed class QuotationPortfolioTests
             Assert.Equal(4, query.Expression.ToString().Split("AsNoTracking()").Length - 1);
         }
         Assert.Contains("LIMIT", store.QuotationProjectsQuery().ToQueryString());
+        foreach (var dimension in Enum.GetValues<MixDimension>())
+            foreach (var order in Enum.GetValues<MixOrder>())
+            {
+                var sql = store.MixRanking(dimension, order).ToQueryString();
+                foreach (var operation in new[] { "GROUP BY", "sum(", "count(", "LIMIT", "COLLATE", "ORDER BY" })
+                    Assert.Contains(operation, sql);
+            }
         Assert.Empty(db.ChangeTracker.Entries());
     }
 
@@ -66,16 +73,20 @@ public sealed class QuotationPortfolioTests
         var useCase = new GetManagementQuotationPortfolioUseCase(new EfManagementReadStore(db));
         counter.Reads = 0;
         var empty = await useCase.ExecuteAsync(default);
-        Assert.Equal(5, counter.Reads);
+        Assert.Equal(21, counter.Reads);
         Assert.Equal(0, empty.QuotationCount); Assert.Equal(0, empty.ItemCount); Assert.Equal(0, empty.TotalQuantity);
         Assert.Equal(0.00m, empty.TotalQuotedValue); Assert.Empty(empty.HighestUnitPriceItems.Items);
         Assert.Empty(empty.HighestValueProjects.Items);
+        Assert.Equal(0, empty.Mix.Systems.TotalItems); Assert.Equal(0, empty.Mix.Systems.SpecifiedItems);
+        Assert.Equal(0, empty.Mix.Systems.UnspecifiedItems); Assert.Empty(empty.Mix.Systems.ByQuantity.Items);
+        Assert.Empty(empty.Mix.Glass.ByItemCount.Items); Assert.Empty(empty.Mix.AluminumFinishes.ByQuotedValue.Items);
+        Assert.Empty(empty.Mix.SystemGlassCombinations.ByQuantity.Items);
 
         var a = AddQuotation(db, "Proyecto A", 100.00m, [(4, 10m, 30m), (1, 25m, 25m)]);
         var b = AddQuotation(db, "Proyecto B", 250.00m, [(2, 20m, 200m), (1, 50m, 50m)]);
         await db.SaveChangesAsync(); db.ChangeTracker.Clear(); counter.Reads = 0;
         var result = await useCase.ExecuteAsync(default);
-        Assert.Equal(5, counter.Reads); Assert.Empty(db.ChangeTracker.Entries());
+        Assert.Equal(21, counter.Reads); Assert.Empty(db.ChangeTracker.Entries());
         Assert.Equal(2, result.QuotationCount); Assert.Equal(4, result.ItemCount); Assert.Equal(8, result.TotalQuantity);
         Assert.Equal(350.00m, result.TotalQuotedValue); Assert.Equal("COP", result.CurrencyCode);
         Assert.Equal(b, result.HighestValueProjects.Items[0].ProjectId);
@@ -93,7 +104,7 @@ public sealed class QuotationPortfolioTests
         for (var i = 0; i < 12; i++) AddQuotation(db, "Tie", 250.00m, [(1, 50m, 200m), (1, 50m, 200m)]);
         await db.SaveChangesAsync(); db.ChangeTracker.Clear(); counter.Reads = 0;
         result = await useCase.ExecuteAsync(default);
-        Assert.Equal(5, counter.Reads);
+        Assert.Equal(21, counter.Reads);
         Assert.Equal(28, result.HighestValueItems.Total); Assert.Equal(14, result.HighestValueProjects.Total);
         Assert.Equal(10, result.HighestValueItems.Returned); Assert.True(result.HighestValueItems.HasMore);
         Assert.Equal(10, result.HighestUnitPriceItems.Returned); Assert.True(result.HighestUnitPriceItems.HasMore);
@@ -104,6 +115,97 @@ public sealed class QuotationPortfolioTests
         var repeated = await useCase.ExecuteAsync(default);
         Assert.Equal(JsonSerializer.Serialize(result), JsonSerializer.Serialize(repeated));
         Assert.Empty(db.ChangeTracker.Entries());
+        await VerifyMixAsync(db, useCase, counter);
+    }
+
+    private static async Task VerifyMixAsync(SnGControlDbContext db, GetManagementQuotationPortfolioUseCase useCase, QueryCounter counter)
+    {
+        // This method runs only in the explicitly isolated, initially empty test cluster.
+        await db.CommercialQuotationItems.ExecuteDeleteAsync();
+        var quotation = await db.CommercialQuotations.FirstAsync();
+        var catalog = await db.CommercialCatalogs.SingleAsync(c => c.Id == quotation.CommercialCatalogId);
+        void Add(string system, string glass, string finish, int quantity, decimal value, int row)
+        {
+            var values = new CatalogItemValues($"{row}", "Room", system, glass, finish, "", "", 1m, 1m, 1m, quantity);
+            var item = new CommercialCatalogItem(catalog.Id, CommercialItemSection.Main, row, values);
+            db.AddRange(item, new CommercialQuotationItem(quotation.Id, item.Id, item.Section, row, values, 1m, value));
+        }
+        Add(" A ", " G ", " F ", 1, 0.10m, 100);
+        Add("A", "G", "F", 1, 0.20m, 101);
+        Add("B", "H", "J", 20, 5.00m, 102);
+        Add("C", "I", "K", 3, 100.00m, 103);
+        Add("a", "g", "f", 1, 0.30m, 104);
+        Add("", "", "", 2, 1m, 105);
+        Add(" ", "G", "", 1, 1m, 106);
+        Add("A", " ", "", 1, 1m, 107);
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear(); counter.Reads = 0;
+        counter.CheckSnapshot = true;
+        var result = await useCase.ExecuteAsync(default);
+        counter.CheckSnapshot = false;
+        Assert.Equal(21, counter.Reads);
+        var mix = result.Mix;
+        foreach (var dimension in new[] { mix.Systems, mix.Glass, mix.AluminumFinishes })
+        {
+            Assert.Equal(8, dimension.TotalItems);
+            Assert.Equal(8, dimension.SpecifiedItems + dimension.UnspecifiedItems);
+            Assert.Equal(4, dimension.ByQuantity.Total);
+            Assert.Equal(20, dimension.ByQuantity.Items[0].TotalQuantity);
+            Assert.Equal(100.00m, dimension.ByQuotedValue.Items[0].TotalQuotedValue);
+        }
+        Assert.Equal("B", mix.Systems.ByQuantity.Items[0].Value);
+        Assert.Equal("A", mix.Systems.ByItemCount.Items[0].Value);
+        Assert.Equal("C", mix.Systems.ByQuotedValue.Items[0].Value);
+        Assert.Equal(3, mix.Systems.ByItemCount.Items[0].ItemCount);
+        Assert.Equal(1.30m, mix.Systems.ByItemCount.Items[0].TotalQuotedValue);
+        Assert.Equal("H", mix.Glass.ByQuantity.Items[0].Value);
+        Assert.Equal("G", mix.Glass.ByItemCount.Items[0].Value);
+        Assert.Equal("I", mix.Glass.ByQuotedValue.Items[0].Value);
+        Assert.Equal("J", mix.AluminumFinishes.ByQuantity.Items[0].Value);
+        Assert.Equal("F", mix.AluminumFinishes.ByItemCount.Items[0].Value);
+        Assert.Equal("K", mix.AluminumFinishes.ByQuotedValue.Items[0].Value);
+        Assert.Equal(0.30m, mix.AluminumFinishes.ByItemCount.Items[0].TotalQuotedValue);
+        Assert.Equal(6, mix.Systems.SpecifiedItems); Assert.Equal(2, mix.Systems.UnspecifiedItems);
+        Assert.Equal(6, mix.Glass.SpecifiedItems); Assert.Equal(5, mix.AluminumFinishes.SpecifiedItems);
+        var combinations = mix.SystemGlassCombinations;
+        Assert.Equal(5, combinations.SpecifiedItems); Assert.Equal(3, combinations.UnspecifiedItems);
+        Assert.Equal(("B", "H"), (combinations.ByQuantity.Items[0].System, combinations.ByQuantity.Items[0].Glass));
+        Assert.Equal(("A", "G"), (combinations.ByItemCount.Items[0].System, combinations.ByItemCount.Items[0].Glass));
+        Assert.Equal(("C", "I"), (combinations.ByQuotedValue.Items[0].System, combinations.ByQuotedValue.Items[0].Glass));
+        Assert.Contains(mix.Systems.ByQuantity.Items, row => row.Value == "a");
+        Assert.DoesNotContain(mix.Systems.ByQuantity.Items, row => string.IsNullOrWhiteSpace(row.Value));
+        var json = JsonSerializer.Serialize(mix);
+        Assert.DoesNotContain("Id", json); Assert.DoesNotContain("No especificado", json);
+        Assert.Contains("0.30", json);
+
+        for (var i = 0; i < 15; i++) Add($"Tie{i:00}", $"Glass{i:00}", $"Finish{i:00}", 10, 10.00m, 200 + i);
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear(); counter.Reads = 0;
+        result = await useCase.ExecuteAsync(default);
+        Assert.Equal(21, counter.Reads);
+        foreach (var dimension in new[] { result.Mix.Systems, result.Mix.Glass, result.Mix.AluminumFinishes })
+            foreach (var ranking in new[] { dimension.ByQuantity, dimension.ByItemCount, dimension.ByQuotedValue })
+            {
+                Assert.Equal(19, ranking.Total); Assert.Equal(10, ranking.Returned); Assert.True(ranking.HasMore);
+            }
+        Assert.Equal("Tie00", result.Mix.Systems.ByQuantity.Items[1].Value);
+        Assert.Equal("Tie08", result.Mix.Systems.ByQuantity.Items[9].Value);
+        Assert.Equal(19, result.Mix.SystemGlassCombinations.ByQuantity.Total);
+        Assert.Equal(JsonSerializer.Serialize(result.Mix), JsonSerializer.Serialize((await useCase.ExecuteAsync(default)).Mix));
+
+        await db.CommercialQuotationItems.ExecuteDeleteAsync();
+        Add("", " ", "", 2, 1.00m, 300);
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        result = await useCase.ExecuteAsync(default);
+        foreach (var dimension in new[] { result.Mix.Systems, result.Mix.Glass, result.Mix.AluminumFinishes })
+        {
+            Assert.Equal(1, dimension.TotalItems); Assert.Equal(0, dimension.SpecifiedItems);
+            Assert.Equal(1, dimension.UnspecifiedItems); Assert.Empty(dimension.ByQuantity.Items);
+            Assert.Equal(0, dimension.ByItemCount.Total); Assert.False(dimension.ByQuotedValue.HasMore);
+        }
+        Assert.Equal(1, result.Mix.SystemGlassCombinations.UnspecifiedItems);
+        Add("Overflow", "G", "F", 1, Money.Maximum, 301);
+        Add("Overflow", "G", "F", 1, 0.01m, 302);
+        await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => useCase.ExecuteAsync(default));
     }
 
     private static Guid AddQuotation(SnGControlDbContext db, string name, decimal total, (int Quantity, decimal Unit, decimal Total)[] rows)
@@ -127,9 +229,11 @@ public sealed class QuotationPortfolioTests
     private sealed class QueryCounter : DbCommandInterceptor
     {
         public int Reads { get; set; }
+        public bool CheckSnapshot { get; set; }
         public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
             CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
         {
+            if (CheckSnapshot) Assert.Equal(System.Data.IsolationLevel.RepeatableRead, command.Transaction!.IsolationLevel);
             Reads++; return ValueTask.FromResult(result);
         }
     }

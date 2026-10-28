@@ -394,3 +394,11 @@ sales/revenue/margin or a historical version archive. No UnitPrice × Quantity o
 recalculation. Use Money.CurrencyCode, preserve monetary precision and reject aggregate overflow.
 Queries are read-only, AsNoTracking and constant in count; preserve a consistent read snapshot.
 No arbitrary limit, new migration, entity changes or storage identifiers in the public projection.
+
+
+Quotation Mix Analytics V2: the same portfolio capability owns system, glass,
+aluminum finish and system/glass aggregates. Quantity, row frequency and quoted
+value are distinct measures; none means demand, sales or profitability. Preserve
+stored case, exclude blank categories, require both combination values. Execute
+bounded SQL rankings and coverage in the existing RepeatableRead snapshot, with
+constant query count and exact monetary overflow checks across all categories.

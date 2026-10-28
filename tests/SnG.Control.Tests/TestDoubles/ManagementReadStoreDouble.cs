@@ -4,7 +4,9 @@ namespace SnG.Control.Tests.TestDoubles;
 
 public sealed class ManagementReadStoreDouble(ProjectStoreDouble projects, ClientStoreDouble clients, ProjectTaskStoreDouble tasks) : IManagementReadStore
 {
-    public QuotationPortfolioData Portfolio { get; set; } = new(new(0, 0.00m), new(0, 0), [], [], []);
+    public QuotationPortfolioData Portfolio { get; set; } = new(new(0, 0.00m), new(0, 0), [], [], [],
+        new(EmptyMix<QuotationMixEntry>(), EmptyMix<QuotationMixEntry>(), EmptyMix<QuotationMixEntry>(), EmptyMix<QuotationCombinationEntry>()));
+    private static QuotationMixDimension<T> EmptyMix<T>() => new(0, 0, 0, new(0, 0, false, []), new(0, 0, false, []), new(0, 0, false, []));
     public int PortfolioCalls { get; private set; }
     public Task<QuotationPortfolioData> GetQuotationPortfolioAsync(CancellationToken token)
     {

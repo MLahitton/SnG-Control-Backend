@@ -246,8 +246,27 @@ Un portfolio vacío devuelve ceros (importe 0.00) y rankings vacíos. No se calc
 ni se reemplaza ProjectTotal por suma de renglones. Los importes usan decimal/COP y escala 2;
 si la suma supera numeric(20,2), falla en lugar de recortarse o alterar Money Contract.
 
-La consulta usa cinco SELECT de agregados/joins con AsNoTracking en una transacción RepeatableRead;
+La consulta usa 21 SELECT de agregados/joins con AsNoTracking en una transacción RepeatableRead;
 el número es constante con cualquier cantidad de proyectos. El orden usa collation C para nombre
 proyecto e ItemNumber; luego SourceRow, ProjectId y Section para ítems, ProjectId para proyectos.
 Solo se exponen identificadores de proyecto, no IDs internos de cotización/catálogo ni storage.
 No hay nueva migración, cambio de entidades ni acceso a archivos XLSX.
+
+
+## Quotation Mix Analytics V2
+
+El mismo endpoint incorpora `mix`: systems, glass, aluminumFinishes y
+systemGlassCombinations. Cada dimension contiene totalItems, specifiedItems,
+unspecifiedItems y tres rankings top 10: byQuantity (unidades), byItemCount
+(renglones) y byQuotedValue (suma de TotalPrice). Cada ranking declara
+ total/returned/hasMore/items; total cuenta categorias, no renglones.
+
+Se conservan los valores almacenados y sus mayusculas. El dominio ya recorta
+espacios al guardar; valores vacios no se convierten en categorias. Una combinacion
+requiere sistema y vidrio. Los desempates usan las otras dos metricas y luego
+valor/tupla con collation C. Una categoria cuyo importe exceda Money falla incluso
+si no aparece en el top. No representa demanda, ventas, preferencias ni rentabilidad;
+no incluye porcentajes ni filtros por periodo, ciudad o cliente.
+
+PostgreSQL agrupa, suma, cuenta y limita; no se cargan todos los items en memoria.
+Los cinco SELECT originales y cuatro por dimension comparten RepeatableRead.

@@ -38,14 +38,20 @@ public sealed partial class EfManagementReadStore
 
     public async Task<QuotationPortfolioData> GetQuotationPortfolioAsync(CancellationToken cancellationToken)
     {
-        // Five bounded queries share one snapshot, including concurrent confirmations.
+        // All 21 aggregate/ranking queries share one snapshot, including concurrent confirmations.
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var summary = await QuotationSummaryQuery().SingleOrDefaultAsync(cancellationToken) ?? new(0, 0.00m);
         var items = await QuotationItemSummaryQuery().SingleOrDefaultAsync(cancellationToken) ?? new(0, 0);
         var byValue = await QuotationItemsQuery(false).ToListAsync(cancellationToken);
         var byUnit = await QuotationItemsQuery(true).ToListAsync(cancellationToken);
         var projects = await QuotationProjectsQuery().ToListAsync(cancellationToken);
+        var mix = new QuotationMix(
+            await ReadMixAsync(MixDimension.System, items.ItemCount, SimpleMix, cancellationToken),
+            await ReadMixAsync(MixDimension.Glass, items.ItemCount, SimpleMix, cancellationToken),
+            await ReadMixAsync(MixDimension.Finish, items.ItemCount, SimpleMix, cancellationToken),
+            await ReadMixAsync(MixDimension.Combination, items.ItemCount,
+                row => new QuotationCombinationEntry(row.Value, row.Glass, row.ItemCount, row.TotalQuantity, row.TotalQuotedValue), cancellationToken));
         await transaction.CommitAsync(cancellationToken);
-        return new(summary, items, byValue, byUnit, projects);
+        return new(summary, items, byValue, byUnit, projects, mix);
     }
 }

@@ -1435,9 +1435,18 @@ IManagementReadStore.GetQuotationPortfolioAsync obtiene dos queries de resumen y
 server-side en EfManagementReadStore.Portfolio. RepeatableRead conserva una única vista entre
 los SELECT, secuenciales sobre el mismo DbContext, con CancellationToken. No hay N+1 ni tracking.
 
-Los tests normales verifican autorización, OpenAPI y traducción Npgsql de las cinco queries.
+Los tests normales verifican autorización, OpenAPI y traducción Npgsql de las queries de portfolio y mix.
 El test optativo QuotationPortfolioTests.RealQueriesAreBoundedExactStableAndDoNotExposeInternalIds
 requiere SNG_PORTFOLIO_TEST_DATABASE: exclusivamente loopback 127.0.0.1, base vacía
 quotation_portfolio_test en cluster temporal sintético. Aplica migraciones solo en esa base,
-verifica resultados, empates, cobertura y cinco lecturas constantes. Nunca usa configuración de
+verifica resultados, empates, cobertura y 21 lecturas constantes. Nunca usa configuración de
 la aplicación. El ejecutor del smoke debe detener y eliminar su cluster temporal al finalizar.
+
+
+Mix V2 agrega cuatro dimensiones en EfManagementReadStore.Mix: una consulta de
+cobertura/maximo monetario y tres rankings por dimension. GROUP BY, COUNT, SUM,
+ORDER BY y LIMIT se ejecutan en PostgreSQL. Son 21 SELECT constantes dentro de la
+misma transaccion RepeatableRead, incluso con portfolio vacio. La cobertura distingue
+items especificados y vacios; las combinaciones exigen ambos valores. No se modifican
+entidades ni migraciones. El smoke sintetico verifica rankings, empates, collation C,
+precision, overflow fuera del top, cobertura y aislamiento de cada lectura.
