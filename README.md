@@ -270,3 +270,39 @@ no incluye porcentajes ni filtros por periodo, ciudad o cliente.
 
 PostgreSQL agrupa, suma, cuenta y limita; no se cargan todos los items en memoria.
 Los cinco SELECT originales y cuatro por dimension comparten RepeatableRead.
+
+
+## Commercial Presentation Outcome V1
+
+El asesor asignado registra la respuesta del cliente con
+`POST /api/projects/{id}/client-quotation-decision`: `{ decision, note }`.
+Decision acepta exactamente Approved, ChangesRequested o Rejected; nota opcional hasta
+2000 caracteres. El contrato rechaza campos adicionales y fechas del cliente.
+Requiere ActiveRole CommercialAdvisor y Subject asignado a PresentQuotationToClient
+InProgress, iniciada, sin completar, con cotización comercial confirmada y revisión
+completada. Una inconsistencia devuelve 409; otro asesor recibe 403.
+
+`ClientQuotationDecision` es una entidad inmutable separada, ligada a Project,
+CommercialQuotation y ProjectTask. La migración AddClientQuotationDecisions crea la tabla,
+FK Restrict, checks y dos índices únicos independientes (cotización y presentación).
+No modifica migraciones anteriores ni CommercialQuotation. Aplicar la migración manualmente
+antes de desplegar este contrato; no se aplica al iniciar la API.
+
+La transacción bloquea proyecto/tareas, comprueba estado y decisión previa, inserta la
+respuesta y llama ProjectTask.Complete con la misma hora UTC de registro. Reutiliza la
+reconciliación de notificaciones, incluido atraso/resolución. Las solicitudes concurrentes
+no sobrescriben: una gana y otra devuelve 409 AlreadyRecorded. Un fallo revierte todo.
+201 devuelve `{ outcome, task }`; outcome usa el mismo contrato de lectura.
+
+`GET /api/projects/{id}/client-quotation-decision` usa el acceso compartido existente.
+200 devuelve available/projectId/commercialQuotationId/presentQuotationTaskId/decision/note/
+recordedAt. Sin registro: available=false y todos los campos opcionales null. Un proyecto
+inexistente o fuera del alcance devuelve 404 ProjectNotFound. No expone identidad del asesor.
+
+Approved no implica pago o producción, ChangesRequested no inicia recotización y Rejected
+no cierra el proyecto. Solo se registra la decisión y completa presentación; no hay edición,
+nueva tarea de Accounting/Presupuestos ni nuevo estado de proyecto.
+
+Pruebas normales offline; el smoke optativo SNG_DECISION_TEST_DATABASE exige un cluster
+sintético loopback vacío con base client_decision_test. Valida migración, concurrencia,
+rollback y acceso compartido. Nunca usar la base operacional para ese smoke.

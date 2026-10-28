@@ -117,6 +117,60 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.ToTable("Clients", (string)null);
                 });
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ClientQuotationDecision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CommercialQuotationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Decision")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("PresentQuotationTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecordedByEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecordedByGoogleSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecordedByName")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommercialQuotationId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ClientQuotationDecisions_CommercialQuotationId");
+
+                    b.HasIndex("PresentQuotationTaskId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_ClientQuotationDecisions_PresentQuotationTaskId");
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("ClientQuotationDecisions", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_ClientQuotationDecisions_Decision", "\"Decision\" IN (1, 2, 3)");
+
+                            t.HasCheckConstraint("CK_ClientQuotationDecisions_Subject", "length(btrim(\"RecordedByGoogleSubject\")) > 0");
+                        });
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.CommercialCatalog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -716,6 +770,27 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.BudgetQuotationVersion", b =>
                 {
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.ClientQuotationDecision", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.CommercialQuotation", null)
+                        .WithMany()
+                        .HasForeignKey("CommercialQuotationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithMany()
+                        .HasForeignKey("PresentQuotationTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("SnG.Control.Domain.Entities.Project", null)
                         .WithMany()
                         .HasForeignKey("ProjectId")

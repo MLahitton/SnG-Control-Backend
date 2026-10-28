@@ -402,3 +402,11 @@ value are distinct measures; none means demand, sales or profitability. Preserve
 stored case, exclude blank categories, require both combination values. Execute
 bounded SQL rankings and coverage in the existing RepeatableRead snapshot, with
 constant query count and exact monetary overflow checks across all categories.
+
+
+Commercial Presentation Outcome V1: only the assigned active CommercialAdvisor may record
+one immutable client decision per confirmed CommercialQuotation and presentation task.
+Use the existing project/task lock order and an atomic insert + task.Complete + notification
+reconciliation transaction. Preserve Lead Time rules. Shared reads remain scope-filtered.
+No decision inference from Completed; Approved != paid, ChangesRequested != requotation,
+Rejected != closed project. No downstream task or project lifecycle in this block.

@@ -189,6 +189,6 @@ public class ManagementHttpTests(ApiFixture fixture) : IClassFixture<ApiFixture>
             foreach (var status in new[] { "200", "401", "403", "404" }) Assert.True(read.GetProperty("responses").TryGetProperty(status, out _));
             Assert.False(read.TryGetProperty("requestBody", out _));
         }
-        Assert.Equal(33, document.GetProperty("paths").EnumerateObject().Sum(p => p.Value.EnumerateObject().Count(o => o.Name is "get" or "post" or "put" or "delete")));
+        Assert.Equal(35, document.GetProperty("paths").EnumerateObject().Sum(p => p.Value.EnumerateObject().Count(o => o.Name is "get" or "post" or "put" or "delete")));
     }
 }

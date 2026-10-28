@@ -1,3 +1,4 @@
+using SnG.Control.Application.Features.ClientQuotationDecisions;
 using SnG.Control.Application.Features.Notifications;
 using SnG.Control.Application.Features.ProjectDocuments;
 using SnG.Control.Application.Features.Management;
@@ -41,6 +42,8 @@ public static class DependencyInjection
     {
         services.AddScoped<SnG.Control.Application.Features.QuotationViews.IQuotationReadStore, EfQuotationReadStore>();
         services.AddScoped<SnG.Control.Application.Features.QuotationViews.QuotationReadService>();
+        services.AddScoped<IClientQuotationDecisionStore, EfClientQuotationDecisionStore>();
+        services.AddScoped<ClientQuotationDecisionService>();
         services.AddActiveRoles();
         services.AddScoped<SnG.Control.Application.Access.ProjectReadAccess>();
         services.AddManagementAuthorization();
@@ -89,6 +92,7 @@ public static class DependencyInjection
                 "Quotation preview technical limits must be positive.").ValidateOnStart();
         services.AddControllers(options => options.Filters.Add<ActiveRoleFilter>()).AddJsonOptions(options =>
         {
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<ClientQuotationDecisionType>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<NotificationKind>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<NotificationState>(allowIntegerValues: false));
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter<LeadTimeStatus>(allowIntegerValues: false));
