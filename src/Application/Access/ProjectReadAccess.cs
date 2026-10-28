@@ -23,6 +23,8 @@ public sealed record ProjectReadScope(string Subject, SystemRole? Role)
             && task.Type == ProjectTaskType.PrepareQuotation && task.AssignedToGoogleSubject == Subject),
         SystemRole.CommercialHead when !string.IsNullOrEmpty(Subject) => project => tasks.Any(task => task.ProjectId == project.Id
             && task.Type == ProjectTaskType.ReviewQuotation && task.AssignedToGoogleSubject == Subject),
+        SystemRole.Accounting when !string.IsNullOrEmpty(Subject) => project => tasks.Any(task => task.ProjectId == project.Id
+            && task.Type == ProjectTaskType.RegisterInitialDeposit && task.Area == OperationalArea.Accounting && task.AssignedToGoogleSubject == Subject),
         _ => project => false
     };
     public bool CanRead(Project project, IEnumerable<ProjectTask> tasks) => Filter(tasks.AsQueryable()).Compile()(project);

@@ -55,7 +55,7 @@ public class LeadTimeCalendarTests
     public void FiveDays_ExcludeStartAndCrossSundayHolidaysAndYear(string start, string expected)
     {
         var timing = new TaskTiming(TimeProvider.System, calendar);
-        foreach (var type in Enum.GetValues<ProjectTaskType>())
+        foreach (var type in new[] { ProjectTaskType.PrepareQuotation, ProjectTaskType.ReviewQuotation, ProjectTaskType.PresentQuotationToClient })
             Assert.Equal(calendar.AtLocalTime(DateOnly.Parse(expected), 17), timing.Deadline(type, calendar.AtLocalTime(DateOnly.Parse(start), 16)));
     }
 

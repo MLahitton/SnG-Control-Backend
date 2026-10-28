@@ -262,6 +262,7 @@ Examples of existing configuration concepts:
 - Authentication:Google:ClientId
 - Authentication:CommercialHeadSubject
 - Authentication:BudgetsAssigneeSubject
+- Authentication:AccountingAssigneeSubject
 - ConnectionStrings:SnGControl
 - FileStorage:RootPath
 Configuration validation errors should name the missing key but not reveal its value.
@@ -419,3 +420,15 @@ Use QuotationRound for workflow selection; reject multiple eligible active tasks
 confirmed Budget differs from latest confirmed Commercial. Portfolio/Mix uses one latest
 Commercial per project by Budget VersionNumber, never confirmation time. History reads are
 bounded first 20 ascending with coverage; no implied current state from truncated history.
+
+
+Accounting Initial Deposit V1: Approved never creates Accounting work automatically. Only the
+assigned active advisor explicitly hands off the current approved Commercial round. Accounting
+area=3 and RegisterInitialDeposit=4; task has null QuotationRound and no SLA/deadline. Only the
+configured active Accounting Subject assigned to that task records one immutable initial deposit.
+Lock project/tasks/source and commit entity, task transition and notifications atomically.
+Use existing Money decimal COP normalization, not float; ReceivedAt is aware/nonfuture and
+RecordedAt is server-owned. StartUntracked + Complete use RecordedAt. Absence is not zero or
+proof of nonpayment. No expected percentage, balance, full-payment inference or Engineering/
+Production transition. Shared reads remain scope-filtered. Do not apply operational migrations
+without explicit migration authorization; preserve previous migration files.

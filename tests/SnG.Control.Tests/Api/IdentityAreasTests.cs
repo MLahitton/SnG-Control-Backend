@@ -138,12 +138,13 @@ public class IdentityAreasTests(MultiRoleFixture fixture) : IClassFixture<MultiR
     [Theory]
     [InlineData("advisor", SystemRole.CommercialAdvisor)]
     [InlineData("budgets", SystemRole.Budgets)]
+    [InlineData("accounting", SystemRole.Accounting)]
     [InlineData("head", SystemRole.CommercialHead)]
     [InlineData("management", SystemRole.Management)]
     public void Resolver_UsesExactSubjectAndOnlyConfiguredMembership(string subject, SystemRole expected)
     {
         var resolver = new ConfiguredRoleResolver(Options.Create(new CommercialAdvisorOptions { CommercialAdvisorSubjects = ["advisor"] }),
-            new IdentityDouble("budgets"), new IdentityDouble("head"), new IdentityDouble("management"));
+            new IdentityDouble("budgets"), new IdentityDouble("head"), new IdentityDouble("management"), new IdentityDouble("accounting"));
         Assert.Equal(expected, Assert.Single(resolver.Resolve(subject)));
         Assert.Empty(resolver.Resolve(subject.ToUpperInvariant()));
         Assert.Empty(resolver.Resolve(" " + subject));
@@ -159,7 +160,7 @@ public class IdentityAreasTests(MultiRoleFixture fixture) : IClassFixture<MultiR
     {
         var http = new DefaultHttpContext { User = new(new ClaimsIdentity([new Claim("sub", "budgets")], "test")) };
         http.Request.Headers[HttpActiveRoleContext.HeaderName] = value;
-        var resolver = new ConfiguredRoleResolver(Options.Create(new CommercialAdvisorOptions()), new IdentityDouble("budgets"), new IdentityDouble("head"), new IdentityDouble("manager"));
+        var resolver = new ConfiguredRoleResolver(Options.Create(new CommercialAdvisorOptions()), new IdentityDouble("budgets"), new IdentityDouble("head"), new IdentityDouble("manager"), new IdentityDouble("accounting"));
         Assert.Null(new HttpActiveRoleContext(new HttpContextAccessor { HttpContext = http }, resolver).Role);
     }
     [Theory]

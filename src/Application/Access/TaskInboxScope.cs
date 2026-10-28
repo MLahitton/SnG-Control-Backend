@@ -12,6 +12,7 @@ public sealed record TaskInboxScope(string Subject, SystemRole? Role)
         SystemRole.CommercialAdvisor => (OperationalArea.Commercial, ProjectTaskType.PresentQuotationToClient),
         SystemRole.Budgets => (OperationalArea.Budgets, ProjectTaskType.PrepareQuotation),
         SystemRole.CommercialHead => (OperationalArea.Commercial, ProjectTaskType.ReviewQuotation),
+        SystemRole.Accounting => (OperationalArea.Accounting, ProjectTaskType.RegisterInitialDeposit),
         _ => null
     };
 

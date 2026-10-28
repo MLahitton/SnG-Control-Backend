@@ -22,6 +22,63 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.AccountingHandoff", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CommercialQuotationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("QuotationRound")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("RegisterInitialDepositTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SentByEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("SentByGoogleSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SentByName")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("SourceClientQuotationDecisionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommercialQuotationId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_AccountingHandoffs_Quotation");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("RegisterInitialDepositTaskId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_AccountingHandoffs_Task");
+
+                    b.HasIndex("SourceClientQuotationDecisionId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_AccountingHandoffs_Decision");
+
+                    b.ToTable("AccountingHandoffs", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_AccountingHandoffs_Actor", "length(btrim(\"SentByGoogleSubject\")) > 0");
+
+                            t.HasCheckConstraint("CK_AccountingHandoffs_Round", "\"QuotationRound\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.BudgetQuotationVersion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -475,6 +532,77 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.InitialDeposit", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountingHandoffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(20, 2)
+                        .HasColumnType("numeric(20,2)");
+
+                    b.Property<Guid>("CommercialQuotationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecordedByEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecordedByGoogleSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RecordedByName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<Guid>("RegisterInitialDepositTaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AccountingHandoffId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InitialDeposits_Handoff");
+
+                    b.HasIndex("CommercialQuotationId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InitialDeposits_Quotation");
+
+                    b.HasIndex("ProjectId");
+
+                    b.HasIndex("RegisterInitialDepositTaskId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_InitialDeposits_Task");
+
+                    b.ToTable("InitialDeposits", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_InitialDeposits_Actor", "length(btrim(\"RecordedByGoogleSubject\")) > 0");
+
+                            t.HasCheckConstraint("CK_InitialDeposits_Amount", "\"Amount\" > 0");
+
+                            t.HasCheckConstraint("CK_InitialDeposits_Receipt", "\"ReceivedAt\" <= \"RecordedAt\"");
+                        });
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.Project", b =>
                 {
                     b.Property<Guid>("Id")
@@ -772,6 +900,8 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.ToTable("ProjectTasks", null, t =>
                         {
+                            t.HasCheckConstraint("CK_ProjectTasks_Accounting", "\"Type\" <> 4 OR (\"QuotationRound\" IS NULL AND \"Area\" = 3 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL)");
+
                             t.HasCheckConstraint("CK_ProjectTasks_QuotationRound", "\"Type\" NOT IN (1,2,3) OR (\"QuotationRound\" IS NOT NULL AND \"QuotationRound\" > 0)");
                         });
                 });
@@ -833,6 +963,33 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("CK_RequotationRequests_Subject", "length(btrim(\"RequestedByGoogleSubject\")) > 0");
                         });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.AccountingHandoff", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.CommercialQuotation", null)
+                        .WithMany()
+                        .HasForeignKey("CommercialQuotationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithMany()
+                        .HasForeignKey("RegisterInitialDepositTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ClientQuotationDecision", null)
+                        .WithMany()
+                        .HasForeignKey("SourceClientQuotationDecisionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.BudgetQuotationVersion", b =>
@@ -924,6 +1081,33 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasOne("SnG.Control.Domain.Entities.CommercialQuotation", null)
                         .WithMany()
                         .HasForeignKey("CommercialQuotationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.InitialDeposit", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.AccountingHandoff", null)
+                        .WithMany()
+                        .HasForeignKey("AccountingHandoffId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.CommercialQuotation", null)
+                        .WithMany()
+                        .HasForeignKey("CommercialQuotationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithMany()
+                        .HasForeignKey("RegisterInitialDepositTaskId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

@@ -29,6 +29,7 @@ public class NotificationWorkerAndConfigTests
         builder.Logging.ClearProviders(); builder.Services.AddApiServices();
         builder.Services.Configure<ManagementOptions>(options => options.ManagementSubject = "management-test-subject"); builder.Services.RemoveAll<IHostedService>();
         builder.Services.Configure<GoogleAuthenticationOptions>(o => o.ClientId = "synthetic-client");
+        builder.Services.Configure<AccountingAssigneeOptions>(o => o.AccountingAssigneeSubject = "synthetic-accountant");
         builder.Services.Configure<CommercialHeadOptions>(o => o.CommercialHeadSubject = "synthetic-head");
         builder.Services.Configure<BudgetsAssigneeOptions>(o => o.BudgetsAssigneeSubject = subject!);
         builder.Services.Configure<FileStorageOptions>(o => o.RootPath = storage.Root);

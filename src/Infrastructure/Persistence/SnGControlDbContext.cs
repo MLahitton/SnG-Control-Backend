@@ -6,6 +6,8 @@ namespace SnG.Control.Infrastructure.Persistence;
 
 public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) : DbContext(options)
 {
+    public DbSet<AccountingHandoff> AccountingHandoffs => Set<AccountingHandoff>();
+    public DbSet<InitialDeposit> InitialDeposits => Set<InitialDeposit>();
     public DbSet<RequotationRequest> RequotationRequests => Set<RequotationRequest>();
     public DbSet<ClientQuotationDecision> ClientQuotationDecisions => Set<ClientQuotationDecision>();
     public DbSet<Client> Clients => Set<Client>();
@@ -25,6 +27,8 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.ApplyConfiguration(new AccountingHandoffConfiguration());
+        modelBuilder.ApplyConfiguration(new InitialDepositConfiguration());
         modelBuilder.ApplyConfiguration(new RequotationRequestConfiguration());
         modelBuilder.ApplyConfiguration(new ClientQuotationDecisionConfiguration());
         modelBuilder.ApplyConfiguration(new ClientConfiguration());

@@ -69,7 +69,7 @@ public class ProjectTaskTests
     [Theory]
     [InlineData(-1)]
     [InlineData(0)]
-    [InlineData(3)]
+    [InlineData(4)]
     public void Constructor_WithUndefinedArea_Throws(int value)
     {
         Assert.Throws<ArgumentOutOfRangeException>("area",
@@ -79,7 +79,7 @@ public class ProjectTaskTests
     [Theory]
     [InlineData(-1)]
     [InlineData(0)]
-    [InlineData(4)]
+    [InlineData(5)]
     public void Constructor_WithUndefinedType_Throws(int value)
     {
         Assert.Throws<ArgumentOutOfRangeException>("type",

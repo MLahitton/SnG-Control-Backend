@@ -1481,8 +1481,35 @@ inexistente o fuera del alcance devuelve 404 ProjectNotFound. No expone identida
 
 Approved no implica pago o producción, ChangesRequested no inicia recotización y Rejected
 no cierra el proyecto. Solo se registra la decisión y completa presentación; no hay edición,
-nueva tarea de Accounting/Presupuestos ni nuevo estado de proyecto.
+nueva tarea automática de Accounting/Presupuestos ni nuevo estado de proyecto.
 
 Pruebas normales offline; el smoke optativo SNG_DECISION_TEST_DATABASE exige un cluster
 sintético loopback vacío con base client_decision_test. Valida migración, concurrencia,
 rollback y acceso compartido. Nunca usar la base operacional para ese smoke.
+
+
+## Accounting Initial Deposit V1
+
+API contracts and configuration are described in README, Accounting Initial Deposit V1.
+Required server setting: Authentication:AccountingAssigneeSubject (User Secrets or environment
+Authentication__AccountingAssigneeSubject); ValidateOnStart errors disclose only the missing key.
+ConfiguredRoleResolver includes Accounting. AccountingAssignee policy requires authenticated
+exact configured Subject and active Accounting; service and store additionally enforce assignment.
+
+AccountingService validates decimal-string money, timezone-aware nonfuture receipt and bounded
+text. EfAccountingStore uses project → tasks → current quotation/decision (handoff) or handoff
+(deposit) locks. SaveChanges/commit includes notifications. Unique constraints map only the
+specific duplicate operation to 409; rollback restores tracked tasks and staged notifications.
+GET uses RepeatableRead and ProjectReadScope. No files or payment-provider integration.
+AccountingHandoff and InitialDeposit use private setters, restrictive FKs and unique source/task
+indices. Currency is derived COP; Amount numeric(20,2), serialized invariant two-decimal string.
+StartUntracked is specific to RegisterInitialDeposit; existing deadline-bearing Start is unchanged.
+TaskTiming has no Accounting calendar policy. ReceivedAt is not used for task start/completion.
+
+Migration 20261028164214_AddAccountingInitialDeposit follows decisions V1 and rounds V2, which
+remain unchanged. Apply pending migrations manually in order only when authorized for the
+operational database. Downgrade refuses existing Accounting data. Isolated test entry point:
+SNG_ACCOUNTING_TEST_DATABASE, loopback PostgreSQL database accounting_test;
+`dotnet test -c Release --filter FullyQualifiedName~AccountingPostgresTests`.
+This fixture checks migrations, round-two source selection, concurrent duplicate rejection,
+transaction rollback, scoped reads/inbox and Management task counts without touching product data.

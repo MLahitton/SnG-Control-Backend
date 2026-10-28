@@ -13,6 +13,7 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
     public void Configure(EntityTypeBuilder<ProjectTask> builder)
     {
         builder.ToTable("ProjectTasks", t => t.HasCheckConstraint("CK_ProjectTasks_QuotationRound", "\"Type\" NOT IN (1,2,3) OR (\"QuotationRound\" IS NOT NULL AND \"QuotationRound\" > 0)"));
+        builder.ToTable(t => t.HasCheckConstraint("CK_ProjectTasks_Accounting", "\"Type\" <> 4 OR (\"QuotationRound\" IS NULL AND \"Area\" = 3 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL)"));
         builder.Property(task => task.DeadlineAt).HasColumnType("timestamp with time zone");
         builder.Property(task => task.WasOverdue);
         builder.HasKey(task => task.Id);

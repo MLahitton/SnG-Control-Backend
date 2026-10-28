@@ -6,15 +6,15 @@ SnG Control es la plataforma en desarrollo para el control operativo y gerencial
 
 El backend permite a Comercial crear clientes (`Client`) y proyectos (`Project`), consultarlos por su identificador y listar cada colección mediante HTTP. También permite enviar explícitamente un proyecto a Presupuestos, donde se asigna o corrige su código SG, consultar las tareas propias del área activa por estado y consultar el historial de tareas del proyecto. Los datos se guardan en PostgreSQL, en la base `sng_control`. Presupuestos puede obtener un preview técnico de una cotización XLSX estándar y confirmar sus valores corregidos para crear el catálogo comercial base oficial. El preview no persiste; la confirmación conserva datos en PostgreSQL y archivos en almacenamiento local configurado. Una acción posterior envía la cotización a Comercial y genera su Excel operativo temporal. El Jefe Comercial puede subir su revisión, consultar importes y diferencias técnicas y confirmar el archivo final, iniciando la presentación al cliente.
 
-La API requiere configuración de autenticación Google, identidades del Jefe Comercial, de la cuenta compartida de Presupuestos y de Gerencia, conexión y carpeta de almacenamiento, además de todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. Este repositorio contiene solo el backend; permite quitar documentos vigentes antes del envío, pero no eliminar clientes ni proyectos. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa ni acceso a Google.
+La API requiere configuración de autenticación Google, identidades del Jefe Comercial, de las cuentas de Presupuestos y Contabilidad y de Gerencia, conexión y carpeta de almacenamiento, además de todas las migraciones del repositorio aplicadas para operar. Los campos de Project solo pueden modificarse mediante la asignación o corrección del SG; confirmar una cotización no modifica Project. Este repositorio contiene solo el backend; permite quitar documentos vigentes antes del envío, pero no eliminar clientes ni proyectos. Las pruebas automatizadas verifican dominio, casos de uso, contratos HTTP, almacenamiento temporal y modelo de persistencia sin requerir una base de datos activa ni acceso a Google.
 
 ## Identidad y acceso
 
 Google identifica al usuario mediante el **Subject (`sub`)**, nunca por email o nombre. `GET /api/auth/me` valida el ID Token y devuelve `subject`, `email`, `name`, `roles` como strings e `isManagement`, derivado de la pertenencia a Management. Esta consulta no requiere área activa.
 
-Las membresías V1 provienen de configuración: `Authentication:CommercialAdvisorSubjects` es una lista explícita de asesores; `BudgetsAssigneeSubject`, `CommercialHeadSubject` y `ManagementSubject` asignan sus respectivos roles. Una cuenta puede poseer varios, pero cada request operacional debe enviar **`X-SnG-Active-Role`** con uno que realmente posea. Sin autenticación válida se responde 401; sin área, con un valor inválido o con un rol ajeno, 403. No hay tabla Users/UserRoles, passwords ni tokens propios.
+Las membresías V1 provienen de configuración: `Authentication:CommercialAdvisorSubjects` es una lista explícita de asesores; `BudgetsAssigneeSubject`, `CommercialHeadSubject`, `AccountingAssigneeSubject` y `ManagementSubject` asignan sus respectivos roles. Una cuenta puede poseer varios, pero cada request operacional debe enviar **`X-SnG-Active-Role`** con uno que realmente posea. Sin autenticación válida se responde 401; sin área, con un valor inválido o con un rol ajeno, 403. No hay tabla Users/UserRoles, passwords ni tokens propios.
 
-Los roles activos implementados son `CommercialAdvisor`, `Budgets`, `CommercialHead` y `Management`. Accounting, Engineering, Production, Logistics e Installation están reservados en el contrato, sin asignación ni experiencia operativa. Solo el Asesor activo crea clientes/proyectos y envía a Presupuestos un proyecto propio. Puede modificar documentos propios; el Jefe Comercial escribe únicamente en su revisión comercial. Presupuestos y Jefe consultan documentos de proyectos con su tarea asignada, incluso completada. Gerencia tiene lectura transversal, sin adquirir escritura por compartir Subject con el creador o el Jefe.
+Los roles activos implementados son `CommercialAdvisor`, `Budgets`, `CommercialHead`, `Accounting` y `Management`. Engineering, Production, Logistics e Installation están reservados en el contrato, sin asignación ni experiencia operativa. Solo el Asesor activo crea clientes/proyectos y envía a Presupuestos un proyecto propio. Puede modificar documentos propios; el Jefe Comercial escribe únicamente en su revisión comercial. Presupuestos y Jefe consultan documentos de proyectos con su tarea asignada, incluso completada. Gerencia tiene lectura transversal, sin adquirir escritura por compartir Subject con el creador o el Jefe.
 
 La política BudgetsAssignee exige membresía y área activa Budgets. SG, preview, confirmación y envío a Comercial requieren también PrepareQuotation asignada al Subject actual; una tarea sin asignación o asignada a otro usuario no permite esas acciones. CommercialHead activo puede descargar el Excel operativo de proyectos con ReviewQuotation asignada y revisar/confirmar según workflow. El archivo final permite acceso al Jefe activo asignado o al Asesor activo propietario.
 
@@ -30,13 +30,14 @@ Management no concede permisos para cargar, reemplazar o quitar documentos, envi
 
 ## Clientes y proyectos
 
-El área activa determina el ámbito de lectura y las acciones permitidas, no solo qué módulos aparecen. Clientes y Proyectos son navegables directamente para las cuatro áreas:
+El área activa determina el ámbito de lectura y las acciones permitidas, no solo qué módulos aparecen. Clientes y Proyectos son navegables directamente para las cinco áreas:
 
 | Área activa | Clientes visibles | Proyectos visibles | Escritura |
 | --- | --- | --- | --- |
 | CommercialAdvisor | Registro compartido de clientes | Propios | Crear cliente/proyecto, documentos propios y envío inicial |
 | Budgets | Relacionados con proyectos accesibles | PrepareQuotation asignada al Subject actual, incluida Completed | Operaciones de Presupuestos según workflow |
 | CommercialHead | Relacionados con proyectos accesibles | ReviewQuotation asignada al Subject actual, incluida Completed | Revisión Comercial según workflow |
+| Accounting | Relacionados con proyectos accesibles | RegisterInitialDeposit asignada, incluida Completed | Registro único del anticipo |
 | Management | Todos | Todos, incluidos legacy | Ninguna |
 
 Backend aplica el ámbito tanto a listados como a URLs directas, tareas y actividad del expediente. La asignación de tarea conserva trazabilidad y acceso histórico; no concede acciones de otra área. Un proyecto legacy sin creador solo es visible por asignación válida o mediante Gerencia. La bandeja personal de notificaciones conserva su filtro por destinatario.
@@ -301,7 +302,7 @@ inexistente o fuera del alcance devuelve 404 ProjectNotFound. No expone identida
 
 Approved no implica pago o producción, ChangesRequested no inicia recotización y Rejected
 no cierra el proyecto. Solo se registra la decisión y completa presentación; no hay edición,
-nueva tarea de Accounting/Presupuestos ni nuevo estado de proyecto.
+nueva tarea automática de Accounting/Presupuestos ni nuevo estado de proyecto.
 
 Pruebas normales offline; el smoke optativo SNG_DECISION_TEST_DATABASE exige un cluster
 sintético loopback vacío con base client_decision_test. Valida migración, concurrencia,
@@ -333,3 +334,42 @@ tareas a proyecto+ronda y agrega RequotationRequests. No se aplica automáticame
 base operativa. El downgrade rechaza bases con recotizaciones para no destruir historia.
 El smoke opt-in RequotationPostgresTests requiere SNG_REQUOTATION_TEST_DATABASE apuntando
 exclusivamente a PostgreSQL local aislado, base `requotation_test`, sin datos de producto.
+
+
+## Accounting Initial Deposit V1
+
+Configurar `Authentication:AccountingAssigneeSubject` (entorno:
+`Authentication__AccountingAssigneeSubject`) mediante configuración privada del servidor.
+Es obligatorio al iniciar; nunca se acepta identidad desde el body. Accounting es rol activo
+con Subject configurado y área 3; su bandeja/proyectos se filtran por asignación. Management
+conserva lectura transversal y sus conteos siguen contando tareas, no proyectos.
+
+- `POST /api/projects/{id}/send-approved-quotation-to-accounting`: asesor activo asignado,
+  presentación completada y Approved de la última Comercial confirmada. Body vacío o `{}`.
+  Crea AccountingHandoff inmutable y RegisterInitialDeposit (tipo 4) Pending, quotationRound=null,
+  sin deadline, más TaskAssigned. Aprobar por sí solo nunca envía a Contabilidad.
+- `POST /api/projects/{id}/initial-deposit`: `{amount:"5000000.00",receivedAt:"2026-10-28T12:00:00-05:00",reference:null,note:null}`.
+  Solo Accounting configurado/asignado. Amount string decimal positivo hasta Money.Maximum,
+  normalizado AwayFromZero, numeric(20,2), COP derivado. ReceivedAt exige zona y no ser futura.
+  Reference/Note opcionales: 200/2000 caracteres. Rechaza campos adicionales/RecordedAt del cliente.
+- POST devuelve 201 `{state,task}`. Duplicados: 409 AlreadySentToAccounting/AlreadyRecorded;
+  sin decisión: ClientDecisionRequired; no Approved: DecisionNotApproved; sin envío:
+  AccountingHandoffRequired. No PUT/PATCH, sobrescritura o reversos financieros en V1.
+- `GET /api/projects/{id}/initial-deposit`: `{projectId,accountingHandoff,deposit}`. Handoff:
+  available/quotationRound/commercialQuotationId/sentAt. Deposit: available/amount/currencyCode/
+  receivedAt/recordedAt/reference/note. Amount string con dos decimales; moneda siempre COP.
+  Ausencia: campos opcionales null, nunca cero. Fuera del alcance: 404. Un envío sin registro
+  no demuestra que el cliente no pagó; un anticipo no demuestra pago total o ingreso.
+
+Escrituras atómicas: lock proyecto/tareas/fuente, entidad, transición y notificaciones. Índices
+únicos por decisión/cotización/tarea y por envío/cotización/tarea impiden duplicados concurrentes.
+ReceivedAt es el evento económico reportado. RecordedAt es del servidor e inicia/completa la
+tarea mediante StartUntracked/Complete. Sin SLA: Pending=NotStarted, Completed=UntrackedLegacy;
+no deadline inventado, porcentaje esperado, saldo, Ingeniería ni Producción.
+
+Migración `20261028164214_AddAccountingInitialDeposit`, posterior a decisiones V1 y rondas V2.
+Las tres pendientes deben aplicarse manualmente en orden antes del smoke operativo acumulado.
+No se aplica nada automáticamente ni se cambian migraciones previas. Downgrade rechaza datos
+Accounting existentes. `AccountingPostgresTests` usa SNG_ACCOUNTING_TEST_DATABASE solo con
+cluster loopback aislado/base `accounting_test`: cadena V1/V2/Accounting, ronda 1 ChangesRequested
+→ ronda 2 Approved, concurrencia, rollback, scopes y conteos sobre datos sintéticos.

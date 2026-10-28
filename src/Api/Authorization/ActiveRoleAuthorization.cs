@@ -14,7 +14,7 @@ public sealed class CommercialAdvisorOptions
 }
 
 public sealed class ConfiguredRoleResolver(IOptions<CommercialAdvisorOptions> advisors,
-    IBudgetsAssigneeIdentity budgets, ICommercialHeadIdentity head, IManagementIdentity management) : IRoleResolver
+    IBudgetsAssigneeIdentity budgets, ICommercialHeadIdentity head, IManagementIdentity management, IAccountingAssigneeIdentity accounting) : IRoleResolver
 {
     public IReadOnlyList<SystemRole> Resolve(string subject)
     {
@@ -24,6 +24,7 @@ public sealed class ConfiguredRoleResolver(IOptions<CommercialAdvisorOptions> ad
         if (string.Equals(subject, budgets.Subject, StringComparison.Ordinal)) roles.Add(SystemRole.Budgets);
         if (string.Equals(subject, head.Subject, StringComparison.Ordinal)) roles.Add(SystemRole.CommercialHead);
         if (string.Equals(subject, management.Subject, StringComparison.Ordinal)) roles.Add(SystemRole.Management);
+        if (string.Equals(subject, accounting.Subject, StringComparison.Ordinal)) roles.Add(SystemRole.Accounting);
         return roles;
     }
 }

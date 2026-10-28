@@ -77,6 +77,7 @@ public class ApiFixture : IAsyncLifetime
         builder.Services.AddScoped<IProjectDocumentStore>(provider => Documents.Store(provider.GetRequiredService<IStreamingFileStorage>(), provider.GetRequiredService<ProjectDocumentAccess>(), provider.GetRequiredService<TaskTiming>()));
         builder.Services.RemoveAll<SnG.Control.Application.Features.Notifications.IProjectNotificationStore>();
         builder.Services.AddSingleton<SnG.Control.Application.Features.Notifications.IProjectNotificationStore>(Notifications);
+        builder.Services.Configure<AccountingAssigneeOptions>(options => options.AccountingAssigneeSubject = "accounting-test-subject");
         builder.Services.Configure<BudgetsAssigneeOptions>(options => options.BudgetsAssigneeSubject = "budgets-test-subject");
         builder.Services.Configure<CommercialHeadOptions>(options => options.CommercialHeadSubject = "google-test-subject");
         builder.Services.Configure<GoogleAuthenticationOptions>(options => options.ClientId = "test-client-id");

@@ -13,6 +13,7 @@ internal static class RoleTestAuthorization
     public static void Register(IServiceCollection services)
     {
         services.AddActiveRoles();
+        services.TryAddSingleton<IAccountingAssigneeIdentity>(new IdentityDouble("unused-accounting"));
         services.AddHttpContextAccessor();
         services.TryAddSingleton<ICommercialHeadIdentity>(new IdentityDouble("unused-head"));
         services.TryAddSingleton<IBudgetsAssigneeIdentity>(new IdentityDouble("unused-budgets"));
@@ -21,7 +22,7 @@ internal static class RoleTestAuthorization
     public static Task<AuthorizationResult> AuthorizeAsync(IServiceProvider provider, ClaimsPrincipal principal, string policy)
     {
         var http = new DefaultHttpContext { User = principal, RequestServices = provider };
-        http.Request.Headers[HttpActiveRoleContext.HeaderName] = policy == "BudgetsAssignee" ? "Budgets" : policy;
+        http.Request.Headers[HttpActiveRoleContext.HeaderName] = policy == "BudgetsAssignee" ? "Budgets" : policy == "AccountingAssignee" ? "Accounting" : policy;
         provider.GetRequiredService<IHttpContextAccessor>().HttpContext = http;
         return provider.GetRequiredService<IAuthorizationService>().AuthorizeAsync(principal, http, policy);
     }

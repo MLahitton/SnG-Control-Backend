@@ -5,7 +5,7 @@ namespace SnG.Control.Domain.Entities;
 public class ProjectTask
 {
     private ProjectTask() { }
-    public ProjectTask(Guid projectId, OperationalArea area, ProjectTaskType type, string? assignedToGoogleSubject = null, DateTime? assignedAtUtc = null, int quotationRound = 1)
+    public ProjectTask(Guid projectId, OperationalArea area, ProjectTaskType type, string? assignedToGoogleSubject = null, DateTime? assignedAtUtc = null, int? quotationRound = null)
     {
         if (projectId == Guid.Empty)
         {
@@ -20,10 +20,11 @@ public class ProjectTask
             throw new ArgumentOutOfRangeException(nameof(type), type, "Type must be a defined value.");
         }
 
+        if (type == ProjectTaskType.RegisterInitialDeposit && area != OperationalArea.Accounting) throw new ArgumentException("Deposit tasks belong to Accounting.", nameof(area));
         if (assignedToGoogleSubject is not null) ArgumentException.ThrowIfNullOrWhiteSpace(assignedToGoogleSubject);
         AssignedToGoogleSubject = assignedToGoogleSubject;
-        if (quotationRound <= 0) throw new ArgumentOutOfRangeException(nameof(quotationRound));
-        QuotationRound = quotationRound;
+        if (quotationRound <= 0 || (type == ProjectTaskType.RegisterInitialDeposit && quotationRound is not null)) throw new ArgumentOutOfRangeException(nameof(quotationRound));
+        QuotationRound = type == ProjectTaskType.RegisterInitialDeposit ? null : quotationRound ?? 1;
         Id = Guid.NewGuid();
         ProjectId = projectId;
         Area = area;
@@ -62,6 +63,14 @@ public class ProjectTask
         DeadlineAt = deadlineAtUtc;
         WasOverdue = false;
         CompletedAt = null;
+    }
+
+    public void StartUntracked(DateTime startedAtUtc)
+    {
+        RequireUtc(startedAtUtc);
+        if (Type != ProjectTaskType.RegisterInitialDeposit || Status != ProjectTaskStatus.Pending || StartedAt is not null || CompletedAt is not null || DeadlineAt is not null || WasOverdue is not null)
+            throw new InvalidOperationException("Only a pending unscheduled accounting task can be started.");
+        Status = ProjectTaskStatus.InProgress; StartedAt = startedAtUtc;
     }
 
     public void Complete(DateTime completedAtUtc)

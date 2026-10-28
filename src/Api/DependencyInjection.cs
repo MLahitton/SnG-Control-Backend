@@ -71,6 +71,9 @@ public static class DependencyInjection
         services.AddScoped<ListProjectNotificationsUseCase>();
         services.AddHostedService<ProjectNotificationBackgroundService>();
         services.AddBudgetsAssigneeAuthorization();
+        services.AddAccountingAssigneeAuthorization();
+        services.AddScoped<SnG.Control.Application.Features.Accounting.IAccountingStore, EfAccountingStore>();
+        services.AddScoped<SnG.Control.Application.Features.Accounting.AccountingService>();
         services.AddGoogleAuthentication();
         services.AddCommercialHeadAuthorization();
         services.AddScoped<ICommercialQuotationParser, XlsxCommercialQuotationParser>();
