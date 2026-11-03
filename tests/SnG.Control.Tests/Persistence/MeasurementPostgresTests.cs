@@ -57,18 +57,42 @@ public sealed class MeasurementPostgresTests
         Assert.Null(await Store(db).ReadAsync(project.Id, new("other", SystemRole.Installation), default));
         Assert.Null(await Store(db).ReadAsync(project.Id, new("installer", SystemRole.Accounting), default));
         Assert.False((await Store(db).ReadAsync(project.Id, new("manager", SystemRole.Management), default))!.CanModify);
-        async Task Refresh() { db.ChangeTracker.Clear(); state = (await Store(db).ReadAsync(project.Id, new("installer", SystemRole.Installation), default))!; }
+        async Task Refresh()
+        {
+            await using var reopened = Db();
+            state = (await Store(reopened).ReadAsync(project.Id, new("installer", SystemRole.Installation), default))!;
+        }
         async Task Execute(MeasurementCommand command) { await using var c = Db(); await Store(c).ExecuteAsync(project.Id, command, actor, default); await Refresh(); }
         MeasurementCommand Command(string action, Guid? id = null, bool? measured = null) => new(Guid.NewGuid(), state.Revision, action, id, measured);
-        var first = state.Structures[0]; var mark = Command("Measure", first.Id, true);
+        var quotationBefore = System.Text.Json.JsonSerializer.Serialize(await db.CommercialQuotationItems.AsNoTracking().Where(i => i.CommercialQuotationId == quote.Id).OrderBy(i => i.Id).ToArrayAsync());
+        var first = state.Structures.First(s => s.UnitCount == 6); var mark = Command("Measure", first.Id, true);
         await using (var a = Db()) await using (var b = Db()) await Task.WhenAll(Store(a).ExecuteAsync(project.Id, mark, actor, default), Store(b).ExecuteAsync(project.Id, mark, actor, default));
-        await Refresh(); Assert.Equal(1, state.Summary.Measured); Assert.Single(state.History, h => h.Action == "Measure");
+        await Refresh(); Assert.NotNull(state.Structures.Single(s => s.Id == first.Id).MeasuredAt); Assert.Equal(1, state.Summary.Measured); Assert.Single(state.History, h => h.Action == "Measure");
         await Error("MeasurementRequestConflict", () => Store(db).ExecuteAsync(project.Id, mark with { Measured = false }, actor, default));
         await Error("MeasurementRevisionConflict", () => Store(db).ExecuteAsync(project.Id, mark with { RequestKey = Guid.NewGuid() }, actor, default));
-        await Execute(Command("Measure", first.Id, false)); Assert.Equal(0, state.Summary.Measured); Assert.Contains(state.History, h => h.Action == "Unmeasure" && h.Actor.Name == "Installer");
+        await Execute(Command("Measure", first.Id, false)); Assert.Equal(0, state.Summary.Measured); Assert.Null(state.Structures.Single(s => s.Id == first.Id).MeasuredAt); Assert.Contains(state.History, h => h.Action == "Unmeasure" && h.Actor.Name == "Installer");
         await Execute(new(Guid.NewGuid(), state.Revision, "Add", Description: "Onsite door", Width: 1.3m, Height: 2.1m, Note: "Synthetic site note"));
         var added = state.Structures.Single(s => s.ItemId is null); Assert.Null(added.MeasuredAt); Assert.Equal(22, state.Summary.Active);
-        await Execute(Command("Retire", added.Id)); await Execute(Command("Retire", first.Id)); Assert.Equal(20, state.Summary.Active); Assert.Equal(2, state.Summary.Retired);
+        await Execute(Command("Retire", added.Id));
+        var retire = Command("Retire", first.Id);
+        await using (var a = Db()) await using (var b = Db())
+        {
+            async Task<string> Retire(SnGControlDbContext context, MeasurementCommand command)
+            { try { await Store(context).ExecuteAsync(project.Id, command, actor, default); return "OK"; } catch (DocumentException e) { return e.Code; } }
+            var outcomes = await Task.WhenAll(Retire(a, retire), Retire(b, retire with { RequestKey = Guid.NewGuid() }));
+            Assert.Single(outcomes, o => o == "OK"); Assert.Single(outcomes, o => o == "MeasurementRevisionConflict");
+        }
+        await Refresh(); Assert.Equal(20, state.Summary.Active); Assert.Equal(20, state.Summary.Pending); Assert.Equal(0, state.Summary.Progress); Assert.Equal(2, state.Summary.Retired);
+        Assert.Equal(22, state.Structures.Count); Assert.Equal(5, state.Structures.Count(s => s.ItemId == first.ItemId && s.RetiredAt is null));
+        foreach (var retiredId in new[] { first.Id, added.Id })
+        {
+            Assert.NotNull(state.Structures.Single(s => s.Id == retiredId).RetiredAt);
+            var audit = Assert.Single(state.History, h => h.Action == "Retire" && h.StructureId == retiredId);
+            Assert.Equal("Installer", audit.Actor.Name); Assert.Equal(DateTimeKind.Utc, audit.At.Kind);
+            await using var reopened = Db();
+            var saved = await reopened.MeasurementStructures.AsNoTracking().SingleAsync(s => s.Id == retiredId);
+            Assert.Equal("installer", saved.RetiredBySubject); Assert.Equal(audit.At, saved.RetiredAt);
+        }
         await Error("MeasurementStructureRetired", () => Store(db).ExecuteAsync(project.Id, Command("Retire", added.Id), actor, default));
         await Error("MeasurementsIncomplete", () => Store(db).ExecuteAsync(project.Id, Command("Submit") with { DocumentIds = [Guid.NewGuid()] }, actor, default));
         foreach (var row in state.Structures.Where(s => s.RetiredAt is null).ToArray()) await Execute(Command("Measure", row.Id, true));
@@ -94,6 +118,8 @@ public sealed class MeasurementPostgresTests
         Assert.Equal(2, await db.MeasurementSubmissionDocuments.CountAsync(d => d.ProjectId == project.Id));
         await Error("MeasurementsLocked", () => Store(db).ExecuteAsync(project.Id, Command("Measure", first.Id, false), actor, default));
         await Error("MeasurementsLocked", () => Documents(db).UploadMeasurementsAsync(project.Id, Uploads("late.pdf"), default));
+        await Error("MeasurementsLocked", () => Store(db).ExecuteAsync(project.Id, Command("Retire", state.Structures.First(s => s.RetiredAt is null).Id), actor, default));
+        Assert.Equal(quotationBefore, System.Text.Json.JsonSerializer.Serialize(await db.CommercialQuotationItems.AsNoTracking().Where(i => i.CommercialQuotationId == quote.Id).OrderBy(i => i.Id).ToArrayAsync()));
         Assert.Equal(14, await db.CommercialQuotationItems.CountAsync(i => i.CommercialQuotationId == quote.Id)); Assert.Equal(21, await db.CommercialQuotationItems.Where(i => i.CommercialQuotationId == quote.Id).SumAsync(i => i.Quantity));
         Assert.Equal(3, await db.ProjectTasks.CountAsync(t => t.ProjectId == project.Id));
         Assert.Null((await db.ProjectTasks.AsNoTracking().SingleAsync(t => t.Id == task.Id)).DeadlineAt);
