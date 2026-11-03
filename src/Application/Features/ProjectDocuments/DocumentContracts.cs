@@ -32,3 +32,9 @@ public interface IProjectDocumentStore
     Task RemoveAsync(Guid projectId, Guid documentId, CancellationToken token);
     Task<SendProjectToBudgetsResult> SendToBudgetsAsync(Guid projectId, CancellationToken token);
 }
+
+public interface IReceiptDocumentStore
+{
+    Task RequireReceiptUploadAccessAsync(Guid id, CancellationToken token);
+    Task<DocumentBatchResponse> UploadReceiptsAsync(Guid id, IAsyncEnumerable<DocumentUpload> uploads, CancellationToken token);
+}

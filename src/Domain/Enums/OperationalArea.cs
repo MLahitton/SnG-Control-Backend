@@ -4,5 +4,6 @@ public enum OperationalArea
 {
     Commercial = 1,
     Budgets = 2,
-    Accounting = 3
+    Accounting = 3,
+    Installation = 4
 }

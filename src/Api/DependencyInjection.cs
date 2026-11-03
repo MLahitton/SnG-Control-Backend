@@ -57,6 +57,7 @@ public static class DependencyInjection
         services.AddScoped<ProjectDocumentAccess>();
         services.AddScoped<ProjectDocumentService>();
         services.AddScoped<IProjectDocumentStore, EfProjectDocumentStore>();
+        services.AddScoped<IReceiptDocumentStore, EfProjectDocumentStore>();
         services.AddScoped<IStreamingFileStorage, LocalFileStorage>();
         services.AddScoped<IProjectDocumentArchive, ProjectDocumentArchive>();
         services.AddSingleton(TimeProvider.System);
@@ -72,6 +73,10 @@ public static class DependencyInjection
         services.AddHostedService<ProjectNotificationBackgroundService>();
         services.AddBudgetsAssigneeAuthorization();
         services.AddAccountingAssigneeAuthorization();
+        services.AddOptions<InstallationAssigneeOptions>().BindConfiguration("Authentication");
+        services.AddSingleton<SnG.Control.Application.Identity.IInstallationAssigneeIdentity, ConfiguredInstallationAssigneeIdentity>();
+        services.AddScoped<SnG.Control.Application.Features.Accounting.IDepositVerificationStore, EfDepositVerificationStore>();
+        services.AddScoped<SnG.Control.Application.Features.Accounting.DepositVerificationService>();
         services.AddScoped<SnG.Control.Application.Features.Accounting.IAccountingStore, EfAccountingStore>();
         services.AddScoped<SnG.Control.Application.Features.Accounting.AccountingService>();
         services.AddGoogleAuthentication();

@@ -15,7 +15,7 @@ public class ProjectDocumentModelTests
         using var db = new SnGControlDbContext(new DbContextOptionsBuilder<SnGControlDbContext>().UseNpgsql().Options);
         var model = db.GetService<IDesignTimeModel>().Model;
         var doc = model.FindEntityType(typeof(ProjectDocument))!;
-        Assert.Equal(14, doc.GetProperties().Count()); Assert.Null(doc.FindProperty("IsCurrent"));
+        Assert.Equal(15, doc.GetProperties().Count()); Assert.Null(doc.FindProperty("IsCurrent"));
         Assert.Equal(255, doc.FindProperty("OriginalFileName")!.GetMaxLength());
         Assert.Contains(doc.GetIndexes(), i => i.IsUnique && i.Properties.Single().Name == "StorageKey");
         Assert.DoesNotContain(doc.GetIndexes(), i => i.IsUnique && i.Properties.Any(p => p.Name == "OriginalFileName"));
@@ -34,8 +34,8 @@ public class ProjectDocumentModelTests
         Assert.Contains("1, 2, 3, 4, 5", notification.GetCheckConstraints().Single(c => c.Name == "CK_ProjectNotifications_Kind").Sql);
         Assert.Contains("\"Kind\" <> 4 AND \"State\" = 1", notification.GetCheckConstraints().Single(c => c.Name == "CK_ProjectNotifications_State").Sql);
         Assert.Equal(5, (int)NotificationKind.ProjectDocumentsUpdated);
-        Assert.Equal(14, db.Database.GetMigrations().Count());
-        Assert.EndsWith("AddAccountingInitialDeposit", db.Database.GetMigrations().Last());
+        Assert.Equal(16, db.Database.GetMigrations().Count());
+        Assert.EndsWith("AddDepositReceiptCorrectionTasks", db.Database.GetMigrations().Last());
         Assert.False(db.Database.HasPendingModelChanges());
     }
 }

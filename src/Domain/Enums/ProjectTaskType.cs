@@ -5,5 +5,7 @@ public enum ProjectTaskType
     PrepareQuotation = 1,
     ReviewQuotation = 2,
     PresentQuotationToClient = 3,
-    RegisterInitialDeposit = 4
+    RegisterInitialDeposit = 4,
+    TakeMeasurements = 5,
+    CorrectDepositReceipts = 6
 }

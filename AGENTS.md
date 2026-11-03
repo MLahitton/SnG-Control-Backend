@@ -432,3 +432,12 @@ RecordedAt is server-owned. StartUntracked + Complete use RecordedAt. Absence is
 proof of nonpayment. No expected percentage, balance, full-payment inference or Engineering/
 Production transition. Shared reads remain scope-filtered. Do not apply operational migrations
 without explicit migration authorization; preserve previous migration files.
+
+Deposit Verification: the assigned active advisor uploads receipts only for the current Approved
+Commercial round and explicitly submits exact immutable document IDs with an idempotency key.
+Only one pending review per project. Rejection requires a note and preserves all evidence;
+resubmission reuses the pending Accounting task. Approval atomically records InitialDeposit,
+completes Accounting, notifies the advisor and creates one TakeMeasurements=5 task in
+Installation area=4, assigned by Authentication:InstallationAssigneeSubject, without SLA.
+Retired direct Accounting HTTP writes must not bypass verification. Preserve document versions,
+historical deposits and project/task locking; no operational migration without authorization.

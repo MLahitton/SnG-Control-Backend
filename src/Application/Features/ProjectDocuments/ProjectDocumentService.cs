@@ -30,9 +30,9 @@ public sealed class ProjectDocumentService(IProjectDocumentStore store, ProjectD
         var initial = state.HandoffItems.Select(i => i.ProjectDocumentId).ToHashSet();
         var canModify = access.CanModify(state.Project);
         var sent = state.PrepareQuotation is not null || state.Handoff is not null;
-        return new(state.Documents.Where(d => d.RemovedAt is null).Select(d => DocumentResponse.From(d, initial)).ToArray(),
+        return new(state.Documents.Where(d => d.RemovedAt is null && !d.IsPaymentReceipt).Select(d => DocumentResponse.From(d, initial)).ToArray(),
             state.Handoff is { } h ? new(h.Id, h.SentAt, new(h.SentByEmail, h.SentByName), initial.Order().ToArray()) : null,
-            canModify, canModify && !sent, access.CanSendToBudgets(state.Project) && !sent && state.Documents.Any(d => d.IsCurrent));
+            canModify, canModify && !sent, access.CanSendToBudgets(state.Project) && !sent && state.Documents.Any(d => d.IsCurrent && !d.IsPaymentReceipt));
     }
     public async Task<DocumentDownload> DownloadAsync(Guid id, Guid documentId, CancellationToken token)
     {
@@ -48,7 +48,7 @@ public sealed class ProjectDocumentService(IProjectDocumentStore store, ProjectD
         var state = await ReadAsync(id, token);
         if (initial && state.Handoff is null) throw new DocumentException(409, "InitialHandoffUnavailable");
         var ids = state.HandoffItems.Select(i => i.ProjectDocumentId).ToHashSet();
-        var documents = state.Documents.Where(d => initial ? ids.Contains(d.Id) : d.IsCurrent).OrderBy(d => d.UploadedAt).ThenBy(d => d.Id).ToArray();
+        var documents = state.Documents.Where(d => !d.IsPaymentReceipt && (initial ? ids.Contains(d.Id) : d.IsCurrent)).OrderBy(d => d.UploadedAt).ThenBy(d => d.Id).ToArray();
         try { return new(await archive.CreateAsync(documents, token), initial ? "initial-handoff.zip" : "current.zip"); }
         catch (FileNotFoundException) { throw new DocumentException(500, "DocumentUnavailable"); }
         catch (DirectoryNotFoundException) { throw new DocumentException(500, "DocumentUnavailable"); }

@@ -1,3 +1,4 @@
+using SnG.Control.Domain.Enums;
 using SnG.Control.Application.Access;
 using SnG.Control.Application.Scheduling;
 using SnG.Control.Application.Features.Projects;
@@ -14,6 +15,8 @@ public class ListProjectTasksByProjectUseCase(IProjectStore projects, IProjectTa
         }
 
         var entities = await tasks.ListByProjectAsync(projectId, cancellationToken);
-        return entities.Select(task => ProjectTaskResponse.FromEntity(task, timing)).ToArray();
+        return entities.Where(task => task.Type != ProjectTaskType.CorrectDepositReceipts
+            || access.Scope.Role == SystemRole.Management
+            || (access.Scope.Role == SystemRole.CommercialAdvisor && task.AssignedToGoogleSubject == access.Scope.Subject)).Select(task => ProjectTaskResponse.FromEntity(task, timing)).ToArray();
     }
 }

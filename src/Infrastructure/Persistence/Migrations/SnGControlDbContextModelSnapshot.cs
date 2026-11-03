@@ -532,6 +532,94 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.DepositVerification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AccountingHandoffId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CorrectionTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DecidedByGoogleSubject")
+                        .HasColumnType("text");
+
+                    b.Property<string>("DecidedByName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RequestKey")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SubmittedByGoogleSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CorrectionTaskId")
+                        .IsUnique();
+
+                    b.HasIndex("ProjectId", "RequestKey")
+                        .IsUnique()
+                        .HasDatabaseName("UX_DepositVerifications_Request");
+
+                    b.HasIndex(new[] { "AccountingHandoffId" }, "UX_DepositVerifications_Approved")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 2");
+
+                    b.HasIndex(new[] { "ProjectId" }, "UX_DepositVerifications_Pending")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 1");
+
+                    b.ToTable("DepositVerifications", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_DepositVerifications_State", "(\"Status\" = 1 AND \"DecidedAt\" IS NULL AND \"DecidedByGoogleSubject\" IS NULL AND \"Note\" IS NULL) OR (\"Status\" IN (2,3) AND \"DecidedAt\" IS NOT NULL AND \"DecidedByGoogleSubject\" IS NOT NULL AND \"DecidedAt\" >= \"SubmittedAt\" AND length(btrim(\"DecidedByGoogleSubject\")) > 0 AND (\"Status\" <> 3 OR (\"Note\" IS NOT NULL AND length(btrim(\"Note\")) > 0)))");
+
+                            t.HasCheckConstraint("CK_DepositVerifications_Submitter", "length(btrim(\"SubmittedByGoogleSubject\")) > 0");
+                        });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.DepositVerificationDocument", b =>
+                {
+                    b.Property<Guid>("DepositVerificationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("DepositVerificationId", "ProjectDocumentId");
+
+                    b.HasIndex("DepositVerificationId", "ProjectId");
+
+                    b.HasIndex("ProjectId", "ProjectDocumentId");
+
+                    b.ToTable("DepositVerificationDocuments", (string)null);
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.InitialDeposit", b =>
                 {
                     b.Property<Guid>("Id")
@@ -662,6 +750,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<string>("ContentType")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("IsPaymentReceipt")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("OriginalFileName")
                         .IsRequired()
@@ -834,7 +925,7 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.ToTable("ProjectNotifications", null, t =>
                         {
-                            t.HasCheckConstraint("CK_ProjectNotifications_Kind", "\"Kind\" IN (1, 2, 3, 4, 5)");
+                            t.HasCheckConstraint("CK_ProjectNotifications_Kind", "\"Kind\" IN (1, 2, 3, 4, 5, 6, 7, 8)");
 
                             t.HasCheckConstraint("CK_ProjectNotifications_State", "(\"Kind\" <> 4 AND \"State\" = 1 AND \"ResolvedAt\" IS NULL) OR (\"Kind\" = 4 AND ((\"State\" = 2 AND \"ResolvedAt\" IS NULL) OR (\"State\" = 3 AND \"ResolvedAt\" IS NOT NULL)))");
 
@@ -886,6 +977,14 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Area", "Status");
 
+                    b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_ActiveDepositCorrection")
+                        .IsUnique()
+                        .HasFilter("\"Type\" = 6 AND \"Status\" IN (1,2)");
+
+                    b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_Measurements")
+                        .IsUnique()
+                        .HasFilter("\"Type\" = 5");
+
                     b.HasIndex(new[] { "ProjectId", "QuotationRound" }, "UX_ProjectTasks_ProjectId_PrepareQuotation")
                         .IsUnique()
                         .HasFilter("\"Type\" = 1");
@@ -901,6 +1000,10 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.ToTable("ProjectTasks", null, t =>
                         {
                             t.HasCheckConstraint("CK_ProjectTasks_Accounting", "\"Type\" <> 4 OR (\"QuotationRound\" IS NULL AND \"Area\" = 3 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_ProjectTasks_DepositCorrection", "\"Type\" <> 6 OR (\"QuotationRound\" IS NULL AND \"Area\" = 1 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_ProjectTasks_Installation", "\"Type\" <> 5 OR (\"QuotationRound\" IS NULL AND \"Area\" = 4 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL)");
 
                             t.HasCheckConstraint("CK_ProjectTasks_QuotationRound", "\"Type\" NOT IN (1,2,3) OR (\"QuotationRound\" IS NOT NULL AND \"QuotationRound\" > 0)");
                         });
@@ -1081,6 +1184,43 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasOne("SnG.Control.Domain.Entities.CommercialQuotation", null)
                         .WithMany()
                         .HasForeignKey("CommercialQuotationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.DepositVerification", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.AccountingHandoff", null)
+                        .WithMany()
+                        .HasForeignKey("AccountingHandoffId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithMany()
+                        .HasForeignKey("CorrectionTaskId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.DepositVerificationDocument", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.DepositVerification", null)
+                        .WithMany()
+                        .HasForeignKey("DepositVerificationId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId", "ProjectDocumentId")
+                        .HasPrincipalKey("ProjectId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

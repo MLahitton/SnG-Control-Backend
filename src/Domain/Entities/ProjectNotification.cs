@@ -11,7 +11,7 @@ public sealed class ProjectNotification
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(task.AssignedToGoogleSubject);
         ArgumentException.ThrowIfNullOrWhiteSpace(title); ArgumentException.ThrowIfNullOrWhiteSpace(message);
-        if (!Enum.IsDefined(kind) || kind == NotificationKind.ProjectDocumentsUpdated) throw new ArgumentOutOfRangeException(nameof(kind));
+        if (!Enum.IsDefined(kind) || kind >= NotificationKind.ProjectDocumentsUpdated) throw new ArgumentOutOfRangeException(nameof(kind));
         if (scheduledAt.Kind != DateTimeKind.Utc || createdAt.Kind != DateTimeKind.Utc) throw new ArgumentException("UTC timestamps required.");
         Id = Guid.NewGuid(); ProjectId = task.ProjectId; ProjectTaskId = task.Id;
         RecipientGoogleSubject = task.AssignedToGoogleSubject; Kind = kind; Title = title; Message = message;
@@ -21,7 +21,7 @@ public sealed class ProjectNotification
     }
     public static string Key(ProjectTask task, NotificationKind kind)
     {
-        if (kind == NotificationKind.ProjectDocumentsUpdated) throw new ArgumentException("Document updates require an event id.");
+        if (kind >= NotificationKind.ProjectDocumentsUpdated) throw new ArgumentException("Document and review notifications require an event id.");
         ArgumentException.ThrowIfNullOrWhiteSpace(task.AssignedToGoogleSubject);
         var recipient = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(task.AssignedToGoogleSubject)));
         var cycle = task.AssignedAt.Ticks - task.AssignedAt.Ticks % 10;
@@ -50,6 +50,18 @@ public sealed class ProjectNotification
             CreatedAt = at,
             EventKey = $"{task.Id:D}:5:{hash}:{batchId:D}"
         };
+    }
+    public static ProjectNotification DepositReview(ProjectTask task, string recipient, Guid reviewId, NotificationKind kind, DateTime at)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(recipient);
+        if (reviewId == Guid.Empty || at.Kind != DateTimeKind.Utc || kind is not (NotificationKind.DepositVerificationRequested or NotificationKind.DepositVerificationApproved or NotificationKind.DepositVerificationRejected))
+            throw new ArgumentException("Invalid review event.");
+        var title = kind switch { NotificationKind.DepositVerificationRequested => "Anticipo pendiente de verificación", NotificationKind.DepositVerificationApproved => "Anticipo aprobado", _ => "Anticipo rechazado" };
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(recipient)));
+        return new ProjectNotification { Id = Guid.NewGuid(), ProjectId = task.ProjectId, ProjectTaskId = task.Id,
+            RecipientGoogleSubject = recipient, Kind = kind, State = NotificationState.Informational, Title = title,
+            Message = "Consulta los comprobantes y las observaciones en el proyecto.", ScheduledAt = at, CreatedAt = at,
+            EventKey = $"{task.Id:D}:{(int)kind}:{hash}:{reviewId:D}" };
     }
     public void Resolve(DateTime completedAt)
     {

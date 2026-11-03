@@ -9,7 +9,7 @@ public sealed class ProjectDocument
 
     private ProjectDocument() { }
     public ProjectDocument(Guid id, Guid projectId, string fileName, string? contentType, long sizeBytes,
-        Guid batchId, DateTime uploadedAt, string subject, string? email, string? name)
+        Guid batchId, DateTime uploadedAt, string subject, string? email, string? name, bool isPaymentReceipt = false)
     {
         if (id == Guid.Empty || projectId == Guid.Empty || batchId == Guid.Empty) throw new ArgumentException("Document identifiers required.");
         ValidateFileName(fileName);
@@ -20,7 +20,7 @@ public sealed class ProjectDocument
         ContentType = contentType is { Length: > 0 and <= 255 } && !contentType.Any(char.IsControl) ? contentType : null;
         SizeBytes = sizeBytes; UploadBatchId = batchId; UploadedAt = uploadedAt;
         UploadedByGoogleSubject = subject; UploadedByEmail = email; UploadedByName = name;
-        StorageKey = Key(projectId, id);
+        StorageKey = Key(projectId, id); IsPaymentReceipt = isPaymentReceipt;
     }
     public static string Key(Guid projectId, Guid id) => $"projects/{projectId:D}/documents/{id:D}/content";
     public static void ValidateFileName(string fileName)
@@ -31,7 +31,7 @@ public sealed class ProjectDocument
     }
     public void ReplaceWith(ProjectDocument replacement, DateTime at)
     {
-        if (!IsCurrent || replacement.Id == Id || replacement.ProjectId != ProjectId || !replacement.IsCurrent)
+        if (!IsCurrent || replacement.Id == Id || replacement.ProjectId != ProjectId || replacement.IsPaymentReceipt != IsPaymentReceipt || !replacement.IsCurrent)
             throw new InvalidOperationException("Invalid document replacement.");
         ValidateChangeTime(at);
         ReplacedAt = at; ReplacedByDocumentId = replacement.Id;
@@ -45,6 +45,7 @@ public sealed class ProjectDocument
     {
         if (at.Kind != DateTimeKind.Utc || at < UploadedAt) throw new ArgumentException("Invalid document timestamp.");
     }
+    public bool IsPaymentReceipt { get; private set; }
     public Guid Id { get; private set; }
     public Guid ProjectId { get; private set; }
     public string OriginalFileName { get; private set; } = "";

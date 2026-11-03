@@ -52,6 +52,8 @@ public sealed class ProjectNotificationPlanner(TaskTiming timing)
         (ProjectTaskType.PresentQuotationToClient, NotificationKind.DueInTwoBusinessDays) => "Presentación al cliente vence en 2 días laborales",
         (ProjectTaskType.PresentQuotationToClient, NotificationKind.DueToday) => "Presentación al cliente vence hoy",
         (ProjectTaskType.PresentQuotationToClient, NotificationKind.Overdue) => "Presentación al cliente atrasada",
+        (ProjectTaskType.CorrectDepositReceipts, NotificationKind.TaskAssigned) => "Corregir comprobantes del anticipo",
+        (ProjectTaskType.TakeMeasurements, NotificationKind.TaskAssigned) => "Toma de medidas asignada",
         (ProjectTaskType.RegisterInitialDeposit, NotificationKind.TaskAssigned) => "Registro de anticipo inicial asignado",
         _ => throw new ArgumentOutOfRangeException(nameof(type), "No operational notification text is defined.")
     };

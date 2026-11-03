@@ -12,6 +12,7 @@ public sealed record TaskInboxScope(string Subject, SystemRole? Role)
         SystemRole.CommercialAdvisor => (OperationalArea.Commercial, ProjectTaskType.PresentQuotationToClient),
         SystemRole.Budgets => (OperationalArea.Budgets, ProjectTaskType.PrepareQuotation),
         SystemRole.CommercialHead => (OperationalArea.Commercial, ProjectTaskType.ReviewQuotation),
+        SystemRole.Installation => (OperationalArea.Installation, ProjectTaskType.TakeMeasurements),
         SystemRole.Accounting => (OperationalArea.Accounting, ProjectTaskType.RegisterInitialDeposit),
         _ => null
     };
@@ -21,6 +22,6 @@ public sealed record TaskInboxScope(string Subject, SystemRole? Role)
     public Expression<Func<ProjectTask, bool>> Filter()
     {
         if (Assignment is not { } assignment || string.IsNullOrWhiteSpace(Subject)) return task => false;
-        return task => task.Area == assignment.Area && task.Type == assignment.Type && task.AssignedToGoogleSubject == Subject;
+        return task => task.Area == assignment.Area && (task.Type == assignment.Type || (Role == SystemRole.CommercialAdvisor && task.Type == ProjectTaskType.CorrectDepositReceipts)) && task.AssignedToGoogleSubject == Subject;
     }
 }

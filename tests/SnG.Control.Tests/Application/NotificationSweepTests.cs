@@ -111,7 +111,7 @@ public class NotificationSweepTests
         Assert.Equal("assigned-subject", notification.RecipientGoogleSubject); Assert.Equal(NotificationState.Informational, notification.State);
         foreach (var kind in Enum.GetValues<NotificationKind>())
         {
-            if (kind == NotificationKind.ProjectDocumentsUpdated)
+            if (kind >= NotificationKind.ProjectDocumentsUpdated)
             {
                 Assert.Throws<ArgumentOutOfRangeException>(() => ProjectNotificationPlanner.Title(type, kind));
                 Assert.NotEqual(kind, notification.Kind);

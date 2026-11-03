@@ -69,7 +69,7 @@ public class ProjectTaskTests
     [Theory]
     [InlineData(-1)]
     [InlineData(0)]
-    [InlineData(4)]
+    [InlineData(5)]
     public void Constructor_WithUndefinedArea_Throws(int value)
     {
         Assert.Throws<ArgumentOutOfRangeException>("area",
@@ -79,7 +79,7 @@ public class ProjectTaskTests
     [Theory]
     [InlineData(-1)]
     [InlineData(0)]
-    [InlineData(5)]
+    [InlineData(7)]
     public void Constructor_WithUndefinedType_Throws(int value)
     {
         Assert.Throws<ArgumentOutOfRangeException>("type",
@@ -89,6 +89,8 @@ public class ProjectTaskTests
     [Theory]
     [InlineData(OperationalArea.Commercial, 1)]
     [InlineData(OperationalArea.Budgets, 2)]
+    [InlineData(OperationalArea.Accounting, 3)]
+    [InlineData(OperationalArea.Installation, 4)]
     public void AreaValues_MatchDataContract(OperationalArea area, int value) => Assert.Equal(value, (int)area);
 
     [Fact]

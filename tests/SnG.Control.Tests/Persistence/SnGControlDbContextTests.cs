@@ -135,7 +135,7 @@ public class SnGControlDbContextTests
     {
         using var context = CreateContext();
 
-        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff", "AddCommercialIdentityAssignments", "AddCommercialQuotationConfirmation", "AddLeakTimesAndNotifications", "AddProjectDocumentsAndHandoff", "FormalizeCommercialQuotationMoney", "AddClientQuotationDecisions", "AddVersionedRequotationRounds", "AddAccountingInitialDeposit" },
+        Assert.Equal(new[] { "InitialCreate", "AddProjectTasks", "EnforceUniquePrepareQuotationTask", "EnforceSgCodeFormat", "AddBudgetQuotationCatalog", "AddCommercialQuotationHandoff", "AddCommercialIdentityAssignments", "AddCommercialQuotationConfirmation", "AddLeakTimesAndNotifications", "AddProjectDocumentsAndHandoff", "FormalizeCommercialQuotationMoney", "AddClientQuotationDecisions", "AddVersionedRequotationRounds", "AddAccountingInitialDeposit", "AddDepositVerificationReceipts", "AddDepositReceiptCorrectionTasks" },
             context.Database.GetMigrations().Select(migration => migration[(migration.IndexOf('_') + 1)..]));
         Assert.False(context.Database.HasPendingModelChanges());
     }
@@ -175,7 +175,11 @@ public class SnGControlDbContextTests
         Assert.Null(foreignKey.DependentToPrincipal);
         Assert.Null(foreignKey.PrincipalToDependent);
         var indexes = entity.GetIndexes().ToArray();
-        Assert.Equal(5, indexes.Length);
+        Assert.Equal(7, indexes.Length);
+        var correction = Assert.Single(indexes, index => index.GetDatabaseName() == "UX_ProjectTasks_ActiveDepositCorrection");
+        Assert.True(correction.IsUnique); Assert.Equal("\"Type\" = 6 AND \"Status\" IN (1,2)", correction.GetFilter());
+        var measurements = Assert.Single(indexes, index => index.GetDatabaseName() == "UX_ProjectTasks_Measurements");
+        Assert.True(measurements.IsUnique); Assert.Equal("\"Type\" = 5", measurements.GetFilter());
         var present = Assert.Single(indexes, index => index.GetDatabaseName() == "UX_ProjectTasks_ProjectId_PresentQuotationToClient");
         Assert.True(present.IsUnique); Assert.Equal("\"Type\" = 3", present.GetFilter());
         var byProject = Assert.Single(indexes, index => index.GetDatabaseName() == "IX_ProjectTasks_ProjectId");

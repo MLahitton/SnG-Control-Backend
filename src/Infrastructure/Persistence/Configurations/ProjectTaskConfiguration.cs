@@ -14,6 +14,10 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
     {
         builder.ToTable("ProjectTasks", t => t.HasCheckConstraint("CK_ProjectTasks_QuotationRound", "\"Type\" NOT IN (1,2,3) OR (\"QuotationRound\" IS NOT NULL AND \"QuotationRound\" > 0)"));
         builder.ToTable(t => t.HasCheckConstraint("CK_ProjectTasks_Accounting", "\"Type\" <> 4 OR (\"QuotationRound\" IS NULL AND \"Area\" = 3 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL)"));
+        builder.ToTable(t => t.HasCheckConstraint("CK_ProjectTasks_Installation", "\"Type\" <> 5 OR (\"QuotationRound\" IS NULL AND \"Area\" = 4 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL)"));
+        builder.HasIndex(task => task.ProjectId, "UX_ProjectTasks_Measurements").IsUnique().HasFilter("\"Type\" = 5");
+        builder.ToTable(t => t.HasCheckConstraint("CK_ProjectTasks_DepositCorrection", "\"Type\" <> 6 OR (\"QuotationRound\" IS NULL AND \"Area\" = 1 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL)"));
+        builder.HasIndex(task => task.ProjectId, "UX_ProjectTasks_ActiveDepositCorrection").IsUnique().HasFilter("\"Type\" = 6 AND \"Status\" IN (1,2)");
         builder.Property(task => task.DeadlineAt).HasColumnType("timestamp with time zone");
         builder.Property(task => task.WasOverdue);
         builder.HasKey(task => task.Id);

@@ -57,7 +57,7 @@ public sealed class AccountingPostgresTests
         Assert.Equal(RequotationStatus.Success, opened.Status); db.ChangeTracker.Clear();
         var prepare2 = await db.ProjectTasks.SingleAsync(t => t.Id == opened.Response!.PrepareQuotationTask.Id);
         var second = await SeedRound(2, ClientQuotationDecisionType.Approved, project, prepare2);
-        await migrations.MigrateAsync("20261028164214_AddAccountingInitialDeposit"); Assert.False(db.Database.HasPendingModelChanges());
+        await migrations.MigrateAsync(); Assert.False(db.Database.HasPendingModelChanges());
         Assert.False((await Store(db).ReadAsync(project.Id, new("manager", SystemRole.Management), default))!.AccountingHandoff.Available);
         Assert.Equal(AccountingStatus.Forbidden, (await Store(db).SendAsync(project.Id, actor with { Subject = "other" }, "accountant", default)).Status);
         await using (var failed = Db(true)) await Assert.ThrowsAsync<InvalidOperationException>(() => Store(failed).SendAsync(project.Id, actor, "accountant", default));

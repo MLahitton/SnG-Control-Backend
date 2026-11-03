@@ -28,6 +28,22 @@ public class ProjectTaskUseCaseTests : IDisposable
     }
     public void Dispose() { foreach (var store in stores) store.Dispose(); storage.Dispose(); }
 
+    [Theory]
+    [InlineData(SystemRole.CommercialAdvisor, "advisor", true)]
+    [InlineData(SystemRole.CommercialAdvisor, "other", false)]
+    [InlineData(SystemRole.Accounting, "accountant", false)]
+    [InlineData(SystemRole.Management, "manager", true)]
+    public async Task CorrectionHistoryIsOnlyVisibleToAdvisorAndManagement(SystemRole role, string subject, bool visible)
+    {
+        var projects = new ProjectStoreDouble(); var tasks = new ProjectTaskStoreDouble { Projects = projects }; projects.Tasks = tasks.Items;
+        var project = new Project(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic, "advisor"); projects.Items.Add(project);
+        var correction = new ProjectTask(project.Id, OperationalArea.Commercial, ProjectTaskType.CorrectDepositReceipts, "advisor");
+        tasks.Items.Add(correction); tasks.Items.Add(new(project.Id, OperationalArea.Accounting, ProjectTaskType.RegisterInitialDeposit, "accountant"));
+        var result = await new ListProjectTasksByProjectUseCase(projects, tasks, TestTiming.Value,
+            new(new IdentityDouble(subject), new ActiveRoleDouble(role))).ExecuteAsync(project.Id, default);
+        Assert.Equal(visible, result?.Any(t => t.Id == correction.Id) == true);
+    }
+
     [Fact]
     public async Task Send_CreatesPendingBudgetsTask_AndMapsRejectedInsertToAlreadySent()
     {
@@ -135,7 +151,7 @@ public class ProjectTaskUseCaseTests : IDisposable
 
     [Theory]
     [InlineData(0, 1)]
-    [InlineData(4, 1)]
+    [InlineData(5, 1)]
     [InlineData(2, 0)]
     [InlineData(2, 4)]
     public async Task ListByArea_InvalidEnums_FailBeforeReading(int area, int status)

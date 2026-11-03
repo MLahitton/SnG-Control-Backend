@@ -12,7 +12,7 @@ using SnG.Control.Domain.Enums;
 namespace SnG.Control.Infrastructure.Persistence.Stores;
 
 public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileStorage storage,
-    ProjectDocumentAccess access, TaskTiming timing) : IProjectDocumentStore
+    ProjectDocumentAccess access, TaskTiming timing) : IProjectDocumentStore, IReceiptDocumentStore
 {
     public virtual async Task<ProjectDocumentState?> LoadAsync(Guid projectId, CancellationToken token)
     {
@@ -39,11 +39,20 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
         return project is null ? null : await LoadDetailsAsync(project, token);
     }
 
-    public async Task<DocumentBatchResponse> UploadAsync(Guid projectId, IAsyncEnumerable<DocumentUpload> uploads, CancellationToken token)
+    public Task<DocumentBatchResponse> UploadAsync(Guid projectId, IAsyncEnumerable<DocumentUpload> uploads, CancellationToken token) => UploadCoreAsync(projectId, uploads, false, token);
+    public Task<DocumentBatchResponse> UploadReceiptsAsync(Guid projectId, IAsyncEnumerable<DocumentUpload> uploads, CancellationToken token) => UploadCoreAsync(projectId, uploads, true, token);
+    public async Task RequireReceiptUploadAccessAsync(Guid id, CancellationToken token)
+    {
+        var state = await LoadAsync(id, token) ?? throw new DocumentException(404, "ProjectNotFound");
+        access.RequireModify(state.Project);
+        await DepositVerificationWorkflow.RequireUploadAsync(context, state.Project, state.HistoricalTasks ?? [], access.Current.Subject, token);
+    }
+    private async Task<DocumentBatchResponse> UploadCoreAsync(Guid projectId, IAsyncEnumerable<DocumentUpload> uploads, bool receipt, CancellationToken token)
     {
         await using var transaction = await BeginAsync(token);
         var state = await LoadLockedAsync(projectId, token) ?? throw new DocumentException(404, "ProjectNotFound");
         access.RequireModify(state.Project);
+        if (receipt) await DepositVerificationWorkflow.RequireUploadAsync(context, state.Project, state.HistoricalTasks ?? [], access.Current.Subject, token);
         var batchId = Guid.NewGuid();
         var added = new List<ProjectDocument>();
         var entities = new List<object>();
@@ -52,7 +61,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
         var replacements = new HashSet<Guid>();
         var parts = new HashSet<string>(StringComparer.Ordinal);
         var sizes = new DocumentBatchSize();
-        var currentCount = state.Documents.Count(d => d.IsCurrent);
+        var currentCount = state.Documents.Count(d => d.IsCurrent && d.IsPaymentReceipt == receipt);
         var commitStarted = false;
         try
         {
@@ -64,7 +73,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
                 ProjectDocument? old = null;
                 if (upload.ReplacesDocumentId is Guid replaces)
                 {
-                    old = state.Documents.SingleOrDefault(d => d.Id == replaces && d.IsCurrent);
+                    old = state.Documents.SingleOrDefault(d => d.Id == replaces && d.IsCurrent && d.IsPaymentReceipt == receipt);
                     if (old is null || !replacements.Add(replaces)) throw new DocumentException(409, "InvalidReplacement");
                 }
                 else if (++currentCount > ProjectDocument.MaxCurrentDocuments) throw new DocumentException(409, "DocumentLimitExceeded");
@@ -75,7 +84,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
                 if (content.BytesRead == 0) throw new DocumentException(400, "InvalidDocumentBatch");
                 var now = timing.UtcNow; var actor = access.Current;
                 var document = new ProjectDocument(id, projectId, upload.FileName, upload.ContentType, content.BytesRead,
-                    batchId, now, actor.Subject, actor.Email, actor.Name);
+                    batchId, now, actor.Subject, actor.Email, actor.Name, receipt);
                 added.Add(document); entities.Add(document); context.Add(document);
                 if (old is not null)
                 {
@@ -84,7 +93,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
                 }
             }
             if (added.Count == 0) throw new DocumentException(400, "InvalidDocumentBatch");
-            if (state.PrepareQuotation is { Status: not ProjectTaskStatus.Completed } task)
+            if (!receipt && state.PrepareQuotation is { Status: not ProjectTaskStatus.Completed } task)
             {
                 var notification = ProjectNotification.DocumentsUpdated(task, task.AssignedToGoogleSubject ?? access.BudgetsSubject,
                     batchId, added.Count - replacements.Count, replacements.Count, timing.UtcNow);
@@ -122,7 +131,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
         var state = await LoadLockedAsync(projectId, token) ?? throw new DocumentException(404, "ProjectNotFound");
         access.RequireModify(state.Project);
         if (state.PrepareQuotation is not null || state.Handoff is not null) throw new DocumentException(409, "DocumentRemovalLocked");
-        var document = state.Documents.SingleOrDefault(d => d.Id == documentId && d.RemovedAt is null)
+        var document = state.Documents.SingleOrDefault(d => d.Id == documentId && d.RemovedAt is null && !d.IsPaymentReceipt)
             ?? throw new DocumentException(404, "DocumentNotFound");
         if (!document.IsCurrent) throw new DocumentException(409, "InvalidReplacement");
         // Logical removal keeps the referenced bytes, avoiding a DB/filesystem deletion window.
@@ -149,7 +158,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
         if (state is null) return new SendProjectToBudgetsResult.ProjectNotFound();
         if (!access.CanModify(state.Project)) return new SendProjectToBudgetsResult.Forbidden();
         if (state.PrepareQuotation is not null || state.Handoff is not null) return new SendProjectToBudgetsResult.AlreadySent();
-        var documents = state.Documents.Where(d => d.IsCurrent).ToArray();
+        var documents = state.Documents.Where(d => d.IsCurrent && !d.IsPaymentReceipt).ToArray();
         if (documents.Length == 0) return new SendProjectToBudgetsResult.DocumentsRequired();
         var now = timing.UtcNow; var actor = access.Current;
         var handoff = new ProjectDocumentHandoff(projectId, now, actor.Subject, actor.Email, actor.Name);

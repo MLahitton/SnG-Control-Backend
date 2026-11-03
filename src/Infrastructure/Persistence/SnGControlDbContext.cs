@@ -6,6 +6,8 @@ namespace SnG.Control.Infrastructure.Persistence;
 
 public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) : DbContext(options)
 {
+    public DbSet<DepositVerification> DepositVerifications => Set<DepositVerification>();
+    public DbSet<DepositVerificationDocument> DepositVerificationDocuments => Set<DepositVerificationDocument>();
     public DbSet<AccountingHandoff> AccountingHandoffs => Set<AccountingHandoff>();
     public DbSet<InitialDeposit> InitialDeposits => Set<InitialDeposit>();
     public DbSet<RequotationRequest> RequotationRequests => Set<RequotationRequest>();
@@ -27,6 +29,8 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.ApplyConfiguration(new DepositVerificationConfiguration());
+        modelBuilder.ApplyConfiguration(new DepositVerificationDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new AccountingHandoffConfiguration());
         modelBuilder.ApplyConfiguration(new InitialDepositConfiguration());
         modelBuilder.ApplyConfiguration(new RequotationRequestConfiguration());
