@@ -7,6 +7,10 @@ namespace SnG.Control.Application.Features.ProjectDocuments;
 
 public sealed class ProjectDocumentAccess(ICurrentUser current, IActiveRoleContext active, IBudgetsAssigneeIdentity budgets)
 {
+    public void RequireInstallation()
+    {
+        if (active.Role != SystemRole.Installation) throw new DocumentException(403, "MeasurementAccessDenied");
+    }
     public ICurrentUser Current => current;
     public string BudgetsSubject => budgets.Subject;
     public bool CanModify(Project project) => active.Role == SystemRole.CommercialAdvisor && string.Equals(current.Subject, project.CreatedByGoogleSubject, StringComparison.Ordinal);

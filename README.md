@@ -14,7 +14,7 @@ Google identifica al usuario mediante el **Subject (`sub`)**, nunca por email o 
 
 Las membresías V1 provienen de configuración: `Authentication:CommercialAdvisorSubjects` es una lista explícita de asesores; `BudgetsAssigneeSubject`, `CommercialHeadSubject`, `AccountingAssigneeSubject` y `ManagementSubject` asignan sus respectivos roles. Una cuenta puede poseer varios, pero cada request operacional debe enviar **`X-SnG-Active-Role`** con uno que realmente posea. Sin autenticación válida se responde 401; sin área, con un valor inválido o con un rol ajeno, 403. No hay tabla Users/UserRoles, passwords ni tokens propios.
 
-Los roles activos implementados son `CommercialAdvisor`, `Budgets`, `CommercialHead`, `Accounting` y `Management`. Engineering, Production, Logistics e Installation están reservados en el contrato, sin asignación ni experiencia operativa. Solo el Asesor activo crea clientes/proyectos y envía a Presupuestos un proyecto propio. Puede modificar documentos propios; el Jefe Comercial escribe únicamente en su revisión comercial. Presupuestos y Jefe consultan documentos de proyectos con su tarea asignada, incluso completada. Gerencia tiene lectura transversal, sin adquirir escritura por compartir Subject con el creador o el Jefe.
+Los roles activos implementados son `CommercialAdvisor`, `Budgets`, `CommercialHead`, `Accounting`, `Installation` y `Management`. Engineering, Production y Logistics están reservados en el contrato, sin experiencia operativa. Solo el Asesor activo crea clientes/proyectos y envía a Presupuestos un proyecto propio. Puede modificar documentos propios; el Jefe Comercial escribe únicamente en su revisión comercial. Presupuestos y Jefe consultan documentos de proyectos con su tarea asignada, incluso completada. Gerencia tiene lectura transversal, sin adquirir escritura por compartir Subject con el creador o el Jefe.
 
 La política BudgetsAssignee exige membresía y área activa Budgets. SG, preview, confirmación y envío a Comercial requieren también PrepareQuotation asignada al Subject actual; una tarea sin asignación o asignada a otro usuario no permite esas acciones. CommercialHead activo puede descargar el Excel operativo de proyectos con ReviewQuotation asignada y revisar/confirmar según workflow. El archivo final permite acceso al Jefe activo asignado o al Asesor activo propietario.
 
@@ -353,7 +353,7 @@ comprobantes y enviar otra solicitud; solo existe una pendiente por proyecto.
 La aprobación registra InitialDeposit inmutable, completa la tarea contable, notifica al asesor
 y crea una única tarea TakeMeasurements (tipo 5, área Installation=4), asignada a la cuenta de
 Instalación configurada. Todo se confirma en una transacción. Contabilidad e Instalación no
-tienen SLA ni ronda propia. La tarea de Instalación queda Pending; radicación de medidas,
+tienen SLA ni ronda propia. La tarea de Instalación queda Pending hasta iniciar el checklist de medidas.
 Acta de Vanos, firmas, Producción y Logística quedan fuera de este flujo.
 
 Configurar privadamente Authentication:AccountingAssigneeSubject (obligatorio al iniciar)
@@ -382,3 +382,21 @@ normalizados legibles. Cantidades siguen siendo enteros exactos; precios, fórmu
 originales persistidos no cambian. No es una tolerancia de fabricación o instalación.
 Frontend implementa la misma regla mediante dígitos decimales/BigInt; los casos de prueba
 compartidos por contrato cubren equivalencias, mitades, bordes, valores pequeños y grandes.
+
+
+## Instalación: toma de medidas
+
+Después de aprobar el anticipo, la cuenta asignada con rol activo Installation inicia la tarea
+Toma de medidas, sin SLA. El checklist persistido genera una estructura por unidad de cada ítem
+comercial de la cotización vinculada al anticipo; no reinterpreta archivos XLSX.
+Cada unidad permite marcar/desmarcar con auditoría, agregar estructuras en obra con descripción,
+ancho/alto y observación, y retirar unidades lógicamente. La cotización y sus precios no cambian.
+El avance cuenta solo estructuras vigentes; cero vigentes muestra 0 % y bloquea la radicación.
+
+Instalación carga múltiples documentos de medidas usando el almacenamiento del proyecto.
+Al confirmar Radicar medidas, todas las estructuras vigentes deben estar medidas y debe existir
+al menos un documento vigente. Se congelan el snapshot y los IDs exactos de los archivos,
+se registra actor/fecha y se completa la tarea en una transacción. No se admiten cambios posteriores.
+Gerencia consulta checklist, progreso, historial y radicación sin escritura. El expediente muestra
+estos datos también después de recargar. La radicación conserva el contrato para Ingeniería;
+no crea tareas de Ingeniería ni implementa Acta de Vanos o extracción automática de medidas.

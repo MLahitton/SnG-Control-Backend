@@ -6,6 +6,11 @@ namespace SnG.Control.Infrastructure.Persistence;
 
 public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) : DbContext(options)
 {
+
+    public DbSet<MeasurementChecklist> MeasurementChecklists => Set<MeasurementChecklist>();
+    public DbSet<MeasurementStructure> MeasurementStructures => Set<MeasurementStructure>();
+    public DbSet<MeasurementEvent> MeasurementEvents => Set<MeasurementEvent>();
+    public DbSet<MeasurementSubmissionDocument> MeasurementSubmissionDocuments => Set<MeasurementSubmissionDocument>();
     public DbSet<DepositVerification> DepositVerifications => Set<DepositVerification>();
     public DbSet<DepositVerificationDocument> DepositVerificationDocuments => Set<DepositVerificationDocument>();
     public DbSet<AccountingHandoff> AccountingHandoffs => Set<AccountingHandoff>();
@@ -29,6 +34,10 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.ApplyConfiguration(new MeasurementChecklistConfiguration());
+        modelBuilder.ApplyConfiguration(new MeasurementStructureConfiguration());
+        modelBuilder.ApplyConfiguration(new MeasurementEventConfiguration());
+        modelBuilder.ApplyConfiguration(new MeasurementSubmissionDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new DepositVerificationConfiguration());
         modelBuilder.ApplyConfiguration(new DepositVerificationDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new AccountingHandoffConfiguration());

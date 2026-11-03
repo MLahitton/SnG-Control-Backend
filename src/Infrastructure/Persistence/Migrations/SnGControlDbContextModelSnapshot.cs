@@ -691,6 +691,219 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementChecklist", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CommercialQuotationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBySubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("QuotationRound")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("SnapshotJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid?>("SubmissionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("SubmittedBySubject")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("TaskId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommercialQuotationId");
+
+                    b.HasIndex("ProjectId")
+                        .IsUnique();
+
+                    b.HasIndex("SubmissionId")
+                        .IsUnique();
+
+                    b.HasIndex("TaskId")
+                        .IsUnique();
+
+                    b.ToTable("MeasurementChecklists", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MeasurementChecklists_State", "\"Revision\" >= 0 AND \"QuotationRound\" > 0 AND ((\"SubmissionId\" IS NULL AND \"SubmittedAt\" IS NULL AND \"SubmittedBySubject\" IS NULL AND \"SnapshotJson\" IS NULL) OR (\"SubmissionId\" IS NOT NULL AND \"SubmittedAt\" >= \"CreatedAt\" AND \"SubmittedBySubject\" IS NOT NULL AND \"SnapshotJson\" IS NOT NULL))");
+                        });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)");
+
+                    b.Property<string>("ActorEmail")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ActorName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ActorSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ChecklistId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RequestKey")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("StructureId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChecklistId", "ProjectId");
+
+                    b.HasIndex("ChecklistId", "RequestKey")
+                        .IsUnique();
+
+                    b.HasIndex("ChecklistId", "Revision")
+                        .IsUnique();
+
+                    b.HasIndex("StructureId", "ChecklistId");
+
+                    b.ToTable("MeasurementEvents", (string)null);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementStructure", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ChecklistId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CommercialQuotationItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBySubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("Height")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("ItemNumber")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Location")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("MeasuredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MeasuredBySubject")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("RetiredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RetiredBySubject")
+                        .HasColumnType("text");
+
+                    b.Property<int>("UnitCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UnitOrdinal")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("Width")
+                        .HasColumnType("numeric");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CommercialQuotationItemId");
+
+                    b.HasIndex("ChecklistId", "ProjectId");
+
+                    b.HasIndex("ChecklistId", "CommercialQuotationItemId", "UnitOrdinal")
+                        .IsUnique()
+                        .HasFilter("\"CommercialQuotationItemId\" IS NOT NULL");
+
+                    b.ToTable("MeasurementStructures", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_MeasurementStructures_State", "((\"MeasuredAt\" IS NULL AND \"MeasuredBySubject\" IS NULL) OR (\"MeasuredAt\" >= \"CreatedAt\" AND \"MeasuredBySubject\" IS NOT NULL)) AND ((\"RetiredAt\" IS NULL AND \"RetiredBySubject\" IS NULL) OR (\"RetiredAt\" >= \"CreatedAt\" AND \"RetiredBySubject\" IS NOT NULL))");
+
+                            t.HasCheckConstraint("CK_MeasurementStructures_Unit", "\"UnitOrdinal\" > 0 AND \"UnitOrdinal\" <= \"UnitCount\" AND (\"CommercialQuotationItemId\" IS NOT NULL OR (\"UnitOrdinal\" = 1 AND \"UnitCount\" = 1 AND \"Width\" > 0 AND \"Height\" > 0))");
+                        });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementSubmissionDocument", b =>
+                {
+                    b.Property<Guid>("ChecklistId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("ChecklistId", "ProjectDocumentId");
+
+                    b.HasIndex("ChecklistId", "ProjectId");
+
+                    b.HasIndex("ProjectId", "ProjectDocumentId");
+
+                    b.ToTable("MeasurementSubmissionDocuments", (string)null);
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.Project", b =>
                 {
                     b.Property<Guid>("Id")
@@ -750,6 +963,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<string>("ContentType")
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
+
+                    b.Property<bool>("IsMeasurementDocument")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsPaymentReceipt")
                         .HasColumnType("boolean");
@@ -1248,6 +1464,75 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
                         .WithMany()
                         .HasForeignKey("RegisterInitialDepositTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementChecklist", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.CommercialQuotation", null)
+                        .WithMany()
+                        .HasForeignKey("CommercialQuotationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithMany()
+                        .HasForeignKey("TaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementEvent", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.MeasurementChecklist", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.MeasurementStructure", null)
+                        .WithMany()
+                        .HasForeignKey("StructureId", "ChecklistId")
+                        .HasPrincipalKey("Id", "ChecklistId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementStructure", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.CommercialQuotationItem", null)
+                        .WithMany()
+                        .HasForeignKey("CommercialQuotationItemId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SnG.Control.Domain.Entities.MeasurementChecklist", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementSubmissionDocument", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.MeasurementChecklist", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId", "ProjectDocumentId")
+                        .HasPrincipalKey("ProjectId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

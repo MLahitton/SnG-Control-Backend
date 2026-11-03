@@ -58,6 +58,9 @@ public static class DependencyInjection
         services.AddScoped<ProjectDocumentService>();
         services.AddScoped<IProjectDocumentStore, EfProjectDocumentStore>();
         services.AddScoped<IReceiptDocumentStore, EfProjectDocumentStore>();
+        services.AddScoped<SnG.Control.Application.Features.Measurements.IMeasurementDocumentStore, EfProjectDocumentStore>();
+        services.AddScoped<SnG.Control.Application.Features.Measurements.IMeasurementStore, EfMeasurementStore>();
+        services.AddScoped<SnG.Control.Application.Features.Measurements.MeasurementService>();
         services.AddScoped<IStreamingFileStorage, LocalFileStorage>();
         services.AddScoped<IProjectDocumentArchive, ProjectDocumentArchive>();
         services.AddSingleton(TimeProvider.System);

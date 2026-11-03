@@ -365,7 +365,7 @@ CommercialHead y Budgets permanecen separados incluso si sus claves tienen el mi
 
 El enum cerrado SystemRole reserva CommercialAdvisor, Budgets, CommercialHead, Accounting,
 Engineering, Production, Logistics, Installation y Management. La configuraci?n asigna Advisor, Budgets, Head, Accounting, Installation y Management;
-Installation dispone de lectura y tarea inicial, sin captura de medidas.
+Installation dispone de checklist persistido y radicación documental de medidas.
 
 `Authentication:CommercialAdvisorSubjects` admite una lista vacía (ningún asesor), pero
 rechaza entradas vacías/whitespace, espacios exteriores y duplicados ordinales. Nunca
@@ -1495,7 +1495,7 @@ con zona no futura y observación obligatoria de rechazo. Configuración privada
 Authentication:AccountingAssigneeSubject y Authentication:InstallationAssigneeSubject.
 La primera es obligatoria al arrancar; la segunda bloquea solo aprobación si falta (503).
 ConfiguredRoleResolver reconoce Installation; su ámbito y bandeja incluyen únicamente
-TakeMeasurements asignadas. No existe todavía captura de medidas.
+TakeMeasurements asignadas; el checklist y la radicación se describen en Instalación.
 
 Contratos (todos autenticados y limitados al ámbito del proyecto):
 - GET /api/projects/{id}/deposit-verifications: projectId, available, canManage, canSubmit,
@@ -1565,3 +1565,40 @@ normalizados legibles. Cantidades siguen siendo enteros exactos; precios, fórmu
 originales persistidos no cambian. No es una tolerancia de fabricación o instalación.
 Frontend implementa la misma regla mediante dígitos decimales/BigInt; los casos de prueba
 compartidos por contrato cubren equivalencias, mitades, bordes, valores pequeños y grandes.
+
+
+## Instalación: persistencia y radicación
+
+`MeasurementChecklist` vincula proyecto, CommercialQuotation del InitialDeposit, ronda y tarea
+TakeMeasurements. `MeasurementStructure` tiene UUID propio, FK al ítem cuando es cotizada,
+ordinal/cantidad de origen y dimensiones descriptivas. Las adiciones nacen sin medir; retiros y
+marcas guardan actor/UTC. `MeasurementEvent` conserva las correcciones, incluso desmarcados.
+`MeasurementSubmissionDocument` vincula exactamente los documentos congelados; SnapshotJson
+(jsonb) y SubmissionId conservan la radicación formal en el checklist. No hay una tarea nueva
+de Ingeniería: la siguiente implementación podrá consumir ese snapshot con su autorización definida.
+
+Rutas bajo `/api/projects/{id}/measurements`:
+- GET: estado, responsable, resumen oficial, estructuras, documentos, historial y snapshot final.
+- POST `/initialize`: generación idempotente y StartUntracked de la tarea existente.
+- POST `/commands`: RequestKey, ExpectedRevision y Action (`Measure`, `Add`, `Retire`, `Submit`).
+  Measure usa StructureId/Measured; Add usa Description/Width/Height/Note; Retire usa StructureId;
+  Submit exige DocumentIds iguales al conjunto vigente. Campos ajenos a la acción son rechazados.
+- POST `/documents/batch?requestKey={uuid}`: multipart existente, archivos separados mediante
+  IsMeasurementDocument; admite sustitución conservando historia. La primera carga exitosa
+  conserva la clave de lote; repetir esa clave devuelve sus mismos IDs sin cargar otra vez.
+  Usar una clave nueva cuando cambia la selección. Límites existentes: 15 vigentes, 100 MB por
+  archivo y 300 MB por lote. Descargas mediante `/documents/{documentId}/file` con ámbito compartido.
+
+Solo Installation activa, configurada y asignada escribe. Lecturas del checklist: Instalación
+asignada y Management. Las mutaciones bloquean Project, luego ProjectTasks; las cargas comparten
+el bloqueo Project. Unicidad PostgreSQL protege checklist por proyecto/tarea, unidad por ítem y
+ordinal, y evento por RequestKey/revisión. ExpectedRevision rechaza cambios obsoletos (409);
+repetir un comando idéntico devuelve éxito, reutilizar su clave con otro contenido devuelve 409.
+Las lecturas usan RepeatableRead/AsNoTracking. La radicación persiste snapshot, enlaces, auditoría,
+cierre de tarea y reconciliación de notificaciones en una transacción. No escribe nuevos archivos;
+las cargas previas reutilizan la compensación documental. No existe atomicidad distribuida DB/filesystem.
+
+La migración `AddInstallationMeasurements` añade cuatro tablas e IsMeasurementDocument.
+No se aplica al arrancar ni se aplicó sobre la base operativa; requiere autorización de despliegue.
+Las pruebas PostgreSQL usan exclusivamente `SNG_VERIFICATION_TEST_DATABASE` con host loopback y
+base `verification_test`, datos sintéticos y almacenamiento temporal. No se requiere corpus XLSX.
