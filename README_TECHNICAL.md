@@ -364,8 +364,8 @@ CommercialHead y Budgets permanecen separados incluso si sus claves tienen el mi
 ### Roles y área activa V1
 
 El enum cerrado SystemRole reserva CommercialAdvisor, Budgets, CommercialHead, Accounting,
-Engineering, Production, Logistics, Installation y Management. V1 solo asigna los primeros
-roles operativos existentes: Advisor, Budgets, Head y Management. No cambia el modelo EF.
+Engineering, Production, Logistics, Installation y Management. La configuraci?n asigna Advisor, Budgets, Head, Accounting, Installation y Management;
+Installation dispone de lectura y tarea inicial, sin captura de medidas.
 
 `Authentication:CommercialAdvisorSubjects` admite una lista vacía (ningún asesor), pero
 rechaza entradas vacías/whitespace, espacios exteriores y duplicados ordinales. Nunca
@@ -429,7 +429,7 @@ Los tests normales funcionan sin conexión configurada, sin contraseña y sin Po
 
 Los tests HTTP arrancan Kestrel en un puerto loopback dinámico, utilizan el registro real `AddApiServices`, los Controllers y el middleware de errores, y reemplazan los stores por dobles. Comprueban rutas, binding, validación, serialización, `Location`, códigos HTTP y ausencia de detalles internos. No necesitan paquetes de hosting de tests adicionales, Docker ni proveedores ficticios de EF. Requieren permiso del entorno para abrir un puerto local. No prueban PostgreSQL, el perfil HTTPS ni la carga de secretos de Program; esa parte se verifica por smoke test controlado con la base local.
 
-La suite contiene 863 tests habituales y un smoke PostgreSQL opt-in. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
+La suite incluye pruebas habituales y smokes PostgreSQL opt-in. Cubre invariantes, fechas UTC, nombres repetidos, propagación de CancellationToken, rechazo de proyectos con cliente inexistente antes de escribir, contratos numéricos de enums, PK/FK e índices, tipos PostgreSQL, nullability y consistencia de las migraciones. Para tareas prueba creación Pending, rechazo de inserciones duplicadas de cualquier estado y área, filtros, historial vacío/inexistente, 201/404/409, parámetros requeridos y rechazo de números o nombres desconocidos. También verifica que crear Project no crea tareas y que no existe POST genérico de tareas.
 
 ApiFixture autentica por defecto mediante el esquema TestIdentity, exclusivo de Tests: sub=google-test-subject, email=test@example.com y name=Test User. Aplica a la identidad sintética la misma regla OnTokenValidated de presencia de sub. Los tests negativos omiten la cabecera o seleccionan una identidad inválida sin cambiar los defaults de otros tests. BudgetsHttp usa el modo sintético budgets y BudgetsAssigneeSubject=budgets-test-subject, separado del cliente Http general. CommercialHeadSubject se configura como google-test-subject únicamente en Tests; other-google-subject prueba el 403 con el mismo email, y el mismo Subject con otro email conserva acceso. No se modifica la configuración productiva para permitir accesos de prueba. Las pruebas del handler JwtBearer real sustituyen discovery por configuración estática únicamente en Tests y verifican 401 para entradas ausentes o inválidas, sin Internet. También se comprueban startup de las opciones, opciones JWT, política global, CommercialHead y BudgetsAssignee, claims originales, ausencia de email como fallback, snapshots del creador, rechazo de identidad en el body, CreatedBy legacy null mediante materialización real de EF, asignación personal, DTOs y reintentos concurrentes HTTP con doble de persistencia. Los tests de compensación verifican la asignación en el ChangeTracker y un único SaveChanges; los índices y bloqueos PostgreSQL conservan la garantía de concurrencia real.
 
@@ -639,7 +639,7 @@ dotnet run --project src/Api --launch-profile https
 
 El perfil `https` usa `https://localhost:7265` y `http://localhost:5051`, en `Development`, con redirección HTTP a HTTPS. Detener con `Ctrl+C`. También existe el perfil `http` en 5051, sin puerto HTTPS propio; la redirección puede advertir que no encuentra ese puerto. Se recomienda el perfil `https`.
 
-En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento contiene treinta y una operaciones de negocio y `/api/auth/me`, treinta y dos en total, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
+En desarrollo, `GET /openapi/v1.json` publica OpenAPI sin autenticación mediante AllowAnonymous explícito: la política fallback también alcanzaría ese endpoint. El documento describe los endpoints vigentes de negocio y `/api/auth/me`, con esquema HTTP Bearer y requisito global de seguridad. BearerSecurityDocumentTransformer usa el paquete OpenAPI existente, sin librerías adicionales. No hay Swagger UI ni Minimal APIs de negocio. Fuera de desarrollo no se publica OpenAPI. Los cuerpos multipart del preview y confirmación se leen manualmente; sus contratos de carga se describen más abajo y no se infiere de un parámetro IFormFile.
 
 - `Program.cs`: valida la presencia de conexión, registra `SnGControlDbContext` scoped con Npgsql, llama `AddApiServices` y registra OpenAPI; configura manejo de excepciones, HTTPS, autenticación, autorización y Controllers.
 - `DependencyInjection.cs`: `AddApiServices` registra autenticación Google, política fallback, ICurrentUser, opciones y providers del Jefe Comercial, Presupuestos y Gerencia con sus políticas específicas, además de los veintiún casos de uso, los doce stores, el writer de notificaciones, IFileStorage, ambos parsers y el generador con lifetime scoped, Controllers, opciones JSON, límites técnicos validados al arrancar y manejo de errores. Application no necesita depender de una librería de DI.
@@ -1488,28 +1488,80 @@ sintético loopback vacío con base client_decision_test. Valida migración, con
 rollback y acceso compartido. Nunca usar la base operacional para ese smoke.
 
 
-## Accounting Initial Deposit V1
+## Comprobantes y verificación del anticipo
 
-API contracts and configuration are described in README, Accounting Initial Deposit V1.
-Required server setting: Authentication:AccountingAssigneeSubject (User Secrets or environment
-Authentication__AccountingAssigneeSubject); ValidateOnStart errors disclose only the missing key.
-ConfiguredRoleResolver includes Accounting. AccountingAssignee policy requires authenticated
-exact configured Subject and active Accounting; service and store additionally enforce assignment.
+DepositVerificationService valida rol activo, selección documental, dinero decimal COP, fecha
+con zona no futura y observación obligatoria de rechazo. Configuración privada:
+Authentication:AccountingAssigneeSubject y Authentication:InstallationAssigneeSubject.
+La primera es obligatoria al arrancar; la segunda bloquea solo aprobación si falta (503).
+ConfiguredRoleResolver reconoce Installation; su ámbito y bandeja incluyen únicamente
+TakeMeasurements asignadas. No existe todavía captura de medidas.
 
-AccountingService validates decimal-string money, timezone-aware nonfuture receipt and bounded
-text. EfAccountingStore uses project → tasks → current quotation/decision (handoff) or handoff
-(deposit) locks. SaveChanges/commit includes notifications. Unique constraints map only the
-specific duplicate operation to 409; rollback restores tracked tasks and staged notifications.
-GET uses RepeatableRead and ProjectReadScope. No files or payment-provider integration.
-AccountingHandoff and InitialDeposit use private setters, restrictive FKs and unique source/task
-indices. Currency is derived COP; Amount numeric(20,2), serialized invariant two-decimal string.
-StartUntracked is specific to RegisterInitialDeposit; existing deadline-bearing Start is unchanged.
-TaskTiming has no Accounting calendar policy. ReceivedAt is not used for task start/completion.
+Contratos (todos autenticados y limitados al ámbito del proyecto):
+- GET /api/projects/{id}/deposit-verifications: projectId, available, canManage, canSubmit,
+  canReview, accounting, documents y reviews. Las capacidades son informativas; cada escritura
+  vuelve a autorizar. Review expone id/status/submittedAt/decidedAt/decidedBy(email,name)/note/
+  documentIds; no expone storage keys ni Subjects.
+- POST /api/projects/{id}/deposit-verifications/receipts/batch: multipart existente con manifest
+  y files; 201 DocumentBatchResponse. Hasta 15 comprobantes vigentes, 100 MB por archivo y
+  300 MB por carga, separados del cupo de documentos generales. Descarga mediante el endpoint
+  documental existente. No aparecen en el ZIP ni en el envío documental a Presupuestos.
+- POST /api/projects/{id}/deposit-verifications: {requestKey,documentIds}, 200 {reviewId}.
+  RequestKey UUID estable por intento lógico; repetir la misma selección devuelve la misma
+  revisión. Cambiar documentos con la misma clave da 409 VerificationRequestConflict.
+- POST /api/projects/{id}/deposit-verifications/{reviewId}/decision:
+  {approve,amount,receivedAt,note}, 204. Approve requiere amount string decimal positivo y
+  receivedAt con zona; rechazo usa ambos null y note no vacía. Amount conserva Money.Normalize
+  AwayFromZero/numeric(20,2); COP y RecordedAt son propiedad del servidor.
+- GET /api/projects/{id}/initial-deposit conserva el contrato histórico AccountingState.
+  Los POST antiguos initial-deposit y send-approved-quotation-to-accounting devuelven 409
+  DepositVerificationRequired: no permiten eludir la revisión documental.
 
-Migration 20261028164214_AddAccountingInitialDeposit follows decisions V1 and rounds V2, which
-remain unchanged. Apply pending migrations manually in order only when authorized for the
-operational database. Downgrade refuses existing Accounting data. Isolated test entry point:
-SNG_ACCOUNTING_TEST_DATABASE, loopback PostgreSQL database accounting_test;
-`dotnet test -c Release --filter FullyQualifiedName~AccountingPostgresTests`.
-This fixture checks migrations, round-two source selection, concurrent duplicate rejection,
-transaction rollback, scoped reads/inbox and Management task counts without touching product data.
+EfDepositVerificationStore bloquea proyecto → tareas → revisión y verifica la Comercial
+vigente con Approved. El proyecto serializa también las cargas documentales. El envío reutiliza
+AccountingHandoff/RegisterInitialDeposit; tras rechazo la tarea queda Pending a la espera del
+nuevo envío. Cada solicitud conserva sus IDs exactos y cada decisión es única e inmutable.
+Índices PostgreSQL garantizan clave idempotente, una revisión pendiente por proyecto, una
+aprobación por handoff y una TakeMeasurements por proyecto. Los vínculos documentales usan
+FK compuestas por proyecto y Restrict. Lecturas AsNoTracking en RepeatableRead.
+
+Aprobar inserta InitialDeposit, inicia/completa RegisterInitialDeposit con RecordedAt, crea
+TakeMeasurements Pending sin SLA y reconcilia notificaciones en la misma transacción.
+Rechazar solo resuelve la revisión y notifica al asesor; no registra dinero ni crea Instalación.
+DepositVerificationRequested/Approved/Rejected son informativas y únicas por revisión y
+destinatario. TaskAssigned se conserva; no hay suscripciones de grupo. Rollback restaura
+tracking. Las cargas reutilizan la compensación DB/filesystem y protección de rutas existente.
+
+Migración 20261103134446_AddDepositVerificationReceipts: ProjectDocuments.IsPaymentReceipt
+(false para documentos anteriores), DepositVerifications, DepositVerificationDocuments,
+índices y restricciones de tarea/notificaciones. No modifica migraciones previas. Down rechaza
+evidencia existente para evitar destruir historial. Aplicar en operación solo con autorización.
+Los anticipos históricos siguen visibles; no se inventan comprobantes ni tareas retroactivas.
+
+Prueba PostgreSQL aislada: SNG_VERIFICATION_TEST_DATABASE debe apuntar a 127.0.0.1/base
+verification_test; ejecutar dotnet test -c Release --filter FullyQualifiedName~DepositVerification.
+Usa archivos e identidades sintéticos y verifica migración, permisos, múltiples comprobantes,
+idempotencia concurrente, rechazo/reenvío, aprobación única, notificaciones y rollback.
+No requiere corpus XLSX, servicios externos ni migración de bases operativas.
+
+El rechazo contable crea CorrectDepositReceipts (tipo 6, Commercial), asignada al asesor
+responsable e iniciada sin SLA. Aparece en su bandeja En curso y enlaza el expediente.
+El reenvío completa esa tarea en la misma transacción que crea la revisión contable.
+Los rechazos consecutivos conservan tareas distintas ya completadas; solo puede existir
+una corrección activa por proyecto. No se reabre PresentQuotationToClient.
+La tarea es visible al asesor asignado y a Gerencia; las revisiones y comprobantes conservan
+las lecturas compartidas existentes. No se crean correcciones retroactivas para rechazos previos.
+
+20261103190730_AddDepositReceiptCorrectionTasks añade CorrectionTaskId nullable a
+DepositVerification, FK Restrict y vínculo único; un índice parcial impide dos correcciones
+activas por proyecto. El CHECK exige área Commercial y ausencia de ronda, deadline y atraso.
+Down rechaza historia de corrección existente. Aplicar solo con autorización operativa;
+la verificación automática utiliza exclusivamente el PostgreSQL temporal de pruebas.
+
+Precisión técnica de comparación: ancho/alto a 3 decimales en metros (1 mm) y superficie a
+6 decimales en m², con MidpointRounding.AwayFromZero. TechnicalMeasurePrecision se aplica
+solo al comparar; CommercialTechnicalDifferences devuelve las diferencias reales con valores
+normalizados legibles. Cantidades siguen siendo enteros exactos; precios, fórmulas y valores
+originales persistidos no cambian. No es una tolerancia de fabricación o instalación.
+Frontend implementa la misma regla mediante dígitos decimales/BigInt; los casos de prueba
+compartidos por contrato cubren equivalencias, mitades, bordes, valores pequeños y grandes.

@@ -52,7 +52,17 @@ public static class CommercialTechnicalDifferences
         var result = new List<TechnicalDifference>();
         void Text(TechnicalField field, string before, string after) { if (!string.Equals(before, after, StringComparison.Ordinal)) result.Add(new(field, before, after)); }
         void Number(TechnicalField field, decimal before, decimal after)
-        { if (before != after) result.Add(new(field, before.ToString(CultureInfo.InvariantCulture), after.ToString(CultureInfo.InvariantCulture))); }
+        {
+            decimal Normalize(decimal value) => field switch
+            {
+                TechnicalField.Width or TechnicalField.Height => TechnicalMeasurePrecision.Dimension(value),
+                TechnicalField.SquareMeters => TechnicalMeasurePrecision.Surface(value),
+                _ => value
+            };
+            var normalizedBefore = Normalize(before); var normalizedAfter = Normalize(after);
+            if (normalizedBefore != normalizedAfter) result.Add(new(field,
+                normalizedBefore.ToString("G29", CultureInfo.InvariantCulture), normalizedAfter.ToString("G29", CultureInfo.InvariantCulture)));
+        }
         Text(TechnicalField.ItemNumber, previous.ItemNumber, current.ItemNumber); Text(TechnicalField.Location, previous.Location, current.Location);
         Text(TechnicalField.System, previous.System, current.System); Text(TechnicalField.Glass, previous.Glass, current.Glass);
         Text(TechnicalField.AluminumFinish, previous.AluminumFinish, current.AluminumFinish); Text(TechnicalField.LockType, previous.LockType, current.LockType);

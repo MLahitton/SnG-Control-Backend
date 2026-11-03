@@ -336,40 +336,49 @@ El smoke opt-in RequotationPostgresTests requiere SNG_REQUOTATION_TEST_DATABASE 
 exclusivamente a PostgreSQL local aislado, base `requotation_test`, sin datos de producto.
 
 
-## Accounting Initial Deposit V1
+## Comprobantes y verificación del anticipo
 
-Configurar `Authentication:AccountingAssigneeSubject` (entorno:
-`Authentication__AccountingAssigneeSubject`) mediante configuración privada del servidor.
-Es obligatorio al iniciar; nunca se acepta identidad desde el body. Accounting es rol activo
-con Subject configurado y área 3; su bandeja/proyectos se filtran por asignación. Management
-conserva lectura transversal y sus conteos siguen contando tareas, no proyectos.
+El asesor responsable, con CommercialAdvisor activo, puede cargar varios comprobantes
+cuando la cotización Comercial vigente tiene decisión Approved y presentación completada.
+La carga no acredita recepción de dinero ni crea trabajo contable. El envío explícito
+selecciona los archivos exactos, crea una revisión pendiente y habilita RegisterInitialDeposit
+para la cuenta contable configurada. Los reintentos del mismo envío no duplican la solicitud.
 
-- `POST /api/projects/{id}/send-approved-quotation-to-accounting`: asesor activo asignado,
-  presentación completada y Approved de la última Comercial confirmada. Body vacío o `{}`.
-  Crea AccountingHandoff inmutable y RegisterInitialDeposit (tipo 4) Pending, quotationRound=null,
-  sin deadline, más TaskAssigned. Aprobar por sí solo nunca envía a Contabilidad.
-- `POST /api/projects/{id}/initial-deposit`: `{amount:"5000000.00",receivedAt:"2026-10-28T12:00:00-05:00",reference:null,note:null}`.
-  Solo Accounting configurado/asignado. Amount string decimal positivo hasta Money.Maximum,
-  normalizado AwayFromZero, numeric(20,2), COP derivado. ReceivedAt exige zona y no ser futura.
-  Reference/Note opcionales: 200/2000 caracteres. Rechaza campos adicionales/RecordedAt del cliente.
-- POST devuelve 201 `{state,task}`. Duplicados: 409 AlreadySentToAccounting/AlreadyRecorded;
-  sin decisión: ClientDecisionRequired; no Approved: DecisionNotApproved; sin envío:
-  AccountingHandoffRequired. No PUT/PATCH, sobrescritura o reversos financieros en V1.
-- `GET /api/projects/{id}/initial-deposit`: `{projectId,accountingHandoff,deposit}`. Handoff:
-  available/quotationRound/commercialQuotationId/sentAt. Deposit: available/amount/currencyCode/
-  receivedAt/recordedAt/reference/note. Amount string con dos decimales; moneda siempre COP.
-  Ausencia: campos opcionales null, nunca cero. Fuera del alcance: 404. Un envío sin registro
-  no demuestra que el cliente no pagó; un anticipo no demuestra pago total o ingreso.
+Contabilidad asignada consulta cotización, comprobantes e historial. Puede rechazar con
+observación obligatoria o aprobar indicando el total efectivamente verificado, positivo en COP,
+y fecha de recepción con zona horaria, no futura. No se suman comprobantes ni se infieren
+porcentajes o saldos. Un rechazo conserva evidencia y permite al asesor agregar o sustituir
+comprobantes y enviar otra solicitud; solo existe una pendiente por proyecto.
 
-Escrituras atómicas: lock proyecto/tareas/fuente, entidad, transición y notificaciones. Índices
-únicos por decisión/cotización/tarea y por envío/cotización/tarea impiden duplicados concurrentes.
-ReceivedAt es el evento económico reportado. RecordedAt es del servidor e inicia/completa la
-tarea mediante StartUntracked/Complete. Sin SLA: Pending=NotStarted, Completed=UntrackedLegacy;
-no deadline inventado, porcentaje esperado, saldo, Ingeniería ni Producción.
+La aprobación registra InitialDeposit inmutable, completa la tarea contable, notifica al asesor
+y crea una única tarea TakeMeasurements (tipo 5, área Installation=4), asignada a la cuenta de
+Instalación configurada. Todo se confirma en una transacción. Contabilidad e Instalación no
+tienen SLA ni ronda propia. La tarea de Instalación queda Pending; radicación de medidas,
+Acta de Vanos, firmas, Producción y Logística quedan fuera de este flujo.
 
-Migración `20261028164214_AddAccountingInitialDeposit`, posterior a decisiones V1 y rondas V2.
-Las tres pendientes deben aplicarse manualmente en orden antes del smoke operativo acumulado.
-No se aplica nada automáticamente ni se cambian migraciones previas. Downgrade rechaza datos
-Accounting existentes. `AccountingPostgresTests` usa SNG_ACCOUNTING_TEST_DATABASE solo con
-cluster loopback aislado/base `accounting_test`: cadena V1/V2/Accounting, ronda 1 ChangesRequested
-→ ronda 2 Approved, concurrencia, rollback, scopes y conteos sobre datos sintéticos.
+Configurar privadamente Authentication:AccountingAssigneeSubject (obligatorio al iniciar)
+y Authentication:InstallationAssigneeSubject. Si falta Instalación, la aprobación devuelve 503
+InstallationAssigneeNotConfigured sin cambios. Google Subject define identidad; el rol activo
+y la asignación se validan en Backend. Management mantiene lectura transversal sin escritura.
+Los comprobantes usan el almacenamiento y versionado documental existente; sustituir conserva
+los bytes históricos. Durante una revisión pendiente o después de aprobar no se modifican.
+
+La migración 20261103134446_AddDepositVerificationReceipts agrega revisiones y vínculos
+documentales. Su aplicación operativa requiere autorización explícita; no se migra al arrancar.
+El anticipo no implica pago total, ingreso reconocido ni un saldo contractual.
+
+El rechazo contable crea CorrectDepositReceipts (tipo 6, Commercial), asignada al asesor
+responsable e iniciada sin SLA. Aparece en su bandeja En curso y enlaza el expediente.
+El reenvío completa esa tarea en la misma transacción que crea la revisión contable.
+Los rechazos consecutivos conservan tareas distintas ya completadas; solo puede existir
+una corrección activa por proyecto. No se reabre PresentQuotationToClient.
+La tarea es visible al asesor asignado y a Gerencia; las revisiones y comprobantes conservan
+las lecturas compartidas existentes. No se crean correcciones retroactivas para rechazos previos.
+
+Precisión técnica de comparación: ancho/alto a 3 decimales en metros (1 mm) y superficie a
+6 decimales en m², con MidpointRounding.AwayFromZero. TechnicalMeasurePrecision se aplica
+solo al comparar; CommercialTechnicalDifferences devuelve las diferencias reales con valores
+normalizados legibles. Cantidades siguen siendo enteros exactos; precios, fórmulas y valores
+originales persistidos no cambian. No es una tolerancia de fabricación o instalación.
+Frontend implementa la misma regla mediante dígitos decimales/BigInt; los casos de prueba
+compartidos por contrato cubren equivalencias, mitades, bordes, valores pequeños y grandes.
