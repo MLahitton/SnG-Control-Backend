@@ -7,6 +7,7 @@ namespace SnG.Control.Infrastructure.Persistence;
 public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) : DbContext(options)
 {
 
+    public DbSet<MeasurementReport> MeasurementReports => Set<MeasurementReport>();
     public DbSet<MeasurementSketchVersion> MeasurementSketchVersions => Set<MeasurementSketchVersion>();
     public DbSet<MeasurementChecklist> MeasurementChecklists => Set<MeasurementChecklist>();
     public DbSet<MeasurementStructure> MeasurementStructures => Set<MeasurementStructure>();
@@ -35,6 +36,7 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.ApplyConfiguration(new MeasurementReportConfiguration());
         modelBuilder.ApplyConfiguration(new MeasurementSketchVersionConfiguration());
         modelBuilder.ApplyConfiguration(new MeasurementChecklistConfiguration());
         modelBuilder.ApplyConfiguration(new MeasurementStructureConfiguration());

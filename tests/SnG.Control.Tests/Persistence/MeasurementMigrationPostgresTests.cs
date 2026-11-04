@@ -42,7 +42,7 @@ public sealed class MeasurementMigrationPostgresTests
         await db.GetService<IMigrator>().MigrateAsync("20261104150914_AddInstallationActualMeasurements");
         var before = await db.Database.SqlQueryRaw<string>("SELECT to_jsonb(s)::text AS \"Value\" FROM \"MeasurementStructures\" s").ToArrayAsync();
         await db.Database.MigrateAsync(); db.ChangeTracker.Clear();
-        var after = await db.Database.SqlQueryRaw<string>("SELECT (to_jsonb(s) - 'TechnicalJson' - 'SketchVersionId')::text AS \"Value\" FROM \"MeasurementStructures\" s").ToArrayAsync();
+        var after = await db.Database.SqlQueryRaw<string>("SELECT (to_jsonb(s) - 'TechnicalJson' - 'SketchVersionId' - 'MeasurementType' - 'ActualLocation' - 'InstallationObservations' - 'ComparisonJson' - 'ModificationJson')::text AS \"Value\" FROM \"MeasurementStructures\" s").ToArrayAsync();
         Assert.Equal(before, after);
         var restored = await db.MeasurementStructures.SingleAsync(); Assert.Equal(row.Id, restored.Id); Assert.NotNull(restored.MeasuredAt);
         Assert.Null(restored.Technical); Assert.Null(restored.SketchVersionId); Assert.Equal(2, restored.ActualWidth); Assert.Equal(2.4m, restored.ActualHeight);

@@ -1645,7 +1645,7 @@ Ficha técnica y croquis por unidad:
   Colores permitidos #111111/#0066cc/#cc2222, grosor 1–20 px del lienzo de referencia. Borrador
   pinta blanco sobre un fondo opaco. Límite JSON de trazos 1 MB; petición completa 2 MB;
   WEBP 512 KB, RIFF/VP8 opaco sin animación/metadata, dimensiones verificadas. No hay SVG ni URLs.
-  El servidor valida contenedor/cabecera y límites; no realiza una decodificación completa VP8.
+  El guardado valida contenedor/cabecera y límites; la generación del expediente decodifica también el WEBP y falla sin radicar si no es legible.
 - Cada guardado crea MeasurementSketchVersion inmutable con DrawingJson, SHA256, actor/UTC y
   revisión; WEBP usa IFileStorage en clave generada por servidor por proyecto/estructura/versión.
   Versiones anteriores se conservan. Mínimo dos segundos entre versiones por unidad, bajo el
@@ -1665,3 +1665,44 @@ Ficha técnica y croquis por unidad:
 - mm es la unidad de negocio de todas las longitudes. Ancho/alto heredados permanecen en m por
   compatibilidad, con conversión centralizada en Frontend measurements/units.ts. Manija/alfajía
   se almacenan en mm; m² y dinero no se convierten. No cambiar contratos de otros módulos.
+
+
+Ficha ampliada y expediente de Instalación:
+- `RecordActual` añade `MeasurementType` (Agreed/Production/Opening nullable), `ActualLocation`
+  (500 caracteres) e `InstallationObservations` (4000, opcional). Conserva ancho/alto en metros,
+  comparación/presentación en mm y auditoría Before/After. No altera los datos cotizados.
+- `Reinstate` usa RequestKey/ExpectedRevision y el bloqueo existente proyecto/tareas. Limpia el
+  retiro vigente y Medido, sin borrar eventos ni crear unidades. Orden comercial/adiciones intacto.
+- `ResolveComparison` recibe Comparison {Resolution: Comparable/NotComparable, Reason}. Solo la
+  Instalación configurada/asignada activa escribe. La resolución se vincula al tipo y dimensiones
+  persistidos; modificaciones de esos datos la invalidan. Sin clasificación de origen no hay
+  equivalencia automática. NotComparable registra revisión, conserva PendingReview y no calcula
+  diferencias. Comparable usa decimal, abs(delta*1000) y comparación estricta >100, sin redondeos
+  de fabricación. Las adiciones sin referencia comercial no admiten Comparable.
+- `RecordModification` recibe Modification {Type: Dimensional/System/Typology/Configuration/
+  Structural/Other, Reason (2000), Description (4000), SketchVersionId}. Cada guardado crea un
+  VersionId; AssessmentChangeJson conserva antes/después. El ID de croquis debe seleccionarse
+  explícitamente de la estructura actual. La evidencia queda vinculada a dimensiones, sistema,
+  ubicación, tipo y ficha técnica. Un croquis existente no completa por sí solo la modificación.
+- Drawing v2 conserva Strokes y añade Annotations [{Id,Content,X,Y,Size,Color,Order}], máximo 50,
+  contenido no vacío hasta 300 caracteres sin controles, coordenadas [0,1], tamaño 12–72 y colores
+  permitidos del editor. IDs y orden únicos. V1 continúa leyendo y reintentando sin cambiar su
+  fingerprint. Los textos se dibujan sobre la capa de trazos; el borrador de trazos no elimina textos.
+- `GET /api/projects/{id}/measurements/submissions/{submissionId}/report` devuelve application/pdf,
+  attachment, no-store, nosniff. Lectura scope-filtered para Installation/Management; no claves físicas.
+  Un snapshot anterior sin reporte devuelve 404. El Frontend ofrece descarga solo si Snapshot.Report existe.
+- El render usa SkiaSharp 3.119.2 (MIT, https://github.com/mono/SkiaSharp) y Noto Sans embebida (OFL,
+  licencia incluida). Evita navegador, capturas de tarjetas y servicios externos. Los assets nativos
+  Windows/macOS llegan con SkiaSharp; un despliegue Linux requiere el paquete nativo Linux compatible.
+- Antes de abrir la transacción de escritura, se construye y renderiza un snapshot propuesto usando
+  versiones inmutables de WEBP verificadas por SHA256. Bajo los locks se revalida revisión, documentos
+  y proyección exacta. Solo entonces se confirma ese mismo snapshot, MeasurementReport (PDF bytea,
+  versión, SubmissionId, copia canónica del snapshot, SHA256 de ambos), evento, tarea y notificaciones.
+  No se renderiza bajo lock ni se coordina un archivo PDF externo con PostgreSQL. Fallo de render,
+  revisión, SaveChanges o rollback no deja una radicación sin PDF. Replay devuelve la misma operación.
+  La descarga verifica hashes y equivalencia del snapshot JSONB con su copia canónica; devuelve los
+  mismos bytes históricos, sin consultar dibujos mutables.
+- Migraciones aditivas: 20261104213553_ExpandInstallationSiteDetails,
+  20261104214213_AddInstallationAssessments y 20261104214806_AddInstallationSubmissionReports.
+  Campos nuevos nullable, sin backfill. Validación solo en PostgreSQL temporal aislado; no aplicar
+  a bases operativas sin autorización específica. Copias previas de snapshots permanecen intactas.

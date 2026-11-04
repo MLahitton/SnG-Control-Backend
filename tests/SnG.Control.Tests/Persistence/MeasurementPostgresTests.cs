@@ -80,7 +80,7 @@ public sealed class MeasurementPostgresTests
             await invalid.RollbackAsync();
         }
         await Error("MeasurementsIncomplete", () => Store(db).ExecuteAsync(project.Id, Command("Measure", first.Id, true), actor, default));
-        var capture = new MeasurementCommand(Guid.NewGuid(), state.Revision, "RecordActual", first.Id, ActualWidth: 1.2345m, ActualHeight: 2.3456m, ActualSystemText: "  Site custom system  ");
+        var capture = new MeasurementCommand(Guid.NewGuid(), state.Revision, "RecordActual", first.Id, ActualWidth: 1.2345m, ActualHeight: 2.3456m, ActualSystemText: "  Site custom system  ", MeasurementType: "Agreed", ActualLocation: "Room");
         await Error("MeasurementAccessDenied", () => Store(db).ExecuteAsync(project.Id, capture, actor with { Subject = "other" }, default));
         await using (var failed = Db(true)) await Assert.ThrowsAsync<InvalidOperationException>(() => Store(failed).ExecuteAsync(project.Id, capture, actor, default));
         await Refresh(); Assert.Null(state.Structures.Single(s => s.Id == first.Id).ActualWidth);
@@ -119,6 +119,7 @@ public sealed class MeasurementPostgresTests
         Assert.NotEqual(firstVersion, finalVersion);
         Assert.NotNull(await Store(db).ReadSketchAsync(project.Id, first.Id, firstVersion, new("manager", SystemRole.Management), default));
         Assert.Equal(firstVersion, state.History.Last(e => e.Action == "RecordSketch" && e.StructureId == first.Id).Sketch!.Before);
+        await Execute(new(Guid.NewGuid(), state.Revision, "ResolveComparison", first.Id, Comparison: new("NotComparable", "Synthetic reference has no dimensional classification")));
         var mark = Command("Measure", first.Id, true);
         await using (var a = Db()) await using (var b = Db()) await Task.WhenAll(Store(a).ExecuteAsync(project.Id, mark, actor, default), Store(b).ExecuteAsync(project.Id, mark, actor, default));
         await Refresh(); Assert.NotNull(state.Structures.Single(s => s.Id == first.Id).MeasuredAt); Assert.Equal(1, state.Summary.Measured); Assert.Single(state.History, h => h.Action == "Measure");
@@ -128,7 +129,7 @@ public sealed class MeasurementPostgresTests
         await Execute(new(Guid.NewGuid(), state.Revision, "Add", Description: "Onsite door", Width: 1.3m, Height: 2.1m));
         var added = state.Structures.Single(s => s.ItemId is null); Assert.Null(added.MeasuredAt); Assert.Equal(22, state.Summary.Active);
         Assert.Equal(1.3m, added.ActualWidth); Assert.Equal(2.1m, added.ActualHeight); Assert.Equal("Onsite door", added.ActualSystemText); Assert.Null(added.ImageCatalogItemId);
-        await Execute(new(Guid.NewGuid(), state.Revision, "RecordActual", added.Id, ActualWidth: 1.4m, ActualHeight: 2.2m, ActualSystemText: "Door revised onsite"));
+        await Execute(new(Guid.NewGuid(), state.Revision, "RecordActual", added.Id, ActualWidth: 1.4m, ActualHeight: 2.2m, ActualSystemText: "Door revised onsite", MeasurementType: "Agreed", ActualLocation: "Room"));
         var revisedAdded = state.Structures.Single(s => s.Id == added.Id); Assert.Equal(1.4m, revisedAdded.ActualWidth); Assert.Equal(1.3m, revisedAdded.Width);
         Assert.Equal(1.3m, state.History.Last(e => e.Action == "RecordActual").Details!.Before.Width);
         await Execute(new(Guid.NewGuid(), state.Revision, "RecordTechnical", added.Id, Technical: CompleteTechnical()));
@@ -156,11 +157,23 @@ public sealed class MeasurementPostgresTests
             Assert.Equal("installer", saved.RetiredBySubject); Assert.Equal(audit.At, saved.RetiredAt);
         }
         await Error("MeasurementStructureRetired", () => Store(db).ExecuteAsync(project.Id, Command("Retire", added.Id), actor, default));
+        var orderBeforeReinstate = state.Structures.Select(s => s.Id).ToArray();
+        var beforeReinstate = state.Structures.Single(s => s.Id == first.Id);
+        var reinstate = Command("Reinstate", first.Id);
+        await Execute(reinstate); await Execute(reinstate);
+        var reinstated = state.Structures.Single(s => s.Id == first.Id);
+        Assert.Null(reinstated.RetiredAt); Assert.Null(reinstated.MeasuredAt);
+        Assert.Equal(beforeReinstate with { RetiredAt = null, MeasuredAt = null }, reinstated);
+        Assert.Equal(orderBeforeReinstate, state.Structures.Select(s => s.Id));
+        Assert.Single(state.History, e => e.Action == "Reinstate" && e.StructureId == first.Id);
+        Assert.Contains(state.History, e => e.Action == "Retire" && e.StructureId == first.Id);
+        await Execute(Command("Retire", first.Id));
         await Error("MeasurementsIncomplete", () => Store(db).ExecuteAsync(project.Id, Command("Submit") with { DocumentIds = [Guid.NewGuid()] }, actor, default));
         foreach (var row in state.Structures.Where(s => s.RetiredAt is null).ToArray())
         {
-            if (row.ActualWidth == null) await Execute(new(Guid.NewGuid(), state.Revision, "RecordActual", row.Id, ActualWidth: 2, ActualHeight: 2.4m, ActualSystemText: "Site"));
+            if (row.ActualWidth == null) await Execute(new(Guid.NewGuid(), state.Revision, "RecordActual", row.Id, ActualWidth: 2, ActualHeight: 2.4m, ActualSystemText: "Site", MeasurementType: "Agreed", ActualLocation: "Room"));
             await Execute(new(Guid.NewGuid(), state.Revision, "RecordTechnical", row.Id, Technical: CompleteTechnical()));
+            await Execute(new(Guid.NewGuid(), state.Revision, "ResolveComparison", row.Id, Comparison: new("NotComparable", "Synthetic reference unclassified")));
             await Execute(Command("Measure", row.Id, true));
         }
         Assert.Equal(100, state.Summary.Progress); Assert.Equal(0, state.Summary.Pending);
@@ -177,11 +190,34 @@ public sealed class MeasurementPostgresTests
         await Error("InvalidReplacement", () => Documents(db, "advisor", SystemRole.CommercialAdvisor).UploadAsync(project.Id, Replacing(ids[0]), default));
         var submit = Command("Submit") with { DocumentIds = ids };
         await Error("MeasurementDocumentsChanged", () => Store(db).ExecuteAsync(project.Id, submit with { DocumentIds = [ids[0]] }, actor, default));
+        var sketchRecord = await db.MeasurementSketchVersions.AsNoTracking().SingleAsync(v => v.Id == finalVersion);
+        var sketchPath = Path.Combine(files.Root, sketchRecord.StorageKey.Replace('/', Path.DirectorySeparatorChar));
+        var originalWebp = await File.ReadAllBytesAsync(sketchPath);
+        await File.WriteAllBytesAsync(sketchPath, [1, 2, 3]);
+        try { await Error("MeasurementSketchIntegrity", () => Store(db).ExecuteAsync(project.Id, submit, actor, default)); }
+        finally { await File.WriteAllBytesAsync(sketchPath, originalWebp); }
+        await Refresh(); Assert.Null(state.SubmissionId); Assert.False(await db.MeasurementReports.AnyAsync(r => r.ProjectId == project.Id));
         await using (var failed = Db(true)) await Assert.ThrowsAsync<InvalidOperationException>(() => Store(failed).ExecuteAsync(project.Id, submit, actor, default));
-        await Refresh(); Assert.Null(state.SubmissionId); Assert.Equal("InProgress", state.TaskStatus); Assert.Empty(await db.MeasurementSubmissionDocuments.Where(d => d.ProjectId == project.Id).ToArrayAsync());
+        await Refresh(); Assert.Null(state.SubmissionId); Assert.False(await db.MeasurementReports.AnyAsync(r => r.ProjectId == project.Id)); Assert.Equal("InProgress", state.TaskStatus); Assert.Empty(await db.MeasurementSubmissionDocuments.Where(d => d.ProjectId == project.Id).ToArrayAsync());
         await using (var a = Db()) await using (var b = Db()) await Task.WhenAll(Store(a).ExecuteAsync(project.Id, submit, actor, default), Store(b).ExecuteAsync(project.Id, submit, actor, default));
         await Refresh(); Assert.NotNull(state.SubmissionId); Assert.Equal("Completed", state.TaskStatus); Assert.False(state.CanModify);
         Assert.Single(state.History, h => h.Action == "Submit"); Assert.Equal(22, state.Snapshot!.Structures.Count);
+        var report = await Store(db).ReadReportAsync(project.Id, state.SubmissionId!.Value, new("installer", SystemRole.Installation), default);
+        Assert.NotNull(report); Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(report.Bytes, 0, 4));
+        Assert.Equal(report.Bytes, (await Store(db).ReadReportAsync(project.Id, state.SubmissionId.Value, new("manager", SystemRole.Management), default))!.Bytes);
+        Assert.Null(await Store(db).ReadReportAsync(Guid.NewGuid(), state.SubmissionId.Value, new("manager", SystemRole.Management), default));
+        Assert.Null(await Store(db).ReadReportAsync(project.Id, state.SubmissionId.Value, new("other", SystemRole.Installation), default));
+        Assert.Null(await Store(db).ReadReportAsync(project.Id, state.SubmissionId.Value, new("installer", SystemRole.Accounting), default));
+        Assert.Single(await db.MeasurementReports.Where(r => r.ProjectId == project.Id).ToArrayAsync());
+        var savedReport = await db.MeasurementReports.AsNoTracking().SingleAsync(r => r.ProjectId == project.Id);
+        Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(report.Bytes)), savedReport.PdfSha256);
+        if (Environment.GetEnvironmentVariable("SNG_SYNTHETIC_PDF_OUTPUT") is { } pdfPath) await File.WriteAllBytesAsync(pdfPath, report.Bytes);
+        await using (var corruption = await db.Database.BeginTransactionAsync())
+        {
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"MeasurementReports\" SET \"PdfSha256\" = {'0'.ToString()} WHERE \"ProjectId\" = {project.Id}");
+            await Error("MeasurementReportIntegrity", () => Store(db).ReadReportAsync(project.Id, state.SubmissionId.Value, new("manager", SystemRole.Management), default));
+            await corruption.RollbackAsync();
+        }
         var frozen = state.Snapshot.Structures.Single(s => s.Id == first.Id);
         Assert.Equal(CompleteTechnical(), frozen.Technical); Assert.Equal(finalVersion, frozen.SketchVersionId);
         Assert.Equal(sketchCommand.Sketch.Webp, await Store(db).ReadSketchImageAsync(project.Id, first.Id, finalVersion, new("manager", SystemRole.Management), default));

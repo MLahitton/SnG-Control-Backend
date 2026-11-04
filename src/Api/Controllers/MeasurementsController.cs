@@ -13,6 +13,12 @@ public sealed class MeasurementsController(MeasurementService service) : Control
     [HttpGet]
     [ProducesResponseType<MeasurementState>(200)]
     public async Task<IActionResult> Read(Guid id, CancellationToken token) => await service.ReadAsync(id, token) is { } state ? Ok(state) : NotFound();
+    [HttpGet("submissions/{submissionId:guid}/report")]
+    public async Task<IActionResult> Report(Guid id, Guid submissionId, CancellationToken token)
+    {
+        Response.Headers.CacheControl = "no-store"; Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return await service.ReadReportAsync(id, submissionId, token) is { } report ? File(report.Bytes, "application/pdf", report.FileName) : NotFound();
+    }
     [HttpPost("initialize")]
     public async Task<IActionResult> Initialize(Guid id, CancellationToken token)
     {

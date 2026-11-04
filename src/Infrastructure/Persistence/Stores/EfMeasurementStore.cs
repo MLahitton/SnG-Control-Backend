@@ -1,4 +1,6 @@
 using System.Data;
+using SnG.Control.Infrastructure.Measurements;
+using SnG.Control.Domain.ValueObjects;
 using SnG.Control.Application.Files;
 using System.Security.Cryptography;
 using System.Text;
@@ -33,7 +35,7 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
             scope.Role == SystemRole.Installation && task.AssignedToGoogleSubject == scope.Subject && task.Status != ProjectTaskStatus.Completed && checklist?.SubmissionId is null,
             checklist?.Id, checklist?.Revision ?? 0, MeasurementSummary.From(rows), views,
             documents.Select(d => DocumentResponse.From(d, new HashSet<Guid>())).ToArray(),
-            history.Select(e => new MeasurementHistory(e.Id, e.Action, e.StructureId, e.At, new(e.ActorEmail, e.ActorName), e.Revision, e.DetailsJson is null ? null : JsonSerializer.Deserialize<MeasurementDetailsChange>(e.DetailsJson), e.TechnicalChangeJson is null ? null : JsonSerializer.Deserialize<MeasurementTechnicalChange>(e.TechnicalChangeJson), e.SketchChangeJson is null ? null : JsonSerializer.Deserialize<MeasurementSketchChange>(e.SketchChangeJson))).ToArray(),
+            history.Select(e => new MeasurementHistory(e.Id, e.Action, e.StructureId, e.At, new(e.ActorEmail, e.ActorName), e.Revision, e.DetailsJson is null ? null : JsonSerializer.Deserialize<MeasurementDetailsChange>(e.DetailsJson), e.TechnicalChangeJson is null ? null : JsonSerializer.Deserialize<MeasurementTechnicalChange>(e.TechnicalChangeJson), e.SketchChangeJson is null ? null : JsonSerializer.Deserialize<MeasurementSketchChange>(e.SketchChangeJson), e.AssessmentChangeJson is null ? null : JsonSerializer.Deserialize<InstallationAssessmentChange>(e.AssessmentChangeJson))).ToArray(),
             checklist?.SubmissionId, checklist?.SubmittedAt, checklist?.SnapshotJson is { } json ? JsonSerializer.Deserialize<MeasurementSnapshot>(json) : null);
     }
     private async Task<MeasurementSketchVersion?> AuthorizedSketchAsync(Guid id, Guid structureId, Guid versionId, ProjectReadScope scope, CancellationToken token)
@@ -115,6 +117,9 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
     }
     public async Task ExecuteAsync(Guid id, MeasurementCommand command, DecisionActor actor, CancellationToken token)
     {
+        // Render a proposed immutable snapshot outside write locks. The transaction below revalidates
+        // the exact checklist revision, documents and structure projection before committing both artifacts.
+        PreparedReport? prepared = command.Action == "Submit" ? await PrepareReportAsync(id, command, actor, token) : null;
         await using var tx = await db.Database.BeginTransactionAsync(token);
         var task = await LockAsync(id, actor.Subject, token);
         var checklist = await db.MeasurementChecklists.AsNoTracking().SingleOrDefaultAsync(c => c.ProjectId == id, token) ?? throw new DocumentException(409, "MeasurementUnavailable");
@@ -135,14 +140,19 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
         EfProjectNotificationWriter.NotificationWriteSet? staged = null;
         try
         {
-            Track(checklist); Guid? structureId = command.StructureId; MeasurementDetailsChange? details = null; MeasurementTechnicalChange? technical = null; MeasurementSketchChange? sketch = null;
+            Track(checklist); Guid? structureId = command.StructureId; MeasurementDetailsChange? details = null; MeasurementTechnicalChange? technical = null; MeasurementSketchChange? sketch = null; InstallationAssessmentChange? assessment = null;
             if (command.Action == "Submit")
             {
                 var summary = MeasurementSummary.From(rows);
                 if (summary.Active == 0 || summary.Pending != 0) throw new DocumentException(409, "MeasurementsIncomplete");
                 var docs = await db.ProjectDocuments.AsNoTracking().Where(d => d.ProjectId == id && d.IsMeasurementDocument && d.RemovedAt == null && d.ReplacedAt == null).ToArrayAsync(token);
                 if (docs.Length == 0 || command.DocumentIds is null || !docs.Select(d => d.Id).Order().SequenceEqual(command.DocumentIds.Order())) throw new DocumentException(409, "MeasurementDocumentsChanged");
-                checklist.Submit(now, actor.Subject, JsonSerializer.Serialize(new MeasurementSnapshot(checklist.CommercialQuotationId, checklist.QuotationRound, summary, await StructureViewsAsync(rows, token), docs.Select(d => d.Id).Order().ToArray())));
+                if (prepared == null) throw new DocumentException(409, "MeasurementReportUnavailable");
+                var finalSnapshot = new MeasurementSnapshot(checklist.CommercialQuotationId, checklist.QuotationRound, summary, await StructureViewsAsync(rows, token), docs.Select(d => d.Id).Order().ToArray(), prepared.Snapshot.Report);
+                var snapshotJson = JsonSerializer.Serialize(finalSnapshot);
+                if (snapshotJson != prepared.Json) throw new DocumentException(409, "MeasurementRevisionConflict");
+                checklist.Submit(prepared.Snapshot.Report!.SubmittedAt, actor.Subject, snapshotJson, prepared.Snapshot.Report.SubmissionId);
+                added.Add(new MeasurementReport(checklist, prepared.Bytes, Hash(prepared.Bytes), Hash(Encoding.UTF8.GetBytes(snapshotJson))));
                 added.AddRange(docs.Select(d => new MeasurementSubmissionDocument(checklist, d)));
                 Track(task); task.Complete(now); staged = await notifications.StageAsync([task], now, token);
             }
@@ -158,14 +168,27 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
                 else
                 {
                     var row = rows.SingleOrDefault(r => r.Id == command.StructureId) ?? throw new DocumentException(404, "MeasurementStructureNotFound");
-                    if (row.RetiredAt is not null) throw new DocumentException(409, "MeasurementStructureRetired");
+                    if (row.RetiredAt is not null && command.Action != "Reinstate") throw new DocumentException(409, "MeasurementStructureRetired");
                     Track(row);
-                    if (command.Action == "RecordTechnical")
+                    if (command.Action is "ResolveComparison" or "RecordModification")
+                    {
+                        var beforeComparison = row.Comparison; var beforeModification = row.Modification;
+                        try
+                        {
+                            if (command.Action == "ResolveComparison") row.ResolveComparison(command.Comparison!.Resolution, command.Comparison.Reason, now, actor.Subject);
+                            else row.RecordModification(command.Modification!.Type, command.Modification.Reason, command.Modification.Description, command.Modification.SketchVersionId, now, actor.Subject);
+                        }
+                        catch (ArgumentException) { throw new DocumentException(400, "InvalidMeasurementAssessment"); }
+                        catch (InvalidOperationException) { throw new DocumentException(409, "MeasurementsIncomplete"); }
+                        assessment = new(beforeComparison, row.Comparison, beforeModification, row.Modification);
+                    }
+                    else if (command.Action == "RecordTechnical")
                     {
                         var before = row.Technical;
                         try { row.RecordTechnical(command.Technical!, now, actor.Subject); }
                         catch (ArgumentException) { throw new DocumentException(400, "InvalidMeasurementTechnical"); }
                         catch (InvalidOperationException) { throw new DocumentException(409, "MeasurementsIncomplete"); }
+                        if (row.MeasuredAt != null && !row.IsTechnicallyComplete) throw new DocumentException(409, "MeasurementsIncomplete");
                         technical = new(before, row.Technical);
                     }
                     else if (command.Action == "RecordSketch")
@@ -181,8 +204,13 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
                     else if (command.Action == "RecordActual")
                     {
                         var before = MeasurementActualValues.From(row);
-                        try { row.RecordActual(command.ActualWidth!.Value, command.ActualHeight!.Value, command.ActualSystemText!, now, actor.Subject); }
+                        try {
+                            row.RecordActual(command.ActualWidth!.Value, command.ActualHeight!.Value, command.ActualSystemText!, now, actor.Subject);
+                            row.RecordSiteDetails(command.MeasurementType, command.ActualLocation, command.InstallationObservations, now, actor.Subject);
+                        }
+                        catch (InvalidOperationException) { throw new DocumentException(409, "MeasurementsIncomplete"); }
                         catch (ArgumentException) { throw new DocumentException(400, "InvalidMeasurementTechnical"); }
+                        if (row.MeasuredAt != null && !row.IsTechnicallyComplete) throw new DocumentException(409, "MeasurementsIncomplete");
                         details = new(before, MeasurementActualValues.From(row));
                     }
                     else if (command.Action == "Measure")
@@ -191,11 +219,16 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
                         row.Measure(command.Measured!.Value, now, actor.Subject);
                     }
                     else if (command.Action == "Retire") row.Retire(now, actor.Subject);
+                    else if (command.Action == "Reinstate")
+                    {
+                        if (row.RetiredAt is null) throw new DocumentException(409, "MeasurementStructureNotRetired");
+                        row.Reinstate(now, actor.Subject);
+                    }
                     else throw new DocumentException(400, "InvalidMeasurementCommand");
                 }
                 checklist.Advance();
             }
-            added.Add(new MeasurementEvent(checklist, command.RequestKey, fingerprint, command.Action == "Measure" && command.Measured == false ? "Unmeasure" : command.Action, structureId, now, actor.Subject, actor.Email, actor.Name, details is null ? null : JsonSerializer.Serialize(details), technical is null ? null : JsonSerializer.Serialize(technical), sketch is null ? null : JsonSerializer.Serialize(sketch)));
+            added.Add(new MeasurementEvent(checklist, command.RequestKey, fingerprint, command.Action == "Measure" && command.Measured == false ? "Unmeasure" : command.Action, structureId, now, actor.Subject, actor.Email, actor.Name, details is null ? null : JsonSerializer.Serialize(details), technical is null ? null : JsonSerializer.Serialize(technical), sketch is null ? null : JsonSerializer.Serialize(sketch), assessment is null ? null : JsonSerializer.Serialize(assessment)));
             db.AddRange(added); await db.SaveChangesAsync(token); commitAttempted = true; await tx.CommitAsync(token);
         }
         catch
@@ -210,6 +243,44 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
             foreach (var (entity, before) in changed) { db.Entry(entity).CurrentValues.SetValues(before); db.Entry(entity).State = EntityState.Detached; }
             throw;
         }
+    }
+    private sealed record PreparedReport(MeasurementSnapshot Snapshot, string Json, byte[] Bytes);
+    private static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
+    private async Task<PreparedReport?> PrepareReportAsync(Guid id, MeasurementCommand command, DecisionActor actor, CancellationToken token)
+    {
+        var scope = new ProjectReadScope(actor.Subject, SystemRole.Installation);
+        var state = await ReadAsync(id, scope, token) ?? throw new DocumentException(404, "ProjectNotFound");
+        if (state.SubmissionId != null) return null; // exact command replay is checked inside the transaction
+        if (!state.CanModify) throw new DocumentException(403, "MeasurementAccessDenied");
+        if (state.Revision != command.ExpectedRevision) throw new DocumentException(409, "MeasurementRevisionConflict");
+        if (state.Summary.Active == 0 || state.Summary.Pending != 0) throw new DocumentException(409, "MeasurementsIncomplete");
+        var docs = state.Documents.Where(d => d.IsCurrent).Select(d => d.Id).Order().ToArray();
+        if (docs.Length == 0 || command.DocumentIds == null || !docs.SequenceEqual(command.DocumentIds.Order())) throw new DocumentException(409, "MeasurementDocumentsChanged");
+        var checklist = await db.MeasurementChecklists.AsNoTracking().SingleAsync(c => c.Id == state.ChecklistId, token);
+        var project = await db.Projects.AsNoTracking().SingleAsync(p => p.Id == id, token);
+        var client = await db.Clients.AsNoTracking().SingleAsync(c => c.Id == project.ClientId, token);
+        var header = new MeasurementReportHeader(Guid.NewGuid(), 1, project.Name, project.SgCode, client.Name, timing.UtcNow, actor.Name ?? "Instalaci?n asignada", state.History.Where(e => e.Action == "Reinstate").Select(e => e.StructureId).Distinct().Count());
+        var snapshot = new MeasurementSnapshot(checklist.CommercialQuotationId, checklist.QuotationRound, state.Summary, state.Structures, docs, header);
+        var sketches = new Dictionary<Guid, byte[]>();
+        foreach (var row in snapshot.Structures)
+            foreach (var version in new[] { row.SketchVersionId, row.Modification?.SketchVersionId }.Where(v => v != null).Select(v => v!.Value).Distinct())
+            {
+                var bytes = await ReadSketchImageAsync(id, row.Id, version, scope, token) ?? throw new DocumentException(409, "MeasurementReportUnavailable");
+                sketches.Add(version, bytes);
+            }
+        try { return new(snapshot, JsonSerializer.Serialize(snapshot), new InstallationPdfRenderer().Render(snapshot, sketches, token)); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception e) when (e is InvalidOperationException or ArgumentException) { throw new DocumentException(409, "MeasurementReportUnavailable"); }
+    }
+    public async Task<MeasurementReportFile?> ReadReportAsync(Guid id, Guid submissionId, ProjectReadScope scope, CancellationToken token)
+    {
+        if (scope.Role is not (SystemRole.Installation or SystemRole.Management) || !await db.Projects.AsNoTracking().Where(scope.Filter(db.ProjectTasks)).AnyAsync(p => p.Id == id, token)) return null;
+        var report = await db.MeasurementReports.AsNoTracking().SingleOrDefaultAsync(r => r.ProjectId == id && r.SubmissionId == submissionId, token);
+        if (report == null) return null;
+        var snapshot = await db.MeasurementChecklists.AsNoTracking().Where(c => c.Id == report.ChecklistId && c.SubmissionId == submissionId).Select(c => c.SnapshotJson).SingleAsync(token);
+        using var expected = JsonDocument.Parse(report.SnapshotCanonical); using var actual = JsonDocument.Parse(snapshot!);
+        if (Hash(report.Pdf) != report.PdfSha256 || Hash(Encoding.UTF8.GetBytes(report.SnapshotCanonical)) != report.SnapshotSha256 || !JsonElement.DeepEquals(expected.RootElement, actual.RootElement)) throw new DocumentException(409, "MeasurementReportIntegrity");
+        return new(report.Pdf, $"toma-medidas-{submissionId:N}-v{report.Version}.pdf");
     }
     public static async Task RequireUploadAsync(SnGControlDbContext db, Guid id, IReadOnlyList<ProjectTask> tasks, string subject, CancellationToken token)
     {

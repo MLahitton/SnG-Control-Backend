@@ -19,8 +19,9 @@ public sealed class InstallationTechnicalTests
         var row = MeasurementStructure.Added(checklist, "Original", 1, 2, null, at, "installer");
         Assert.Null(row.Technical); Assert.False(row.IsTechnicallyComplete);
         row.RecordActual(2.000m, 2.400m, "Completely free text", at, "installer");
+        row.RecordSiteDetails("Agreed", "Room", null, at, "installer");
         var details = new InstallationTechnicalDetails("Confirmed", 1100, "Outside", type, direction, hand, true, 123.5m);
-        row.RecordTechnical(details, at, "installer"); Assert.True(row.IsTechnicallyComplete);
+        row.RecordTechnical(details, at, "installer"); row.ResolveComparison("NotComparable", "No commercial reference", at, "installer"); Assert.True(row.IsTechnicallyComplete);
         Assert.Equal(1100, row.Technical!.HandleHeightMm); Assert.Equal(123.5m, row.Technical.AlfajiaMeasurementMm);
         row.RecordTechnical(details with { ViewSide = "Inside" }, at, "installer"); Assert.Equal(hand, row.Technical!.OpeningHand);
         row.RecordTechnical(details with { HandleStatus = "NotApplicable", HandleHeightMm = null, HasAlfajia = false, AlfajiaMeasurementMm = null }, at, "installer");

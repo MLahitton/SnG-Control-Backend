@@ -408,8 +408,7 @@ originales cotizados. Cada cambio queda auditado con valores anteriores/nuevos y
 El snapshot final incluye la captura y bloquea su edición. Los registros históricos sin captura
 conservan valores nulos; no se copian medidas cotizadas como si fueran mediciones.
 La interfaz muestra el dibujo persistido del ítem, campos asociados al dibujo y tres tarjetas
-por fila en escritorio. Las notas ya no se solicitan ni muestran en el checklist; su historia
-persistida se conserva. Las estructuras agregadas utilizan el mismo guardado y cierre.
+por fila en escritorio. Las observaciones nuevas de Instalación son opcionales y se conservan separadas de las notas históricas cotizadas. Las estructuras agregadas utilizan el mismo guardado y cierre.
 
 Cada unidad incluye ficha técnica: manija pendiente/no aplicable/confirmada, vista por dentro o
 por fuera, tipo de apertura, sentido y lado de bisagras, y alfajía. Izquierda/derecha siempre
@@ -417,7 +416,7 @@ indica el lado de las bisagras observado desde la vista seleccionada; cambiar de
 La sugerencia de manija de 1100 mm no se guarda como medición hasta confirmarla o editarla.
 Para marcar Medido se requieren medidas reales y ficha completa, con campos condicionales según
 aplicación. Los checks anteriores se conservan; desmarcarlos exige completar la ficha al remarcar.
-El croquis es opcional, independiente por unidad y editable con mouse, dedo o lápiz. Sus versiones
+El croquis es opcional salvo modificación formal, independiente por unidad y editable con mouse, dedo o lápiz. Sus versiones
 conservan trazos editables y WEBP privado; cancelar no cambia el guardado. Retiro y radicación
 bloquean la edición. No se crean tareas de Ingeniería ni Actas de Vanos.
 
@@ -426,3 +425,31 @@ muestra y captura longitudes en mm, incluidas las referencias cotizadas. Los con
 de ancho/alto siguen en metros exclusivamente por compatibilidad técnica: se convierten en los
 límites de la interfaz (2000 × 2400 mm ↔ 2 × 2,4 m). Manija y alfajía se guardan directamente en mm.
 Superficies en m² e importes monetarios no cambian; no se realiza una migración global de unidades.
+
+
+La ficha registra el tipo del par de dimensiones (acordada, producción o vano), ubicación real
+individual y observaciones opcionales. Tipo y ubicación son obligatorios para nuevas confirmaciones
+Medido; no se inventan valores para registros históricos. Alfajía ofrece 114 mm, 160 mm u Otro,
+conservando su valor numérico. Reintegrar recupera la misma estructura, posición y croquis, conserva
+el retiro en historial y exige confirmar nuevamente Medido.
+
+La cotización no clasifica sus dimensiones por tipo de medida. La Instalación asignada revisa
+explícitamente la comparabilidad, con motivo obligatorio. Solo una referencia confirmada comparable
+produce diferencias absolutas en mm: 100 mm no supera el umbral; más de 100 mm exige modificación
+formal. Una revisión no comparable permanece identificada como pendiente de comparación, nunca
+como ausencia de modificación; la resolución motivada permite completar el levantamiento sin
+inventar ajustes productivos. Cambiar dimensiones o tipo invalida la revisión anterior.
+
+Una modificación registra tipo, motivo, descripción, versión y asociación explícita a un croquis
+persistido que documente ese cambio. Se pueden guardar borradores incompletos, pero no marcar
+Medido hasta completar la modificación sobre la ficha vigente. Cambios posteriores de ficha
+requieren reconfirmarla. No hay eliminación de modificaciones históricas. El editor permite textos
+editables, movimiento por selección y nueva posición, eliminación y deshacer/rehacer; conserva
+los croquis anteriores y exporta únicamente WEBP privado.
+
+La radicación confirma conjuntamente el snapshot, el PDF oficial y el cierre de tarea. El reporte
+A4 incluye encabezado del proyecto/cliente, resumen, estructuras en orden comercial, modificaciones,
+fichas y versiones exactas de croquis; identifica las fichas históricas incompletas. Se descarga
+por Instalación asignada y Gerencia con los permisos del proyecto. No se generan Actas de Vanos
+ni nuevas tareas de Ingeniería. Los snapshots anteriores permanecen intactos y no reciben un PDF
+reconstruido desde datos actuales.

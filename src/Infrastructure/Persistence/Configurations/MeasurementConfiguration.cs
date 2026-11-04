@@ -29,9 +29,14 @@ public sealed class MeasurementStructureConfiguration : IEntityTypeConfiguration
             t.HasCheckConstraint("CK_MeasurementStructures_State", "((\"MeasuredAt\" IS NULL AND \"MeasuredBySubject\" IS NULL) OR (\"MeasuredAt\" >= \"CreatedAt\" AND \"MeasuredBySubject\" IS NOT NULL)) AND ((\"RetiredAt\" IS NULL AND \"RetiredBySubject\" IS NULL) OR (\"RetiredAt\" >= \"CreatedAt\" AND \"RetiredBySubject\" IS NOT NULL))");
         });
         b.HasKey(x => x.Id); b.Property(x => x.Id).ValueGeneratedNever();
+        b.Ignore(x => x.Comparison); b.Ignore(x => x.Modification); b.Ignore(x => x.ComparisonCurrent); b.Ignore(x => x.WidthDifferenceMm); b.Ignore(x => x.HeightDifferenceMm); b.Ignore(x => x.ComparisonStatus); b.Ignore(x => x.ModificationComplete); b.Ignore(x => x.AssessmentComplete);
+        b.Property(x => x.ComparisonJson).HasColumnType("jsonb"); b.Property(x => x.ModificationJson).HasColumnType("jsonb");
         b.Ignore(x => x.Technical); b.Ignore(x => x.IsTechnicallyComplete);
         b.Property(x => x.TechnicalJson).HasColumnType("jsonb");
         b.Property(x => x.ActualSystemText).HasMaxLength(2000);
+        b.Property(x => x.MeasurementType).HasMaxLength(20);
+        b.Property(x => x.ActualLocation).HasMaxLength(500);
+        b.Property(x => x.InstallationObservations).HasMaxLength(4000);
         b.HasAlternateKey(x => new { x.Id, x.ChecklistId });
         b.HasOne<MeasurementChecklist>().WithMany().HasForeignKey(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<CommercialQuotationItem>().WithMany().HasForeignKey(x => x.CommercialQuotationItemId).OnDelete(DeleteBehavior.Restrict);
@@ -46,6 +51,7 @@ public sealed class MeasurementEventConfiguration : IEntityTypeConfiguration<Mea
         b.HasOne<MeasurementChecklist>().WithMany().HasForeignKey(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<MeasurementStructure>().WithMany().HasForeignKey(x => new { x.StructureId, x.ChecklistId }).HasPrincipalKey(x => new { x.Id, x.ChecklistId }).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.ChecklistId, x.RequestKey }).IsUnique(); b.HasIndex(x => new { x.ChecklistId, x.Revision }).IsUnique();
+        b.Property(x => x.AssessmentChangeJson).HasColumnType("jsonb");
         b.Property(x => x.TechnicalChangeJson).HasColumnType("jsonb");
         b.Property(x => x.SketchChangeJson).HasColumnType("jsonb");
         b.Property(x => x.DetailsJson).HasColumnType("jsonb");
@@ -72,5 +78,15 @@ public sealed class MeasurementSketchVersionConfiguration : IEntityTypeConfigura
         b.HasIndex(x => new { x.StructureId, x.Revision }).IsUnique();
         b.HasOne<MeasurementStructure>().WithMany().HasForeignKey(x => new { x.StructureId, x.ChecklistId }).HasPrincipalKey(x => new { x.Id, x.ChecklistId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<MeasurementChecklist>().WithMany().HasForeignKey(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public sealed class MeasurementReportConfiguration : IEntityTypeConfiguration<MeasurementReport>
+{
+    public void Configure(EntityTypeBuilder<MeasurementReport> b)
+    {
+        b.ToTable("MeasurementReports"); b.HasKey(x => x.ChecklistId); b.Property(x => x.ChecklistId).ValueGeneratedNever();
+        b.HasIndex(x => x.SubmissionId).IsUnique(); b.Property(x => x.PdfSha256).HasMaxLength(64); b.Property(x => x.SnapshotSha256).HasMaxLength(64);
+        b.HasOne<MeasurementChecklist>().WithOne().HasForeignKey<MeasurementReport>(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey<MeasurementChecklist>(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
     }
 }

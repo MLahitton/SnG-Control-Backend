@@ -86,6 +86,28 @@ public sealed class MeasurementTests
         foreach (var command in new[] { valid with { ActualWidth = null }, valid with { ActualHeight = -1 }, valid with { ActualSystemText = " " }, valid with { ActualSystemText = new string('x', 2001) }, valid with { Width = 9 }, valid with { Measured = true }, valid with { Action = "Retire" }, new(Guid.NewGuid(), 0, "Add", Description: "Door", Width: 1, Height: 2, Note: "Removed input") })
             Assert.Equal("InvalidMeasurementCommand", (await Assert.ThrowsAsync<DocumentException>(() => service.ExecuteAsync(Guid.NewGuid(), command, default))).Code);
     }
+    [Theory]
+    [InlineData("Agreed")][InlineData("Production")][InlineData("Opening")]
+    public void SiteDetailsAndReinstatementPreserveOriginalsAndRequireNewMeasurement(string type)
+    {
+        var row = MeasurementStructure.Added(Checklist(), "Original", 2, 2.4m, "Historical", Now, "installer");
+        row.RecordActual(2, 2.4m, "Site", Now, "installer");
+        row.RecordSiteDetails(type, "  Room B  ", "  Site observations  ", Now, "installer");
+        row.RecordTechnical(new("NotApplicable", null, "Outside", "Other", null, null, false, null), Now, "installer");
+        var sketch = Guid.NewGuid(); row.SetSketch(sketch, Now, "installer");
+        row.ResolveComparison("NotComparable", "Onsite addition", Now, "installer");
+        Assert.True(row.IsTechnicallyComplete); row.Measure(true, Now, "installer"); row.Retire(Now, "installer");
+        var id = row.Id; row.Reinstate(Now.AddSeconds(1), "installer");
+        Assert.Equal(id, row.Id); Assert.Null(row.RetiredAt); Assert.Null(row.MeasuredAt); Assert.Null(row.MeasuredBySubject);
+        Assert.Equal(sketch, row.SketchVersionId); Assert.Equal("Room B", row.ActualLocation); Assert.Equal(type, row.MeasurementType);
+        Assert.Equal("Site observations", row.InstallationObservations); Assert.Equal("Historical", row.Note); Assert.Equal("Original", row.Description);
+        Assert.Throws<InvalidOperationException>(() => row.Reinstate(Now.AddSeconds(2), "installer"));
+        row.RecordSiteDetails(null, " ", " ", Now.AddSeconds(2), "installer");
+        Assert.False(row.IsTechnicallyComplete); Assert.Null(row.ActualLocation); Assert.Null(row.InstallationObservations);
+        Assert.Throws<ArgumentException>(() => row.RecordSiteDetails("Invented", "Room", null, Now, "installer"));
+        Assert.Throws<ArgumentException>(() => row.RecordSiteDetails(type, new string('x', 501), null, Now, "installer"));
+        Assert.Throws<ArgumentException>(() => row.RecordSiteDetails(type, "Room", new string('x', 4001), Now, "installer"));
+    }
     private static MeasurementChecklist Checklist() => new(Guid.NewGuid(), Guid.NewGuid(), 1, Guid.NewGuid(), Now, "installer");
     private sealed class Installer : IInstallationAssigneeIdentity { public string Subject => "installer"; }
     private sealed class UnusedStore : IMeasurementStore

@@ -770,6 +770,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("AssessmentChangeJson")
+                        .HasColumnType("jsonb");
+
                     b.Property<DateTime>("At")
                         .HasColumnType("timestamp with time zone");
 
@@ -815,6 +818,49 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasIndex("StructureId", "ChecklistId");
 
                     b.ToTable("MeasurementEvents", (string)null);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementReport", b =>
+                {
+                    b.Property<Guid>("ChecklistId")
+                        .HasColumnType("uuid");
+
+                    b.Property<byte[]>("Pdf")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("PdfSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SnapshotCanonical")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("SnapshotSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("ChecklistId");
+
+                    b.HasIndex("SubmissionId")
+                        .IsUnique();
+
+                    b.HasIndex("ChecklistId", "ProjectId")
+                        .IsUnique();
+
+                    b.ToTable("MeasurementReports", (string)null);
                 });
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementSketchVersion", b =>
@@ -872,6 +918,10 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("ActualHeight")
                         .HasColumnType("numeric");
 
+                    b.Property<string>("ActualLocation")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("ActualSystemText")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
@@ -884,6 +934,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid?>("CommercialQuotationItemId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ComparisonJson")
+                        .HasColumnType("jsonb");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -899,6 +952,10 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("Height")
                         .HasColumnType("numeric");
 
+                    b.Property<string>("InstallationObservations")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<string>("ItemNumber")
                         .HasColumnType("text");
 
@@ -910,6 +967,13 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("MeasuredBySubject")
                         .HasColumnType("text");
+
+                    b.Property<string>("MeasurementType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ModificationJson")
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("Note")
                         .HasColumnType("text");
@@ -1577,6 +1641,16 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         .HasForeignKey("StructureId", "ChecklistId")
                         .HasPrincipalKey("Id", "ChecklistId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementReport", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.MeasurementChecklist", null)
+                        .WithOne()
+                        .HasForeignKey("SnG.Control.Domain.Entities.MeasurementReport", "ChecklistId", "ProjectId")
+                        .HasPrincipalKey("SnG.Control.Domain.Entities.MeasurementChecklist", "Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementSketchVersion", b =>
