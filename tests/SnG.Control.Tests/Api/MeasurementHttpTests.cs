@@ -30,6 +30,8 @@ public sealed class MeasurementHttpTests
         Assert.Equal(expected, (int)initialize.StatusCode);
         using var command = await fixture.Http.PostAsJsonAsync($"/api/projects/{Guid.NewGuid()}/measurements/commands", new { requestKey = Guid.NewGuid(), expectedRevision = 0, action = "Measure", structureId = Guid.NewGuid(), measured = true });
         Assert.Equal(expected, (int)command.StatusCode); Assert.Equal(expected == 204 ? 2 : 0, store.Writes);
+        using var actual = await fixture.Http.PostAsJsonAsync($"/api/projects/{Guid.NewGuid()}/measurements/commands", new { requestKey = Guid.NewGuid(), expectedRevision = 0, action = "RecordActual", structureId = Guid.NewGuid(), actualWidth = 1.2345m, actualHeight = 2.3456m, actualSystemText = "Free text system" });
+        Assert.Equal(expected, (int)actual.StatusCode); Assert.Equal(expected == 204 ? 3 : 0, store.Writes);
         using var malformed = await fixture.Http.PostAsJsonAsync($"/api/projects/{Guid.NewGuid()}/measurements/commands", new { requestKey = Guid.NewGuid(), expectedRevision = 0, action = "Measure", actorSubject = "forged" });
         Assert.Equal(identity == "other" ? 403 : 400, (int)malformed.StatusCode);
     }

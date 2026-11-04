@@ -390,7 +390,7 @@ Después de aprobar el anticipo, la cuenta asignada con rol activo Installation 
 Toma de medidas, sin SLA. El checklist persistido genera una estructura por unidad de cada ítem
 comercial de la cotización vinculada al anticipo; no reinterpreta archivos XLSX.
 Cada unidad permite marcar/desmarcar con auditoría, agregar estructuras en obra con descripción,
-ancho/alto y observación, y retirar unidades lógicamente. La cotización y sus precios no cambian.
+ancho/alto y sistema, y retirar unidades lógicamente. La cotización y sus precios no cambian.
 El avance cuenta solo estructuras vigentes; cero vigentes muestra 0 % y bloquea la radicación.
 
 Instalación carga múltiples documentos de medidas usando el almacenamiento del proyecto.
@@ -400,3 +400,11 @@ se registra actor/fecha y se completa la tarea en una transacción. No se admite
 Gerencia consulta checklist, progreso, historial y radicación sin escritura. El expediente muestra
 estos datos también después de recargar. La radicación conserva el contrato para Ingeniería;
 no crea tareas de Ingeniería ni implementa Acta de Vanos o extracción automática de medidas.
+
+La captura en obra guarda ancho, alto y sistema libre por estructura, separados de los datos
+originales cotizados. Cada cambio queda auditado con valores anteriores/nuevos y actor/UTC.
+El snapshot final incluye la captura y bloquea su edición. Los registros históricos sin captura
+conservan valores nulos; no se copian medidas cotizadas como si fueran mediciones.
+La interfaz muestra el dibujo persistido del ítem, campos asociados al dibujo y tres tarjetas
+por fila en escritorio. Las notas ya no se solicitan ni muestran en el checklist; su historia
+persistida se conserva. Las estructuras agregadas utilizan el mismo guardado y cierre.

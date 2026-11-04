@@ -71,6 +71,15 @@ public sealed class MeasurementStructure
     public string? Location { get; private set; }
     public decimal Width { get; private set; }
     public decimal Height { get; private set; }
+    public decimal? ActualWidth { get; private set; }
+    public decimal? ActualHeight { get; private set; }
+    public string? ActualSystemText { get; private set; }
+    public void RecordActual(decimal width, decimal height, string systemText, DateTime at, string subject)
+    {
+        ValidateChange(at, subject);
+        if (width <= 0 || height <= 0 || string.IsNullOrWhiteSpace(systemText) || systemText.Length > 2000) throw new ArgumentException("Invalid actual measurements.");
+        ActualWidth = width; ActualHeight = height; ActualSystemText = systemText.Trim();
+    }
     public string? Note { get; private set; }
     public DateTime CreatedAt { get; private set; }
     public string CreatedBySubject { get; private set; } = "";
@@ -96,17 +105,18 @@ public sealed class MeasurementStructure
 public sealed class MeasurementEvent
 {
     private MeasurementEvent() { }
-    public MeasurementEvent(MeasurementChecklist checklist, Guid requestKey, string fingerprint, string action, Guid? structureId, DateTime at, string subject, string? email, string? name)
+    public MeasurementEvent(MeasurementChecklist checklist, Guid requestKey, string fingerprint, string action, Guid? structureId, DateTime at, string subject, string? email, string? name, string? detailsJson = null)
     {
         MeasurementChecklist.ValidateActor(at, subject);
         if (requestKey == Guid.Empty) throw new ArgumentException("Request key required.");
         Id = Guid.NewGuid(); ChecklistId = checklist.Id; ProjectId = checklist.ProjectId; RequestKey = requestKey; Fingerprint = fingerprint;
-        Action = action; StructureId = structureId; At = at; ActorSubject = subject; ActorEmail = email; ActorName = name; Revision = checklist.Revision;
+        DetailsJson = detailsJson; Action = action; StructureId = structureId; At = at; ActorSubject = subject; ActorEmail = email; ActorName = name; Revision = checklist.Revision;
     }
     public Guid Id { get; private set; }
     public Guid ChecklistId { get; private set; }
     public Guid ProjectId { get; private set; }
     public Guid RequestKey { get; private set; }
+    public string? DetailsJson { get; private set; }
     public string Fingerprint { get; private set; } = "";
     public string Action { get; private set; } = "";
     public Guid? StructureId { get; private set; }

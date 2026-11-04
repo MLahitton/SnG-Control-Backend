@@ -44,6 +44,7 @@ public sealed class MeasurementPostgresTests
         {
             var values = new CatalogItemValues((index + 1).ToString(), "Room", "Window", null, null, null, null, 1.2m, 2, 2.4m, quantity);
             var source = new CommercialCatalogItem(catalog.Id, CommercialItemSection.Main, index + 1, values);
+            db.Add(new CommercialCatalogItemExtraction(source.Id, values, CatalogItemImageStatus.Stored, $"synthetic/{source.Id}.png", "image/png"));
             db.AddRange(source, new CommercialQuotationItem(quote.Id, source.Id, CommercialItemSection.Main, index + 1, values, 10, 100));
         }
         await db.SaveChangesAsync(); db.ChangeTracker.Clear();
@@ -65,14 +66,42 @@ public sealed class MeasurementPostgresTests
         async Task Execute(MeasurementCommand command) { await using var c = Db(); await Store(c).ExecuteAsync(project.Id, command, actor, default); await Refresh(); }
         MeasurementCommand Command(string action, Guid? id = null, bool? measured = null) => new(Guid.NewGuid(), state.Revision, action, id, measured);
         var quotationBefore = System.Text.Json.JsonSerializer.Serialize(await db.CommercialQuotationItems.AsNoTracking().Where(i => i.CommercialQuotationId == quote.Id).OrderBy(i => i.Id).ToArrayAsync());
-        var first = state.Structures.First(s => s.UnitCount == 6); var mark = Command("Measure", first.Id, true);
+        var first = state.Structures.First(s => s.UnitCount == 6);
+        Assert.All(state.Structures, s => { Assert.Null(s.ActualWidth); Assert.Null(s.ActualHeight); Assert.Null(s.ActualSystemText); Assert.NotNull(s.ImageCatalogItemId); });
+        var sourceItem = await db.CommercialQuotationItems.AsNoTracking().SingleAsync(i => i.Id == first.ItemId);
+        Assert.Equal(sourceItem.CommercialCatalogItemId, first.ImageCatalogItemId);
+        Assert.NotNull(await new EfQuotationReadStore(db).GetBudgetImageAsync(project.Id, first.ImageCatalogItemId!.Value, default));
+        Assert.Null(await new EfQuotationReadStore(db).GetBudgetImageAsync(Guid.NewGuid(), first.ImageCatalogItemId.Value, default));
+        await using (var invalid = await db.Database.BeginTransactionAsync())
+        {
+            var violation = await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"MeasurementStructures\" SET \"ActualWidth\" = 0 WHERE \"Id\" = {first.Id}"));
+            Assert.Equal("23514", violation.SqlState); Assert.Equal("CK_MeasurementStructures_Actual", violation.ConstraintName);
+            await invalid.RollbackAsync();
+        }
+        var capture = new MeasurementCommand(Guid.NewGuid(), state.Revision, "RecordActual", first.Id, ActualWidth: 1.2345m, ActualHeight: 2.3456m, ActualSystemText: "  Site custom system  ");
+        await Error("MeasurementAccessDenied", () => Store(db).ExecuteAsync(project.Id, capture, actor with { Subject = "other" }, default));
+        await using (var failed = Db(true)) await Assert.ThrowsAsync<InvalidOperationException>(() => Store(failed).ExecuteAsync(project.Id, capture, actor, default));
+        await Refresh(); Assert.Null(state.Structures.Single(s => s.Id == first.Id).ActualWidth);
+        await Execute(capture); await Execute(capture);
+        var recorded = state.Structures.Single(s => s.Id == first.Id);
+        Assert.Equal(1.2345m, recorded.ActualWidth); Assert.Equal(2.3456m, recorded.ActualHeight); Assert.Equal("Site custom system", recorded.ActualSystemText);
+        Assert.Equal(first.Width, recorded.Width); Assert.Equal(first.Height, recorded.Height); Assert.Equal(first.Description, recorded.Description);
+        Assert.Equal(21, state.Summary.Pending); Assert.Equal(0, state.Summary.Measured);
+        var auditCapture = Assert.Single(state.History, e => e.Action == "RecordActual");
+        Assert.Null(auditCapture.Details!.Before.Width); Assert.Equal(1.2345m, auditCapture.Details.After.Width); Assert.Equal("Installer", auditCapture.Actor.Name);
+        await Error("MeasurementRevisionConflict", () => Store(db).ExecuteAsync(project.Id, capture with { RequestKey = Guid.NewGuid(), ActualWidth = 9 }, actor, default));
+        var mark = Command("Measure", first.Id, true);
         await using (var a = Db()) await using (var b = Db()) await Task.WhenAll(Store(a).ExecuteAsync(project.Id, mark, actor, default), Store(b).ExecuteAsync(project.Id, mark, actor, default));
         await Refresh(); Assert.NotNull(state.Structures.Single(s => s.Id == first.Id).MeasuredAt); Assert.Equal(1, state.Summary.Measured); Assert.Single(state.History, h => h.Action == "Measure");
         await Error("MeasurementRequestConflict", () => Store(db).ExecuteAsync(project.Id, mark with { Measured = false }, actor, default));
         await Error("MeasurementRevisionConflict", () => Store(db).ExecuteAsync(project.Id, mark with { RequestKey = Guid.NewGuid() }, actor, default));
         await Execute(Command("Measure", first.Id, false)); Assert.Equal(0, state.Summary.Measured); Assert.Null(state.Structures.Single(s => s.Id == first.Id).MeasuredAt); Assert.Contains(state.History, h => h.Action == "Unmeasure" && h.Actor.Name == "Installer");
-        await Execute(new(Guid.NewGuid(), state.Revision, "Add", Description: "Onsite door", Width: 1.3m, Height: 2.1m, Note: "Synthetic site note"));
+        await Execute(new(Guid.NewGuid(), state.Revision, "Add", Description: "Onsite door", Width: 1.3m, Height: 2.1m));
         var added = state.Structures.Single(s => s.ItemId is null); Assert.Null(added.MeasuredAt); Assert.Equal(22, state.Summary.Active);
+        Assert.Equal(1.3m, added.ActualWidth); Assert.Equal(2.1m, added.ActualHeight); Assert.Equal("Onsite door", added.ActualSystemText); Assert.Null(added.ImageCatalogItemId);
+        await Execute(new(Guid.NewGuid(), state.Revision, "RecordActual", added.Id, ActualWidth: 1.4m, ActualHeight: 2.2m, ActualSystemText: "Door revised onsite"));
+        var revisedAdded = state.Structures.Single(s => s.Id == added.Id); Assert.Equal(1.4m, revisedAdded.ActualWidth); Assert.Equal(1.3m, revisedAdded.Width);
+        Assert.Equal(1.3m, state.History.Last(e => e.Action == "RecordActual").Details!.Before.Width);
         await Execute(Command("Retire", added.Id));
         var retire = Command("Retire", first.Id);
         await using (var a = Db()) await using (var b = Db())
@@ -114,10 +143,14 @@ public sealed class MeasurementPostgresTests
         await Refresh(); Assert.Null(state.SubmissionId); Assert.Equal("InProgress", state.TaskStatus); Assert.Empty(await db.MeasurementSubmissionDocuments.Where(d => d.ProjectId == project.Id).ToArrayAsync());
         await using (var a = Db()) await using (var b = Db()) await Task.WhenAll(Store(a).ExecuteAsync(project.Id, submit, actor, default), Store(b).ExecuteAsync(project.Id, submit, actor, default));
         await Refresh(); Assert.NotNull(state.SubmissionId); Assert.Equal("Completed", state.TaskStatus); Assert.False(state.CanModify);
-        Assert.Single(state.History, h => h.Action == "Submit"); Assert.Equal(22, state.Snapshot!.Structures.Count); Assert.Equal(ids.Order(), state.Snapshot.DocumentIds.Order());
+        Assert.Single(state.History, h => h.Action == "Submit"); Assert.Equal(22, state.Snapshot!.Structures.Count);
+        var frozen = state.Snapshot.Structures.Single(s => s.Id == first.Id);
+        Assert.Equal(1.2345m, frozen.ActualWidth); Assert.Equal(2.3456m, frozen.ActualHeight); Assert.Equal("Site custom system", frozen.ActualSystemText); Assert.Equal(first.ImageCatalogItemId, frozen.ImageCatalogItemId);
+        Assert.Equal(1.4m, state.Snapshot.Structures.Single(s => s.Id == added.Id).ActualWidth); Assert.Equal(ids.Order(), state.Snapshot.DocumentIds.Order());
         Assert.Equal(2, await db.MeasurementSubmissionDocuments.CountAsync(d => d.ProjectId == project.Id));
         await Error("MeasurementsLocked", () => Store(db).ExecuteAsync(project.Id, Command("Measure", first.Id, false), actor, default));
         await Error("MeasurementsLocked", () => Documents(db).UploadMeasurementsAsync(project.Id, Uploads("late.pdf"), default));
+        await Error("MeasurementsLocked", () => Store(db).ExecuteAsync(project.Id, capture with { RequestKey = Guid.NewGuid(), ExpectedRevision = state.Revision }, actor, default));
         await Error("MeasurementsLocked", () => Store(db).ExecuteAsync(project.Id, Command("Retire", state.Structures.First(s => s.RetiredAt is null).Id), actor, default));
         Assert.Equal(quotationBefore, System.Text.Json.JsonSerializer.Serialize(await db.CommercialQuotationItems.AsNoTracking().Where(i => i.CommercialQuotationId == quote.Id).OrderBy(i => i.Id).ToArrayAsync()));
         Assert.Equal(14, await db.CommercialQuotationItems.CountAsync(i => i.CommercialQuotationId == quote.Id)); Assert.Equal(21, await db.CommercialQuotationItems.Where(i => i.CommercialQuotationId == quote.Id).SumAsync(i => i.Quantity));

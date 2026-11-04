@@ -24,10 +24,12 @@ public sealed class MeasurementStructureConfiguration : IEntityTypeConfiguration
     public void Configure(EntityTypeBuilder<MeasurementStructure> b)
     {
         b.ToTable("MeasurementStructures", t => {
+            t.HasCheckConstraint("CK_MeasurementStructures_Actual", "(\"ActualWidth\" IS NULL AND \"ActualHeight\" IS NULL AND \"ActualSystemText\" IS NULL) OR (\"ActualWidth\" IS NOT NULL AND \"ActualWidth\" > 0 AND \"ActualHeight\" IS NOT NULL AND \"ActualHeight\" > 0 AND \"ActualSystemText\" IS NOT NULL AND length(btrim(\"ActualSystemText\")) > 0)");
             t.HasCheckConstraint("CK_MeasurementStructures_Unit", "\"UnitOrdinal\" > 0 AND \"UnitOrdinal\" <= \"UnitCount\" AND (\"CommercialQuotationItemId\" IS NOT NULL OR (\"UnitOrdinal\" = 1 AND \"UnitCount\" = 1 AND \"Width\" > 0 AND \"Height\" > 0))");
             t.HasCheckConstraint("CK_MeasurementStructures_State", "((\"MeasuredAt\" IS NULL AND \"MeasuredBySubject\" IS NULL) OR (\"MeasuredAt\" >= \"CreatedAt\" AND \"MeasuredBySubject\" IS NOT NULL)) AND ((\"RetiredAt\" IS NULL AND \"RetiredBySubject\" IS NULL) OR (\"RetiredAt\" >= \"CreatedAt\" AND \"RetiredBySubject\" IS NOT NULL))");
         });
         b.HasKey(x => x.Id); b.Property(x => x.Id).ValueGeneratedNever();
+        b.Property(x => x.ActualSystemText).HasMaxLength(2000);
         b.HasAlternateKey(x => new { x.Id, x.ChecklistId });
         b.HasOne<MeasurementChecklist>().WithMany().HasForeignKey(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<CommercialQuotationItem>().WithMany().HasForeignKey(x => x.CommercialQuotationItemId).OnDelete(DeleteBehavior.Restrict);
@@ -42,6 +44,7 @@ public sealed class MeasurementEventConfiguration : IEntityTypeConfiguration<Mea
         b.HasOne<MeasurementChecklist>().WithMany().HasForeignKey(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<MeasurementStructure>().WithMany().HasForeignKey(x => new { x.StructureId, x.ChecklistId }).HasPrincipalKey(x => new { x.Id, x.ChecklistId }).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.ChecklistId, x.RequestKey }).IsUnique(); b.HasIndex(x => new { x.ChecklistId, x.Revision }).IsUnique();
+        b.Property(x => x.DetailsJson).HasColumnType("jsonb");
         b.Property(x => x.Fingerprint).HasMaxLength(64); b.Property(x => x.Action).HasMaxLength(30);
     }
 }

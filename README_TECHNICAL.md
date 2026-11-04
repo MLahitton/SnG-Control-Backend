@@ -1580,8 +1580,8 @@ de Ingeniería: la siguiente implementación podrá consumir ese snapshot con su
 Rutas bajo `/api/projects/{id}/measurements`:
 - GET: estado, responsable, resumen oficial, estructuras, documentos, historial y snapshot final.
 - POST `/initialize`: generación idempotente y StartUntracked de la tarea existente.
-- POST `/commands`: RequestKey, ExpectedRevision y Action (`Measure`, `Add`, `Retire`, `Submit`).
-  Measure usa StructureId/Measured; Add usa Description/Width/Height/Note; Retire usa StructureId;
+- POST `/commands`: RequestKey, ExpectedRevision y Action (`Measure`, `Add`, `Retire`, `RecordActual`, `Submit`).
+  Measure usa StructureId/Measured; Add usa Description/Width/Height; Retire usa StructureId;
   Submit exige DocumentIds iguales al conjunto vigente. Campos ajenos a la acción son rechazados.
 - POST `/documents/batch?requestKey={uuid}`: multipart existente, archivos separados mediante
   IsMeasurementDocument; admite sustitución conservando historia. La primera carga exitosa
@@ -1602,3 +1602,23 @@ La migración `AddInstallationMeasurements` añade cuatro tablas e IsMeasurement
 No se aplica al arrancar ni se aplicó sobre la base operativa; requiere autorización de despliegue.
 Las pruebas PostgreSQL usan exclusivamente `SNG_VERIFICATION_TEST_DATABASE` con host loopback y
 base `verification_test`, datos sintéticos y almacenamiento temporal. No se requiere corpus XLSX.
+
+`RecordActual` usa StructureId, ActualWidth, ActualHeight y ActualSystemText (libre, hasta 2000
+caracteres). Ancho/alto deben ser decimales positivos; no hay redondeo ni modificación de los
+valores originales. La acción conserva RequestKey/ExpectedRevision, bloqueo de proyecto/tareas,
+rol Installation asignado y prohibición de modificar retiradas o radicadas. No altera el check
+Medido ni el progreso. MeasurementEvent.DetailsJson conserva antes/después junto a actor/UTC.
+Add inicializa la captura en obra desde su entrada, conservando también el registro inicial.
+Note queda solo para compatibilidad histórica; el servicio rechaza notas nuevas de Add.
+
+`20261104150914_AddInstallationActualMeasurements` añade tres columnas nullable a
+MeasurementStructures y DetailsJson jsonb a MeasurementEvents. El CHECK exige los tres valores
+presentes y válidos, o los tres nulos. No migra datos originales ni reescribe snapshots anteriores.
+Las propiedades nuevas opcionales del snapshot se leen como null cuando faltan en versiones
+históricas. La serialización de comandos sin captura mantiene su fingerprint previo para reintentos.
+
+La lectura devuelve ImageCatalogItemId solo si existe una imagen persistida; une el ítem comercial
+de la estructura con su extracción histórica en una consulta, sin usar la última cotización ni
+leer XLSX. Reutiliza GET budget-quotation/items/{itemId}/image con autorización del proyecto.
+No expone claves de almacenamiento. La radicación incluye campos de obra e imagen referenciada
+en el snapshot; Management conserva lectura. La migración operativa requiere autorización.

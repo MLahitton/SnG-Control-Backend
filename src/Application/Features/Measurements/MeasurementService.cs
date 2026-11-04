@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SnG.Control.Application.Access;
 using SnG.Control.Application.Features.ClientQuotationDecisions;
 using SnG.Control.Application.Features.ProjectDocuments;
@@ -7,7 +8,10 @@ using SnG.Control.Domain.Enums;
 namespace SnG.Control.Application.Features.Measurements;
 
 public sealed record MeasurementCommand(Guid RequestKey, long ExpectedRevision, string Action, Guid? StructureId = null,
-    bool? Measured = null, string? Description = null, decimal? Width = null, decimal? Height = null, string? Note = null, Guid[]? DocumentIds = null);
+    bool? Measured = null, string? Description = null, decimal? Width = null, decimal? Height = null, string? Note = null, Guid[]? DocumentIds = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? ActualWidth = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] decimal? ActualHeight = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? ActualSystemText = null);
 public sealed record MeasurementSummary(int Initial, int Added, int Retired, int Active, int Measured, int Pending, decimal Progress)
 {
     public static MeasurementSummary From(IReadOnlyList<MeasurementStructure> rows)
@@ -19,12 +23,18 @@ public sealed record MeasurementSummary(int Initial, int Added, int Retired, int
     }
 }
 public sealed record MeasurementStructureView(Guid Id, Guid? ItemId, int UnitOrdinal, int UnitCount, string? ItemNumber,
-    string Description, string? Location, decimal Width, decimal Height, string? Note, DateTime CreatedAt, DateTime? MeasuredAt, DateTime? RetiredAt)
+    string Description, string? Location, decimal Width, decimal Height, string? Note, DateTime CreatedAt, DateTime? MeasuredAt, DateTime? RetiredAt,
+    decimal? ActualWidth = null, decimal? ActualHeight = null, string? ActualSystemText = null, Guid? ImageCatalogItemId = null)
 {
     public static MeasurementStructureView From(MeasurementStructure s) => new(s.Id, s.CommercialQuotationItemId, s.UnitOrdinal, s.UnitCount,
-        s.ItemNumber, s.Description, s.Location, s.Width, s.Height, s.Note, s.CreatedAt, s.MeasuredAt, s.RetiredAt);
+        s.ItemNumber, s.Description, s.Location, s.Width, s.Height, s.Note, s.CreatedAt, s.MeasuredAt, s.RetiredAt, s.ActualWidth, s.ActualHeight, s.ActualSystemText);
 }
-public sealed record MeasurementHistory(Guid Id, string Action, Guid? StructureId, DateTime At, DocumentPerson Actor, long Revision);
+public sealed record MeasurementActualValues(decimal? Width, decimal? Height, string? SystemText)
+{
+    public static MeasurementActualValues From(MeasurementStructure s) => new(s.ActualWidth, s.ActualHeight, s.ActualSystemText);
+}
+public sealed record MeasurementDetailsChange(MeasurementActualValues Before, MeasurementActualValues After);
+public sealed record MeasurementHistory(Guid Id, string Action, Guid? StructureId, DateTime At, DocumentPerson Actor, long Revision, MeasurementDetailsChange? Details = null);
 public sealed record MeasurementSnapshot(Guid CommercialQuotationId, int QuotationRound, MeasurementSummary Summary,
     IReadOnlyList<MeasurementStructureView> Structures, IReadOnlyList<Guid> DocumentIds);
 public sealed record MeasurementState(Guid ProjectId, Guid TaskId, string TaskStatus, string ResponsibleSubject, bool CanModify,
@@ -51,10 +61,14 @@ public sealed class MeasurementService(IMeasurementStore store, ICurrentUser cur
     {
         RequireWrite();
         if (command.RequestKey == Guid.Empty || command.ExpectedRevision < 0) throw new DocumentException(400, "InvalidMeasurementCommand");
+        if (command.Action != "RecordActual" && (command.ActualWidth is not null || command.ActualHeight is not null || command.ActualSystemText is not null))
+            throw new DocumentException(400, "InvalidMeasurementCommand");
         var valid = command.Action switch {
+            "RecordActual" => command.StructureId is { } aid && aid != Guid.Empty && command.Measured is null && command.Description is null && command.Width is null && command.Height is null && command.Note is null && command.DocumentIds is null
+                && command.ActualWidth > 0 && command.ActualHeight > 0 && !string.IsNullOrWhiteSpace(command.ActualSystemText) && command.ActualSystemText.Length <= 2000,
             "Measure" => command.StructureId is { } sid && sid != Guid.Empty && command.Measured is not null && command.Description is null && command.Width is null && command.Height is null && command.Note is null && command.DocumentIds is null,
             "Retire" => command.StructureId is { } rid && rid != Guid.Empty && command.Measured is null && command.Description is null && command.Width is null && command.Height is null && command.Note is null && command.DocumentIds is null,
-            "Add" => command.StructureId is null && command.Measured is null && !string.IsNullOrWhiteSpace(command.Description) && command.Description.Length <= 2000 && command.Width > 0 && command.Height > 0 && command.Note?.Length is not > 4000 && command.DocumentIds is null,
+            "Add" => command.StructureId is null && command.Measured is null && !string.IsNullOrWhiteSpace(command.Description) && command.Description.Length <= 2000 && command.Width > 0 && command.Height > 0 && command.Note is null && command.DocumentIds is null,
             "Submit" => command.StructureId is null && command.Measured is null && command.Description is null && command.Width is null && command.Height is null && command.Note is null && command.DocumentIds is { Length: > 0 and <= ProjectDocument.MaxCurrentDocuments } ids && ids.All(x => x != Guid.Empty) && ids.Distinct().Count() == ids.Length,
             _ => false
         };

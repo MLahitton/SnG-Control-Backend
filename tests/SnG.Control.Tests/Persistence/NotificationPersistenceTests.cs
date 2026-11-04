@@ -26,7 +26,7 @@ public class NotificationPersistenceTests
         Assert.Equal(3, entity.GetCheckConstraints().Count());
         Assert.All(entity.GetProperties(), p => Assert.Equal(p.Name == nameof(ProjectNotification.ResolvedAt), p.IsNullable));
         var task = model.FindEntityType(typeof(ProjectTask))!; Assert.True(task.FindProperty("DeadlineAt")!.IsNullable); Assert.True(task.FindProperty("WasOverdue")!.IsNullable);
-        Assert.Equal(17, db.Database.GetMigrations().Count()); Assert.False(db.Database.HasPendingModelChanges());
+        Assert.Equal(18, db.Database.GetMigrations().Count()); Assert.False(db.Database.HasPendingModelChanges());
         Assert.Equal(23, model.GetEntityTypes().Count()); Assert.DoesNotContain(model.GetEntityTypes(), e => e.Name.Contains("User"));
         Assert.Contains("ProjectNotifications", db.ProjectNotifications.ToQueryString());
         var queries = new EfProjectNotificationStore(db);

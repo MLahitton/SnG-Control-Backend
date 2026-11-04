@@ -776,6 +776,9 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("ChecklistId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DetailsJson")
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("Fingerprint")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -812,6 +815,16 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
+
+                    b.Property<decimal?>("ActualHeight")
+                        .HasColumnType("numeric");
+
+                    b.Property<string>("ActualSystemText")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<decimal?>("ActualWidth")
+                        .HasColumnType("numeric");
 
                     b.Property<Guid>("ChecklistId")
                         .HasColumnType("uuid");
@@ -878,6 +891,8 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.ToTable("MeasurementStructures", null, t =>
                         {
+                            t.HasCheckConstraint("CK_MeasurementStructures_Actual", "(\"ActualWidth\" IS NULL AND \"ActualHeight\" IS NULL AND \"ActualSystemText\" IS NULL) OR (\"ActualWidth\" IS NOT NULL AND \"ActualWidth\" > 0 AND \"ActualHeight\" IS NOT NULL AND \"ActualHeight\" > 0 AND \"ActualSystemText\" IS NOT NULL AND length(btrim(\"ActualSystemText\")) > 0)");
+
                             t.HasCheckConstraint("CK_MeasurementStructures_State", "((\"MeasuredAt\" IS NULL AND \"MeasuredBySubject\" IS NULL) OR (\"MeasuredAt\" >= \"CreatedAt\" AND \"MeasuredBySubject\" IS NOT NULL)) AND ((\"RetiredAt\" IS NULL AND \"RetiredBySubject\" IS NULL) OR (\"RetiredAt\" >= \"CreatedAt\" AND \"RetiredBySubject\" IS NOT NULL))");
 
                             t.HasCheckConstraint("CK_MeasurementStructures_Unit", "\"UnitOrdinal\" > 0 AND \"UnitOrdinal\" <= \"UnitCount\" AND (\"CommercialQuotationItemId\" IS NOT NULL OR (\"UnitOrdinal\" = 1 AND \"UnitCount\" = 1 AND \"Width\" > 0 AND \"Height\" > 0))");

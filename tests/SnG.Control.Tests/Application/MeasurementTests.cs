@@ -61,6 +61,31 @@ public sealed class MeasurementTests
         foreach (var command in new[] { new MeasurementCommand(Guid.Empty, 0, "Measure"), new(Guid.NewGuid(), 0, "Add", Width: -1, Height: 1, Description: "Door"), new(Guid.NewGuid(), 0, "Submit", DocumentIds: []), new(Guid.NewGuid(), 0, "Retire", StructureId: Guid.NewGuid(), Measured: true) })
             Assert.Equal("InvalidMeasurementCommand", (await Assert.ThrowsAsync<DocumentException>(() => service.ExecuteAsync(Guid.NewGuid(), command, default))).Code);
     }
+    [Fact]
+    public void ActualMeasurementsPreserveOriginalsAndLegacySnapshotContract()
+    {
+        var checklist = Checklist(); var row = MeasurementStructure.Added(checklist, "Original door", 1, 2, null, Now, "installer");
+        row.RecordActual(1.1234567m, 2.2345678m, "  Site system  ", Now, "installer");
+        Assert.Equal(1.1234567m, row.ActualWidth); Assert.Equal(2.2345678m, row.ActualHeight); Assert.Equal("Site system", row.ActualSystemText);
+        Assert.Equal(1, row.Width); Assert.Equal(2, row.Height); Assert.Equal("Original door", row.Description); Assert.Null(row.MeasuredAt);
+        Assert.Throws<ArgumentException>(() => row.RecordActual(0, 2, "System", Now, "installer"));
+        Assert.Throws<ArgumentException>(() => row.RecordActual(1, 2, " ", Now, "installer"));
+        row.Retire(Now, "installer"); Assert.Throws<InvalidOperationException>(() => row.RecordActual(1, 2, "System", Now, "installer"));
+        var oldJson = System.Text.Json.JsonSerializer.Serialize(new { row.Id, ItemId = (Guid?)null, UnitOrdinal = 1, UnitCount = 1, ItemNumber = (string?)null, row.Description, Location = (string?)null, row.Width, row.Height, Note = "Historical", CreatedAt = Now, MeasuredAt = (DateTime?)null, RetiredAt = (DateTime?)null });
+        var old = System.Text.Json.JsonSerializer.Deserialize<MeasurementStructureView>(oldJson)!;
+        Assert.Null(old.ActualWidth); Assert.Null(old.ActualHeight); Assert.Null(old.ActualSystemText); Assert.Equal("Historical", old.Note);
+        var command = new MeasurementCommand(Guid.NewGuid(), 0, "Measure", row.Id, true);
+        var oldCommand = new { command.RequestKey, command.ExpectedRevision, command.Action, command.StructureId, command.Measured, command.Description, command.Width, command.Height, command.Note, command.DocumentIds };
+        Assert.Equal(System.Text.Json.JsonSerializer.Serialize(oldCommand), System.Text.Json.JsonSerializer.Serialize(command));
+    }
+    [Fact]
+    public async Task ActualMeasurementsRejectIncompleteOrMixedCommandsAndNewNotes()
+    {
+        var service = new MeasurementService(new UnusedStore(), new IdentityDouble("installer"), new ActiveRoleDouble(SystemRole.Installation), new Installer());
+        var valid = new MeasurementCommand(Guid.NewGuid(), 0, "RecordActual", Guid.NewGuid(), ActualWidth: 1, ActualHeight: 2, ActualSystemText: "System");
+        foreach (var command in new[] { valid with { ActualWidth = null }, valid with { ActualHeight = -1 }, valid with { ActualSystemText = " " }, valid with { ActualSystemText = new string('x', 2001) }, valid with { Width = 9 }, valid with { Measured = true }, valid with { Action = "Retire" }, new(Guid.NewGuid(), 0, "Add", Description: "Door", Width: 1, Height: 2, Note: "Removed input") })
+            Assert.Equal("InvalidMeasurementCommand", (await Assert.ThrowsAsync<DocumentException>(() => service.ExecuteAsync(Guid.NewGuid(), command, default))).Code);
+    }
     private static MeasurementChecklist Checklist() => new(Guid.NewGuid(), Guid.NewGuid(), 1, Guid.NewGuid(), Now, "installer");
     private sealed class Installer : IInstallationAssigneeIdentity { public string Subject => "installer"; }
     private sealed class UnusedStore : IMeasurementStore
