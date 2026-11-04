@@ -389,6 +389,8 @@ compartidos por contrato cubren equivalencias, mitades, bordes, valores pequeño
 Después de aprobar el anticipo, la cuenta asignada con rol activo Installation inicia la tarea
 Toma de medidas, sin SLA. El checklist persistido genera una estructura por unidad de cada ítem
 comercial de la cotización vinculada al anticipo; no reinterpreta archivos XLSX.
+Las estructuras cotizadas siguen sección, fila original y unidad; las agregadas aparecen al final
+por fecha de creación e identificador. Las retiradas conservan su posición histórica.
 Cada unidad permite marcar/desmarcar con auditoría, agregar estructuras en obra con descripción,
 ancho/alto y sistema, y retirar unidades lógicamente. La cotización y sus precios no cambian.
 El avance cuenta solo estructuras vigentes; cero vigentes muestra 0 % y bloquea la radicación.

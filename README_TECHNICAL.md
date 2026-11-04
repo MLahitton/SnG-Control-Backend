@@ -1622,3 +1622,8 @@ de la estructura con su extracción histórica en una consulta, sin usar la últ
 leer XLSX. Reutiliza GET budget-quotation/items/{itemId}/image con autorización del proyecto.
 No expone claves de almacenamiento. La radicación incluye campos de obra e imagen referenciada
 en el snapshot; Management conserva lectura. La migración operativa requiere autorización.
+
+Lectura y nuevas radicaciones comparten el orden SQL de estructuras: LEFT JOIN al
+CommercialQuotationItem referenciado, Section, SourceRow, UnitOrdinal e Id de estructura.
+Las agregadas (sin ítem) van al final por CreatedAt e Id; las retiradas no se excluyen del
+orden histórico. No se consulta la cotización más reciente ni se reescriben snapshots ya radicados.

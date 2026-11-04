@@ -159,6 +159,87 @@ public sealed class MeasurementPostgresTests
         Assert.All(await db.MeasurementStructures.AsNoTracking().Where(s => s.ProjectId == project.Id && s.MeasuredAt != null).ToArrayAsync(), s => Assert.Equal("installer", s.MeasuredBySubject));
         Assert.Equal(2, Directory.GetFiles(files.Root, "*", SearchOption.AllDirectories).Length);
     }
+    [VerificationPostgresFact]
+    public async Task OrderingUsesOriginalQuotationRowsForReadAndSnapshotWithoutChangingStoredData()
+    {
+        var config = new NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("SNG_VERIFICATION_TEST_DATABASE"));
+        Assert.Equal("127.0.0.1", config.Host); Assert.Equal("verification_test", config.Database);
+        SnGControlDbContext Db() => new(new DbContextOptionsBuilder<SnGControlDbContext>().UseNpgsql(config.ConnectionString).Options);
+        EfMeasurementStore Store(SnGControlDbContext context) => new(context, TestTiming.Value, new(context, new ProjectNotificationPlanner(TestTiming.Value)));
+        var actor = new DecisionActor("installer", null, "Installer"); var now = TestTiming.Value.UtcNow;
+        foreach (var count in new[] { 1, 4, 9 })
+        {
+            await using var db = Db(); await db.Database.MigrateAsync();
+            var client = new Client("Measurement synthetic"); var project = new Project(client.Id, "Measurement synthetic", "City", ProductLine.Classic, "advisor");
+            db.AddRange(client, project); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+            var version = new BudgetQuotationVersion(project.Id, 1, "synthetic.xlsx", "Client", "Project", "City", "Line", "Line", "Author", "SG9001");
+            var catalog = new CommercialCatalog(version.Id); var quote = new CommercialQuotation(project.Id, version.Id, catalog.Id, "synthetic.xlsx", 100, "head", null, null);
+            var present = new ProjectTask(project.Id, OperationalArea.Commercial, ProjectTaskType.PresentQuotationToClient, "advisor", now.AddDays(-1)); present.Start(now.AddDays(-1), now.AddDays(1)); present.Complete(now);
+            var decision = new ClientQuotationDecision(project.Id, quote.Id, present.Id, ClientQuotationDecisionType.Approved, null, now, "advisor", null, null);
+            var accounting = new ProjectTask(project.Id, OperationalArea.Accounting, ProjectTaskType.RegisterInitialDeposit, "accountant", now); accounting.StartUntracked(now); accounting.Complete(now);
+            var handoff = new AccountingHandoff(project.Id, decision.Id, quote.Id, 1, accounting.Id, now, "advisor", null, null);
+            var task = new ProjectTask(project.Id, OperationalArea.Installation, ProjectTaskType.TakeMeasurements, "installer", now);
+            db.AddRange(version, catalog, quote, present, decision, accounting, handoff, new InitialDeposit(handoff, 50, now, now, null, null, "accountant", null, null), task);
+
+            task.StartUntracked(now);
+            var checklist = new MeasurementChecklist(project.Id, quote.Id, 1, task.Id, now, actor.Subject);
+            db.Add(checklist);
+            var originals = new List<(CommercialQuotationItem Item, MeasurementStructure Structure)>();
+            // Create in descending row order, with nonnumeric/repeated labels and deliberately reversed GUID order.
+            for (var index = count; index >= 1; index--)
+            {
+                var section = index % 2 == 0 ? CommercialItemSection.Additional : CommercialItemSection.Main;
+                var values = new CatalogItemValues("V-X", "Room", "Window", null, null, null, null, 1.2m, 2, 2.4m, index % 3 + 1);
+                var source = new CommercialCatalogItem(catalog.Id, section, index * 10, values);
+                var item = new CommercialQuotationItem(quote.Id, source.Id, section, index * 10, values, 10, 100);
+                db.AddRange(source, item);
+                db.Entry(item).Property(x => x.Id).CurrentValue = Guid.Parse($"{count-index+1:x8}-0000-0000-0000-{Guid.NewGuid().ToString("N")[20..]}");
+                for (var unit = item.Quantity; unit >= 1; unit--)
+                {
+                    var row = MeasurementStructure.Quoted(checklist, item, unit, now.AddMinutes(-index), actor.Subject);
+                    row.RecordActual(1.1m, 2.1m, "Site system", now, actor.Subject);
+                    row.Measure(true, now, actor.Subject);
+                    if (index == count && unit == 1 && count > 1) row.Retire(now, actor.Subject);
+                    originals.Add((item, row)); db.Add(row);
+                }
+            }
+            // Earlier than quoted creation dates: these must still follow every original unit.
+            var additions = Enumerable.Range(0, 3).Select(i => MeasurementStructure.Added(checklist, "Added", 3, 4, null, now.AddDays(-2).AddMinutes(i == 0 ? 1 : 0), actor.Subject)).ToArray();
+            foreach (var row in additions) { row.Measure(true, now, actor.Subject); db.Add(row); }
+            additions[0].Retire(now, actor.Subject);
+            var document = new ProjectDocument(Guid.NewGuid(), project.Id, "synthetic.pdf", "application/pdf", 1, Guid.NewGuid(), now, actor.Subject, null, null, isMeasurementDocument: true);
+            db.Add(document);
+            // A newer quotation must not become the source of ordering or structure identity.
+            var newerVersion = new BudgetQuotationVersion(project.Id, 2, "synthetic-new.xlsx", "Client", "Project", "City", "Line", "Line", "Author", "SG9001");
+            var newerCatalog = new CommercialCatalog(newerVersion.Id);
+            db.AddRange(newerVersion, newerCatalog, new CommercialQuotation(project.Id, newerVersion.Id, newerCatalog.Id, "synthetic-new.xlsx", 200, "head", null, null));
+            await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+            var expected = originals.OrderBy(x => x.Item.Section).ThenBy(x => x.Item.SourceRow).ThenBy(x => x.Structure.UnitOrdinal).ThenBy(x => x.Structure.Id).Select(x => x.Structure.Id)
+                .Concat(additions.OrderBy(x => x.CreatedAt).ThenBy(x => x.Id).Select(x => x.Id)).ToArray();
+            async Task<string> StoredRows() => System.Text.Json.JsonSerializer.Serialize(await db.MeasurementStructures.AsNoTracking().Where(x => x.ProjectId == project.Id).OrderBy(x => x.Id).ToArrayAsync());
+            async Task<string> StoredQuotes() => System.Text.Json.JsonSerializer.Serialize(await db.CommercialQuotationItems.AsNoTracking().Where(x => x.CommercialQuotationId == quote.Id).OrderBy(x => x.Id).ToArrayAsync());
+            var before = await StoredRows(); var quotationBefore = await StoredQuotes();
+            var read = (await Store(db).ReadAsync(project.Id, new("installer", SystemRole.Installation), default))!;
+            Assert.Equal(expected, read.Structures.Select(x => x.Id));
+            Assert.Equal(originals.Count + 3, read.Structures.Count); Assert.Empty(read.History);
+            await using (var reopened = Db())
+            {
+                var reloaded = (await Store(reopened).ReadAsync(project.Id, new("manager", SystemRole.Management), default))!;
+                Assert.Equal(read.Structures, reloaded.Structures); Assert.Equal(read.Summary, reloaded.Summary); Assert.Empty(reloaded.History);
+            }
+            Assert.Equal(before, await StoredRows()); Assert.Equal(quotationBefore, await StoredQuotes());
+            await Store(db).ExecuteAsync(project.Id, new(Guid.NewGuid(), 0, "Submit", DocumentIds: [document.Id]), actor, default);
+            await using (var reopened = Db())
+            {
+                var submitted = (await Store(reopened).ReadAsync(project.Id, new("installer", SystemRole.Installation), default))!;
+                Assert.Equal(expected, submitted.Snapshot!.Structures.Select(x => x.Id));
+                Assert.Equal(read.Structures, submitted.Snapshot.Structures);
+                Assert.Equal(quote.Id, submitted.Snapshot.CommercialQuotationId);
+                Assert.Equal(read.Summary, submitted.Summary); Assert.Single(submitted.History, x => x.Action == "Submit");
+            }
+            Assert.Equal(before, await StoredRows()); Assert.Equal(quotationBefore, await StoredQuotes());
+        }
+    }
     private static async Task Error(string code, Func<Task> action) => Assert.Equal(code, (await Assert.ThrowsAsync<DocumentException>(action)).Code);
     private static async IAsyncEnumerable<DocumentUpload> Uploads(params string[] names)
     {

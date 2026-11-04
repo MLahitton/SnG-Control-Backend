@@ -23,7 +23,7 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
         if (tasks.Length != 1 || !await db.InitialDeposits.AnyAsync(d => d.ProjectId == id, token)) return null;
         var task = tasks[0];
         var checklist = await db.MeasurementChecklists.AsNoTracking().SingleOrDefaultAsync(x => x.ProjectId == id, token);
-        var rows = await db.MeasurementStructures.AsNoTracking().Where(x => x.ProjectId == id).OrderBy(x => x.CreatedAt).ThenBy(x => x.CommercialQuotationItemId).ThenBy(x => x.UnitOrdinal).ThenBy(x => x.Id).ToArrayAsync(token);
+        var rows = await OrderedStructures(db.MeasurementStructures.Where(x => x.ProjectId == id)).ToArrayAsync(token);
         var history = await db.MeasurementEvents.AsNoTracking().Where(x => x.ProjectId == id).OrderBy(x => x.Revision).ToArrayAsync(token);
         var documents = await db.ProjectDocuments.AsNoTracking().Where(d => d.ProjectId == id && d.IsMeasurementDocument && d.RemovedAt == null).OrderBy(d => d.UploadedAt).ThenBy(d => d.Id).ToArrayAsync(token);
         var views = await StructureViewsAsync(rows, token);
@@ -35,6 +35,17 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
             history.Select(e => new MeasurementHistory(e.Id, e.Action, e.StructureId, e.At, new(e.ActorEmail, e.ActorName), e.Revision, e.DetailsJson is null ? null : JsonSerializer.Deserialize<MeasurementDetailsChange>(e.DetailsJson))).ToArray(),
             checklist?.SubmissionId, checklist?.SubmittedAt, checklist?.SnapshotJson is { } json ? JsonSerializer.Deserialize<MeasurementSnapshot>(json) : null);
     }
+    private IQueryable<MeasurementStructure> OrderedStructures(IQueryable<MeasurementStructure> structures) =>
+        from structure in structures.AsNoTracking()
+        join item in db.CommercialQuotationItems.AsNoTracking() on structure.CommercialQuotationItemId equals item.Id into items
+        from item in items.DefaultIfEmpty()
+        orderby structure.CommercialQuotationItemId == null,
+            (CommercialItemSection?)item.Section, (int?)item.SourceRow,
+            structure.CommercialQuotationItemId == null ? (int?)null : structure.UnitOrdinal,
+            structure.CommercialQuotationItemId == null ? (DateTime?)structure.CreatedAt : null,
+            structure.Id
+        select structure;
+
     private async Task<MeasurementStructureView[]> StructureViewsAsync(MeasurementStructure[] rows, CancellationToken token)
     {
         var itemIds = rows.Where(s => s.CommercialQuotationItemId != null).Select(s => s.CommercialQuotationItemId!.Value).Distinct().ToArray();
@@ -98,7 +109,7 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
         }
         if (checklist.SubmissionId is not null || task.Status != ProjectTaskStatus.InProgress) throw new DocumentException(409, "MeasurementsLocked");
         if (checklist.Revision != command.ExpectedRevision) throw new DocumentException(409, "MeasurementRevisionConflict");
-        var rows = await db.MeasurementStructures.AsNoTracking().Where(s => s.ChecklistId == checklist.Id).ToArrayAsync(token);
+        var rows = await OrderedStructures(db.MeasurementStructures.Where(s => s.ChecklistId == checklist.Id)).ToArrayAsync(token);
         var now = timing.UtcNow; var added = new List<object>(); var changed = new List<(object Entity, Microsoft.EntityFrameworkCore.ChangeTracking.PropertyValues Before)>();
         void Track(object entity) { db.Attach(entity); changed.Add((entity, db.Entry(entity).CurrentValues.Clone())); }
         EfProjectNotificationWriter.NotificationWriteSet? staged = null;
