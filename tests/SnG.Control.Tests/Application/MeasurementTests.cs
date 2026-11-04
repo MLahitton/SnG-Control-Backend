@@ -90,6 +90,8 @@ public sealed class MeasurementTests
     private sealed class Installer : IInstallationAssigneeIdentity { public string Subject => "installer"; }
     private sealed class UnusedStore : IMeasurementStore
     {
+        public Task<SketchRead?> ReadSketchAsync(Guid id, Guid structureId, Guid versionId, ProjectReadScope scope, CancellationToken token) => Task.FromResult<SketchRead?>(null);
+        public Task<byte[]?> ReadSketchImageAsync(Guid id, Guid structureId, Guid versionId, ProjectReadScope scope, CancellationToken token) => Task.FromResult<byte[]?>(null);
         public Task<MeasurementState?> ReadAsync(Guid id, ProjectReadScope scope, CancellationToken token) => throw new NotImplementedException();
         public Task InitializeAsync(Guid id, DecisionActor actor, CancellationToken token) => throw new NotImplementedException();
         public Task ExecuteAsync(Guid id, MeasurementCommand command, DecisionActor actor, CancellationToken token) => throw new NotImplementedException();

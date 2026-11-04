@@ -6,6 +6,7 @@ using SnG.Control.Application.Features.ProjectDocuments;
 namespace SnG.Control.Api.Controllers;
 
 [ApiController]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 [Route("api/projects/{id:guid}/measurements")]
 public sealed class MeasurementsController(MeasurementService service) : ControllerBase
 {
@@ -17,7 +18,17 @@ public sealed class MeasurementsController(MeasurementService service) : Control
     {
         await service.InitializeAsync(id, token); return NoContent();
     }
+    [HttpGet("structures/{structureId:guid}/sketches/{versionId:guid}")]
+    public async Task<IActionResult> Sketch(Guid id, Guid structureId, Guid versionId, CancellationToken token) =>
+        await service.ReadSketchAsync(id, structureId, versionId, token) is { } drawing ? Ok(drawing) : NotFound();
+    [HttpGet("structures/{structureId:guid}/sketches/{versionId:guid}/image")]
+    public async Task<IActionResult> SketchImage(Guid id, Guid structureId, Guid versionId, CancellationToken token)
+    {
+        Response.Headers.CacheControl = "no-store"; Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return await service.ReadSketchImageAsync(id, structureId, versionId, token) is { } bytes ? File(bytes, "image/webp") : NotFound();
+    }
     [HttpPost("commands")]
+    [RequestSizeLimit(MeasurementSketch.MaxRequestBytes)]
     public async Task<IActionResult> Execute(Guid id, MeasurementCommand body, CancellationToken token)
     {
         await service.ExecuteAsync(id, body, token); return NoContent();

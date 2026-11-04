@@ -410,3 +410,19 @@ conservan valores nulos; no se copian medidas cotizadas como si fueran medicione
 La interfaz muestra el dibujo persistido del ítem, campos asociados al dibujo y tres tarjetas
 por fila en escritorio. Las notas ya no se solicitan ni muestran en el checklist; su historia
 persistida se conserva. Las estructuras agregadas utilizan el mismo guardado y cierre.
+
+Cada unidad incluye ficha técnica: manija pendiente/no aplicable/confirmada, vista por dentro o
+por fuera, tipo de apertura, sentido y lado de bisagras, y alfajía. Izquierda/derecha siempre
+indica el lado de las bisagras observado desde la vista seleccionada; cambiar de vista no lo invierte.
+La sugerencia de manija de 1100 mm no se guarda como medición hasta confirmarla o editarla.
+Para marcar Medido se requieren medidas reales y ficha completa, con campos condicionales según
+aplicación. Los checks anteriores se conservan; desmarcarlos exige completar la ficha al remarcar.
+El croquis es opcional, independiente por unidad y editable con mouse, dedo o lápiz. Sus versiones
+conservan trazos editables y WEBP privado; cancelar no cambia el guardado. Retiro y radicación
+bloquean la edición. No se crean tareas de Ingeniería ni Actas de Vanos.
+
+Steel & Glass utiliza **milímetros como unidad de negocio para todas las longitudes**. Instalación
+muestra y captura longitudes en mm, incluidas las referencias cotizadas. Los contratos existentes
+de ancho/alto siguen en metros exclusivamente por compatibilidad técnica: se convierten en los
+límites de la interfaz (2000 × 2400 mm ↔ 2 × 2,4 m). Manija y alfajía se guardan directamente en mm.
+Superficies en m² e importes monetarios no cambian; no se realiza una migración global de unidades.

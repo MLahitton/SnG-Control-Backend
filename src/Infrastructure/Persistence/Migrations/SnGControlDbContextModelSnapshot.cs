@@ -793,8 +793,14 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.Property<long>("Revision")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("SketchChangeJson")
+                        .HasColumnType("jsonb");
+
                     b.Property<Guid?>("StructureId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("TechnicalChangeJson")
+                        .HasColumnType("jsonb");
 
                     b.HasKey("Id");
 
@@ -809,6 +815,53 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.HasIndex("StructureId", "ChecklistId");
 
                     b.ToTable("MeasurementEvents", (string)null);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementSketchVersion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ChecklistId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBySubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("DrawingJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("StructureId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WebpSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasAlternateKey("Id", "StructureId");
+
+                    b.HasIndex("ChecklistId", "ProjectId");
+
+                    b.HasIndex("StructureId", "ChecklistId");
+
+                    b.HasIndex("StructureId", "Revision")
+                        .IsUnique();
+
+                    b.ToTable("MeasurementSketchVersions", (string)null);
                 });
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementStructure", b =>
@@ -869,6 +922,12 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("RetiredBySubject")
                         .HasColumnType("text");
+
+                    b.Property<Guid?>("SketchVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("TechnicalJson")
+                        .HasColumnType("jsonb");
 
                     b.Property<int>("UnitCount")
                         .HasColumnType("integer");
@@ -1518,6 +1577,23 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         .HasForeignKey("StructureId", "ChecklistId")
                         .HasPrincipalKey("Id", "ChecklistId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementSketchVersion", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.MeasurementChecklist", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.MeasurementStructure", null)
+                        .WithMany()
+                        .HasForeignKey("StructureId", "ChecklistId")
+                        .HasPrincipalKey("Id", "ChecklistId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("SnG.Control.Domain.Entities.MeasurementStructure", b =>

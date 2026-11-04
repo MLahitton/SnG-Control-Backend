@@ -1627,3 +1627,41 @@ Lectura y nuevas radicaciones comparten el orden SQL de estructuras: LEFT JOIN a
 CommercialQuotationItem referenciado, Section, SourceRow, UnitOrdinal e Id de estructura.
 Las agregadas (sin ítem) van al final por CreatedAt e Id; las retiradas no se excluyen del
 orden histórico. No se consulta la cotización más reciente ni se reescriben snapshots ya radicados.
+
+Ficha técnica y croquis por unidad:
+- `RecordTechnical` en POST measurements/commands recibe StructureId y Technical: HandleStatus
+  (null/NotApplicable/Confirmed), HandleHeightMm, ViewSide (Inside/Outside), OpeningType
+  (NotApplicable/HingedDoor/HingedWindow/Other), OpeningDirection (Inward/Outward), OpeningHand
+  (Left/Right = lado de bisagras desde ViewSide), HasAlfajia y AlfajiaMeasurementMm.
+- Se admiten borradores incompletos, nunca combinaciones contradictorias. Manija positiva hasta
+  5000 mm y no mayor al alto real; alfajía positiva hasta 10000 mm. Son límites de captura,
+  no reglas de fabricación. No aplicable implica valor nulo. Ventanas no requieren lado.
+- Measure=true valida medidas reales y ficha completa en servidor. Los registros ya medidos
+  anteriores no se desmarcan ni reciben valores ficticios; pueden radicarse con sus datos históricos.
+  Para guardar ficha incompleta sobre una unidad medida se debe desmarcar explícitamente primero.
+- `RecordSketch` recibe StructureId y Sketch { Drawing, Webp (base64) }. Drawing v1 contiene
+  Width=1200, Height=900, Strokes [{Tool: Pen/Eraser, Color, Width, Points:[{X,Y}]}]. Coordenadas
+  normalizadas [0,1], proporción 4:3, hasta 200 trazos, 2000 puntos/trazo y 20000 puntos totales.
+  Colores permitidos #111111/#0066cc/#cc2222, grosor 1–20 px del lienzo de referencia. Borrador
+  pinta blanco sobre un fondo opaco. Límite JSON de trazos 1 MB; petición completa 2 MB;
+  WEBP 512 KB, RIFF/VP8 opaco sin animación/metadata, dimensiones verificadas. No hay SVG ni URLs.
+  El servidor valida contenedor/cabecera y límites; no realiza una decodificación completa VP8.
+- Cada guardado crea MeasurementSketchVersion inmutable con DrawingJson, SHA256, actor/UTC y
+  revisión; WEBP usa IFileStorage en clave generada por servidor por proyecto/estructura/versión.
+  Versiones anteriores se conservan. Mínimo dos segundos entre versiones por unidad, bajo el
+  mismo bloqueo de proyecto/tareas; replay de RequestKey no crea otra versión ni archivo.
+- GET measurements/structures/{structureId}/sketches/{versionId} devuelve los trazos y referencia;
+  GET con sufijo /image devuelve image/webp autenticado. Solo Installation asignada y Management
+  mediante scope del proyecto; no se exponen claves físicas. La lectura verifica SHA256 del WEBP.
+- Datos técnicos, referencia de versión, revisión y evento antes/después se confirman atómicamente.
+  El archivo se escribe antes del commit, se elimina solo tras rollback conocido y se conserva
+  ante commit incierto. Un fallo abrupto previo al commit puede dejar un archivo huérfano privado;
+  no se elimina evidencia mediante una limpieza automática especulativa.
+- El snapshot incluye Technical y SketchVersionId de la misma transacción; la versión referida
+  contiene trazos y WEBP inmutables. No se reescriben snapshots previos ni archivos de cotización.
+- Migración 20261104183948_AddInstallationTechnicalSketches: columnas nullable TechnicalJson,
+  SketchVersionId, auditoría técnica/croquis, y tabla de versiones. Validar/aplicar solo con
+  autorización operativa explícita; no hay backfill ni regeneración del checklist.
+- mm es la unidad de negocio de todas las longitudes. Ancho/alto heredados permanecen en m por
+  compatibilidad, con conversión centralizada en Frontend measurements/units.ts. Manija/alfajía
+  se almacenan en mm; m² y dinero no se convierten. No cambiar contratos de otros módulos.

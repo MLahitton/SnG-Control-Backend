@@ -1,3 +1,5 @@
+using System.Text.Json;
+using SnG.Control.Domain.ValueObjects;
 namespace SnG.Control.Domain.Entities;
 
 public sealed class MeasurementChecklist
@@ -71,6 +73,22 @@ public sealed class MeasurementStructure
     public string? Location { get; private set; }
     public decimal Width { get; private set; }
     public decimal Height { get; private set; }
+    public string? TechnicalJson { get; private set; }
+    public InstallationTechnicalDetails? Technical => TechnicalJson is null ? null : JsonSerializer.Deserialize<InstallationTechnicalDetails>(TechnicalJson);
+    public Guid? SketchVersionId { get; private set; }
+    public void RecordTechnical(InstallationTechnicalDetails details, DateTime at, string subject)
+    {
+        ValidateChange(at, subject); details.Validate(ActualHeight);
+        if (MeasuredAt != null && !details.IsFullyComplete) throw new InvalidOperationException("Unmark before saving incomplete details.");
+        TechnicalJson = JsonSerializer.Serialize(details);
+    }
+    public void SetSketch(Guid versionId, DateTime at, string subject)
+    {
+        ValidateChange(at, subject);
+        if (versionId == Guid.Empty) throw new ArgumentException("Sketch version required.");
+        SketchVersionId = versionId;
+    }
+    public bool IsTechnicallyComplete => ActualWidth > 0 && ActualHeight > 0 && !string.IsNullOrWhiteSpace(ActualSystemText) && Technical?.IsFullyComplete == true;
     public decimal? ActualWidth { get; private set; }
     public decimal? ActualHeight { get; private set; }
     public string? ActualSystemText { get; private set; }
@@ -78,6 +96,7 @@ public sealed class MeasurementStructure
     {
         ValidateChange(at, subject);
         if (width <= 0 || height <= 0 || string.IsNullOrWhiteSpace(systemText) || systemText.Length > 2000) throw new ArgumentException("Invalid actual measurements.");
+        Technical?.Validate(height);
         ActualWidth = width; ActualHeight = height; ActualSystemText = systemText.Trim();
     }
     public string? Note { get; private set; }
@@ -105,17 +124,19 @@ public sealed class MeasurementStructure
 public sealed class MeasurementEvent
 {
     private MeasurementEvent() { }
-    public MeasurementEvent(MeasurementChecklist checklist, Guid requestKey, string fingerprint, string action, Guid? structureId, DateTime at, string subject, string? email, string? name, string? detailsJson = null)
+    public MeasurementEvent(MeasurementChecklist checklist, Guid requestKey, string fingerprint, string action, Guid? structureId, DateTime at, string subject, string? email, string? name, string? detailsJson = null, string? technicalChangeJson = null, string? sketchChangeJson = null)
     {
         MeasurementChecklist.ValidateActor(at, subject);
         if (requestKey == Guid.Empty) throw new ArgumentException("Request key required.");
         Id = Guid.NewGuid(); ChecklistId = checklist.Id; ProjectId = checklist.ProjectId; RequestKey = requestKey; Fingerprint = fingerprint;
-        DetailsJson = detailsJson; Action = action; StructureId = structureId; At = at; ActorSubject = subject; ActorEmail = email; ActorName = name; Revision = checklist.Revision;
+        TechnicalChangeJson = technicalChangeJson; SketchChangeJson = sketchChangeJson; DetailsJson = detailsJson; Action = action; StructureId = structureId; At = at; ActorSubject = subject; ActorEmail = email; ActorName = name; Revision = checklist.Revision;
     }
     public Guid Id { get; private set; }
     public Guid ChecklistId { get; private set; }
     public Guid ProjectId { get; private set; }
     public Guid RequestKey { get; private set; }
+    public string? TechnicalChangeJson { get; private set; }
+    public string? SketchChangeJson { get; private set; }
     public string? DetailsJson { get; private set; }
     public string Fingerprint { get; private set; } = "";
     public string Action { get; private set; } = "";

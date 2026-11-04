@@ -1,4 +1,5 @@
 using System.Data;
+using SnG.Control.Application.Files;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -12,7 +13,7 @@ using SnG.Control.Domain.Entities;
 using SnG.Control.Domain.Enums;
 namespace SnG.Control.Infrastructure.Persistence.Stores;
 
-public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing, EfProjectNotificationWriter notifications) : IMeasurementStore
+public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing, EfProjectNotificationWriter notifications, IFileStorage files) : IMeasurementStore
 {
     public async Task<MeasurementState?> ReadAsync(Guid id, ProjectReadScope scope, CancellationToken token)
     {
@@ -32,8 +33,26 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
             scope.Role == SystemRole.Installation && task.AssignedToGoogleSubject == scope.Subject && task.Status != ProjectTaskStatus.Completed && checklist?.SubmissionId is null,
             checklist?.Id, checklist?.Revision ?? 0, MeasurementSummary.From(rows), views,
             documents.Select(d => DocumentResponse.From(d, new HashSet<Guid>())).ToArray(),
-            history.Select(e => new MeasurementHistory(e.Id, e.Action, e.StructureId, e.At, new(e.ActorEmail, e.ActorName), e.Revision, e.DetailsJson is null ? null : JsonSerializer.Deserialize<MeasurementDetailsChange>(e.DetailsJson))).ToArray(),
+            history.Select(e => new MeasurementHistory(e.Id, e.Action, e.StructureId, e.At, new(e.ActorEmail, e.ActorName), e.Revision, e.DetailsJson is null ? null : JsonSerializer.Deserialize<MeasurementDetailsChange>(e.DetailsJson), e.TechnicalChangeJson is null ? null : JsonSerializer.Deserialize<MeasurementTechnicalChange>(e.TechnicalChangeJson), e.SketchChangeJson is null ? null : JsonSerializer.Deserialize<MeasurementSketchChange>(e.SketchChangeJson))).ToArray(),
             checklist?.SubmissionId, checklist?.SubmittedAt, checklist?.SnapshotJson is { } json ? JsonSerializer.Deserialize<MeasurementSnapshot>(json) : null);
+    }
+    private async Task<MeasurementSketchVersion?> AuthorizedSketchAsync(Guid id, Guid structureId, Guid versionId, ProjectReadScope scope, CancellationToken token)
+    {
+        if (scope.Role is not (SystemRole.Installation or SystemRole.Management) || !await db.Projects.AsNoTracking().Where(scope.Filter(db.ProjectTasks)).AnyAsync(p => p.Id == id, token)) return null;
+        return await db.MeasurementSketchVersions.AsNoTracking().SingleOrDefaultAsync(v => v.Id == versionId && v.ProjectId == id && v.StructureId == structureId, token);
+    }
+    public async Task<SketchRead?> ReadSketchAsync(Guid id, Guid structureId, Guid versionId, ProjectReadScope scope, CancellationToken token)
+    {
+        var v = await AuthorizedSketchAsync(id, structureId, versionId, scope, token);
+        return v is null ? null : new(v.Id, v.StructureId, v.Revision, JsonSerializer.Deserialize<SketchDrawing>(v.DrawingJson)!, v.WebpSha256);
+    }
+    public async Task<byte[]?> ReadSketchImageAsync(Guid id, Guid structureId, Guid versionId, ProjectReadScope scope, CancellationToken token)
+    {
+        var v = await AuthorizedSketchAsync(id, structureId, versionId, scope, token);
+        if (v is null) return null;
+        var bytes = await files.ReadAsync(v.StorageKey, token);
+        if (Convert.ToHexString(SHA256.HashData(bytes)) != v.WebpSha256) throw new DocumentException(409, "MeasurementSketchIntegrity");
+        return bytes;
     }
     private IQueryable<MeasurementStructure> OrderedStructures(IQueryable<MeasurementStructure> structures) =>
         from structure in structures.AsNoTracking()
@@ -110,12 +129,13 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
         if (checklist.SubmissionId is not null || task.Status != ProjectTaskStatus.InProgress) throw new DocumentException(409, "MeasurementsLocked");
         if (checklist.Revision != command.ExpectedRevision) throw new DocumentException(409, "MeasurementRevisionConflict");
         var rows = await OrderedStructures(db.MeasurementStructures.Where(s => s.ChecklistId == checklist.Id)).ToArrayAsync(token);
+        string? stagedSketchKey = null; bool commitAttempted = false;
         var now = timing.UtcNow; var added = new List<object>(); var changed = new List<(object Entity, Microsoft.EntityFrameworkCore.ChangeTracking.PropertyValues Before)>();
         void Track(object entity) { db.Attach(entity); changed.Add((entity, db.Entry(entity).CurrentValues.Clone())); }
         EfProjectNotificationWriter.NotificationWriteSet? staged = null;
         try
         {
-            Track(checklist); Guid? structureId = command.StructureId; MeasurementDetailsChange? details = null;
+            Track(checklist); Guid? structureId = command.StructureId; MeasurementDetailsChange? details = null; MeasurementTechnicalChange? technical = null; MeasurementSketchChange? sketch = null;
             if (command.Action == "Submit")
             {
                 var summary = MeasurementSummary.From(rows);
@@ -140,23 +160,52 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
                     var row = rows.SingleOrDefault(r => r.Id == command.StructureId) ?? throw new DocumentException(404, "MeasurementStructureNotFound");
                     if (row.RetiredAt is not null) throw new DocumentException(409, "MeasurementStructureRetired");
                     Track(row);
-                    if (command.Action == "RecordActual")
+                    if (command.Action == "RecordTechnical")
+                    {
+                        var before = row.Technical;
+                        try { row.RecordTechnical(command.Technical!, now, actor.Subject); }
+                        catch (ArgumentException) { throw new DocumentException(400, "InvalidMeasurementTechnical"); }
+                        catch (InvalidOperationException) { throw new DocumentException(409, "MeasurementsIncomplete"); }
+                        technical = new(before, row.Technical);
+                    }
+                    else if (command.Action == "RecordSketch")
+                    {
+                        MeasurementSketch.Validate(command.Sketch!);
+                        var previous = await db.MeasurementSketchVersions.AsNoTracking().Where(v => v.StructureId == row.Id).OrderByDescending(v => v.Revision).FirstOrDefaultAsync(token);
+                        if (previous != null && now < previous.CreatedAt.AddSeconds(2)) throw new DocumentException(429, "MeasurementSketchRateLimit");
+                        var version = new MeasurementSketchVersion(row, checklist.Revision + 1, JsonSerializer.Serialize(command.Sketch!.Drawing), Convert.ToHexString(SHA256.HashData(command.Sketch.Webp)), now, actor.Subject);
+                        sketch = new(row.SketchVersionId, version.Id); row.SetSketch(version.Id, now, actor.Subject);
+                        added.Add(version); stagedSketchKey = version.StorageKey;
+                        await files.SaveAsync(version.StorageKey, command.Sketch.Webp, token);
+                    }
+                    else if (command.Action == "RecordActual")
                     {
                         var before = MeasurementActualValues.From(row);
-                        row.RecordActual(command.ActualWidth!.Value, command.ActualHeight!.Value, command.ActualSystemText!, now, actor.Subject);
+                        try { row.RecordActual(command.ActualWidth!.Value, command.ActualHeight!.Value, command.ActualSystemText!, now, actor.Subject); }
+                        catch (ArgumentException) { throw new DocumentException(400, "InvalidMeasurementTechnical"); }
                         details = new(before, MeasurementActualValues.From(row));
                     }
-                    else if (command.Action == "Measure") row.Measure(command.Measured!.Value, now, actor.Subject);
+                    else if (command.Action == "Measure")
+                    {
+                        if (command.Measured == true && !row.IsTechnicallyComplete) throw new DocumentException(409, "MeasurementsIncomplete");
+                        row.Measure(command.Measured!.Value, now, actor.Subject);
+                    }
                     else if (command.Action == "Retire") row.Retire(now, actor.Subject);
                     else throw new DocumentException(400, "InvalidMeasurementCommand");
                 }
                 checklist.Advance();
             }
-            added.Add(new MeasurementEvent(checklist, command.RequestKey, fingerprint, command.Action == "Measure" && command.Measured == false ? "Unmeasure" : command.Action, structureId, now, actor.Subject, actor.Email, actor.Name, details is null ? null : JsonSerializer.Serialize(details)));
-            db.AddRange(added); await db.SaveChangesAsync(token); await tx.CommitAsync(token);
+            added.Add(new MeasurementEvent(checklist, command.RequestKey, fingerprint, command.Action == "Measure" && command.Measured == false ? "Unmeasure" : command.Action, structureId, now, actor.Subject, actor.Email, actor.Name, details is null ? null : JsonSerializer.Serialize(details), technical is null ? null : JsonSerializer.Serialize(technical), sketch is null ? null : JsonSerializer.Serialize(sketch)));
+            db.AddRange(added); await db.SaveChangesAsync(token); commitAttempted = true; await tx.CommitAsync(token);
         }
         catch
         {
+            if (stagedSketchKey != null && !commitAttempted)
+            {
+                // Delete only after a known rollback. Unknown commit outcome preserves immutable evidence.
+                await tx.RollbackAsync(CancellationToken.None);
+                await files.DeleteAsync(stagedSketchKey, CancellationToken.None);
+            }
             staged?.RestoreTracking(); foreach (var entity in added) db.Entry(entity).State = EntityState.Detached;
             foreach (var (entity, before) in changed) { db.Entry(entity).CurrentValues.SetValues(before); db.Entry(entity).State = EntityState.Detached; }
             throw;

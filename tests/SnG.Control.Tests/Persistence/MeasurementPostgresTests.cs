@@ -24,10 +24,11 @@ public sealed class MeasurementPostgresTests
         var config = new NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("SNG_VERIFICATION_TEST_DATABASE"));
         Assert.Equal("127.0.0.1", config.Host); Assert.Equal("verification_test", config.Database);
         SnGControlDbContext Db(bool fail = false) => new(new DbContextOptionsBuilder<SnGControlDbContext>().UseNpgsql(config.ConnectionString).AddInterceptors(new FailSave(fail)).Options);
-        EfMeasurementStore Store(SnGControlDbContext db) => new(db, TestTiming.Value, new(db, new ProjectNotificationPlanner(TestTiming.Value)));
         using var files = new TemporaryStorage(); var storage = new LocalFileStorage(Options.Create(new FileStorageOptions { RootPath = files.Root }));
+        var clock = new ControlledTimeProvider(TestTiming.Value.UtcNow); var timing = new SnG.Control.Application.Scheduling.TaskTiming(clock, new());
+        EfMeasurementStore Store(SnGControlDbContext db) => new(db, timing, new(db, new ProjectNotificationPlanner(timing)), storage);
         EfProjectDocumentStore Documents(SnGControlDbContext db, string subject = "installer", SystemRole role = SystemRole.Installation) => new(db, storage, new(new IdentityDouble(subject), new ActiveRoleDouble(role), new IdentityDouble("budgets")), TestTiming.Value);
-        var actor = new DecisionActor("installer", "installer@example.test", "Installer"); var now = TestTiming.Value.UtcNow;
+        var actor = new DecisionActor("installer", "installer@example.test", "Installer"); var now = clock.Now;
         await using var db = Db(); await db.Database.MigrateAsync(); Assert.False(db.Database.HasPendingModelChanges());
         var client = new Client("Measurement synthetic"); var project = new Project(client.Id, "Measurement synthetic", "City", ProductLine.Classic, "advisor");
         db.AddRange(client, project); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
@@ -78,6 +79,7 @@ public sealed class MeasurementPostgresTests
             Assert.Equal("23514", violation.SqlState); Assert.Equal("CK_MeasurementStructures_Actual", violation.ConstraintName);
             await invalid.RollbackAsync();
         }
+        await Error("MeasurementsIncomplete", () => Store(db).ExecuteAsync(project.Id, Command("Measure", first.Id, true), actor, default));
         var capture = new MeasurementCommand(Guid.NewGuid(), state.Revision, "RecordActual", first.Id, ActualWidth: 1.2345m, ActualHeight: 2.3456m, ActualSystemText: "  Site custom system  ");
         await Error("MeasurementAccessDenied", () => Store(db).ExecuteAsync(project.Id, capture, actor with { Subject = "other" }, default));
         await using (var failed = Db(true)) await Assert.ThrowsAsync<InvalidOperationException>(() => Store(failed).ExecuteAsync(project.Id, capture, actor, default));
@@ -90,6 +92,33 @@ public sealed class MeasurementPostgresTests
         var auditCapture = Assert.Single(state.History, e => e.Action == "RecordActual");
         Assert.Null(auditCapture.Details!.Before.Width); Assert.Equal(1.2345m, auditCapture.Details.After.Width); Assert.Equal("Installer", auditCapture.Actor.Name);
         await Error("MeasurementRevisionConflict", () => Store(db).ExecuteAsync(project.Id, capture with { RequestKey = Guid.NewGuid(), ActualWidth = 9 }, actor, default));
+        await Execute(new(Guid.NewGuid(), state.Revision, "RecordTechnical", first.Id, Technical: CompleteTechnical()));
+        Assert.Equal(CompleteTechnical(), state.Structures.Single(s => s.Id == first.Id).Technical);
+        Assert.Null(state.Structures.First(s => s.Id != first.Id).Technical);
+        await Error("MeasurementStructureNotFound", () => Store(db).ExecuteAsync(project.Id, new(Guid.NewGuid(), state.Revision, "RecordTechnical", Guid.NewGuid(), Technical: CompleteTechnical()), actor, default));
+        var sketchCommand = new MeasurementCommand(Guid.NewGuid(), state.Revision, "RecordSketch", first.Id, Sketch: SketchFixture.Upload());
+        await using (var failed = Db(true)) await Assert.ThrowsAsync<InvalidOperationException>(() => Store(failed).ExecuteAsync(project.Id, sketchCommand, actor, default));
+        Assert.Empty(Directory.GetFiles(files.Root, "*", SearchOption.AllDirectories));
+        await using (var a = Db()) await using (var b = Db()) await Task.WhenAll(Store(a).ExecuteAsync(project.Id, sketchCommand, actor, default), Store(b).ExecuteAsync(project.Id, sketchCommand, actor, default));
+        await Refresh(); await Execute(sketchCommand);
+        var firstVersion = state.Structures.Single(s => s.Id == first.Id).SketchVersionId!.Value;
+        Assert.Null(state.Structures.First(s => s.Id != first.Id).SketchVersionId);
+        Assert.Single(await db.MeasurementSketchVersions.Where(v => v.ProjectId == project.Id).ToArrayAsync());
+        Assert.Equal(sketchCommand.Sketch!.Webp, await Store(db).ReadSketchImageAsync(project.Id, first.Id, firstVersion, new("manager", SystemRole.Management), default));
+        Assert.Null(await Store(db).ReadSketchAsync(project.Id, first.Id, firstVersion, new("other", SystemRole.Installation), default));
+        Assert.Null(await Store(db).ReadSketchAsync(Guid.NewGuid(), first.Id, firstVersion, new("manager", SystemRole.Management), default));
+        Assert.Null(await Store(db).ReadSketchAsync(project.Id, Guid.NewGuid(), firstVersion, new("manager", SystemRole.Management), default));
+        await Error("MeasurementSketchRateLimit", () => Store(db).ExecuteAsync(project.Id, sketchCommand with { RequestKey = Guid.NewGuid(), ExpectedRevision = state.Revision }, actor, default));
+        clock.Now = clock.Now.AddSeconds(2);
+        await Execute(sketchCommand with { RequestKey = Guid.NewGuid(), ExpectedRevision = state.Revision });
+        var finalVersion = state.Structures.Single(s => s.Id == first.Id).SketchVersionId!.Value;
+        var sibling = state.Structures.First(s => s.ItemId == first.ItemId && s.Id != first.Id);
+        await Execute(new(Guid.NewGuid(), state.Revision, "RecordSketch", sibling.Id, Sketch: SketchFixture.Upload()));
+        Assert.NotEqual(finalVersion, state.Structures.Single(s => s.Id == sibling.Id).SketchVersionId);
+        Assert.Null(await Store(db).ReadSketchAsync(project.Id, sibling.Id, finalVersion, new("manager", SystemRole.Management), default));
+        Assert.NotEqual(firstVersion, finalVersion);
+        Assert.NotNull(await Store(db).ReadSketchAsync(project.Id, first.Id, firstVersion, new("manager", SystemRole.Management), default));
+        Assert.Equal(firstVersion, state.History.Last(e => e.Action == "RecordSketch" && e.StructureId == first.Id).Sketch!.Before);
         var mark = Command("Measure", first.Id, true);
         await using (var a = Db()) await using (var b = Db()) await Task.WhenAll(Store(a).ExecuteAsync(project.Id, mark, actor, default), Store(b).ExecuteAsync(project.Id, mark, actor, default));
         await Refresh(); Assert.NotNull(state.Structures.Single(s => s.Id == first.Id).MeasuredAt); Assert.Equal(1, state.Summary.Measured); Assert.Single(state.History, h => h.Action == "Measure");
@@ -102,7 +131,11 @@ public sealed class MeasurementPostgresTests
         await Execute(new(Guid.NewGuid(), state.Revision, "RecordActual", added.Id, ActualWidth: 1.4m, ActualHeight: 2.2m, ActualSystemText: "Door revised onsite"));
         var revisedAdded = state.Structures.Single(s => s.Id == added.Id); Assert.Equal(1.4m, revisedAdded.ActualWidth); Assert.Equal(1.3m, revisedAdded.Width);
         Assert.Equal(1.3m, state.History.Last(e => e.Action == "RecordActual").Details!.Before.Width);
+        await Execute(new(Guid.NewGuid(), state.Revision, "RecordTechnical", added.Id, Technical: CompleteTechnical()));
+        await Execute(new(Guid.NewGuid(), state.Revision, "RecordSketch", added.Id, Sketch: SketchFixture.Upload()));
         await Execute(Command("Retire", added.Id));
+        await Error("MeasurementStructureRetired", () => Store(db).ExecuteAsync(project.Id, new(Guid.NewGuid(), state.Revision, "RecordTechnical", added.Id, Technical: CompleteTechnical()), actor, default));
+        await Error("MeasurementStructureRetired", () => Store(db).ExecuteAsync(project.Id, new(Guid.NewGuid(), state.Revision, "RecordSketch", added.Id, Sketch: SketchFixture.Upload()), actor, default));
         var retire = Command("Retire", first.Id);
         await using (var a = Db()) await using (var b = Db())
         {
@@ -124,13 +157,18 @@ public sealed class MeasurementPostgresTests
         }
         await Error("MeasurementStructureRetired", () => Store(db).ExecuteAsync(project.Id, Command("Retire", added.Id), actor, default));
         await Error("MeasurementsIncomplete", () => Store(db).ExecuteAsync(project.Id, Command("Submit") with { DocumentIds = [Guid.NewGuid()] }, actor, default));
-        foreach (var row in state.Structures.Where(s => s.RetiredAt is null).ToArray()) await Execute(Command("Measure", row.Id, true));
+        foreach (var row in state.Structures.Where(s => s.RetiredAt is null).ToArray())
+        {
+            if (row.ActualWidth == null) await Execute(new(Guid.NewGuid(), state.Revision, "RecordActual", row.Id, ActualWidth: 2, ActualHeight: 2.4m, ActualSystemText: "Site"));
+            await Execute(new(Guid.NewGuid(), state.Revision, "RecordTechnical", row.Id, Technical: CompleteTechnical()));
+            await Execute(Command("Measure", row.Id, true));
+        }
         Assert.Equal(100, state.Summary.Progress); Assert.Equal(0, state.Summary.Pending);
         await Error("MeasurementAccessDenied", () => Documents(db, role: SystemRole.Management).UploadMeasurementsAsync(project.Id, Uploads("no.pdf"), default));
         await Error("MeasurementAccessDenied", () => Documents(db, "other").UploadMeasurementsAsync(project.Id, Uploads("no.pdf"), default));
         await Error("InvalidDocumentBatch", () => Documents(db).UploadMeasurementsAsync(project.Id, Uploads("../bad.pdf"), default));
         await using (var failed = Db(true)) await Assert.ThrowsAsync<InvalidOperationException>(() => Documents(failed).UploadMeasurementsAsync(project.Id, Uploads("rollback.pdf"), default));
-        Assert.Empty(Directory.GetFiles(files.Root, "*", SearchOption.AllDirectories));
+        Assert.Equal(4, Directory.GetFiles(files.Root, "*", SearchOption.AllDirectories).Length);
         var uploadKey = Guid.NewGuid();
         var upload = await Documents(db).UploadMeasurementsAsync(project.Id, Uploads("measures.pdf", "photo.jpg"), default, uploadKey); await Refresh();
         var retryUpload = await Documents(db).UploadMeasurementsAsync(project.Id, Uploads("measures.pdf", "photo.jpg"), default, uploadKey);
@@ -145,6 +183,9 @@ public sealed class MeasurementPostgresTests
         await Refresh(); Assert.NotNull(state.SubmissionId); Assert.Equal("Completed", state.TaskStatus); Assert.False(state.CanModify);
         Assert.Single(state.History, h => h.Action == "Submit"); Assert.Equal(22, state.Snapshot!.Structures.Count);
         var frozen = state.Snapshot.Structures.Single(s => s.Id == first.Id);
+        Assert.Equal(CompleteTechnical(), frozen.Technical); Assert.Equal(finalVersion, frozen.SketchVersionId);
+        Assert.Equal(sketchCommand.Sketch.Webp, await Store(db).ReadSketchImageAsync(project.Id, first.Id, finalVersion, new("manager", SystemRole.Management), default));
+        await Error("MeasurementsLocked", () => Store(db).ExecuteAsync(project.Id, sketchCommand with { RequestKey = Guid.NewGuid(), ExpectedRevision = state.Revision }, actor, default));
         Assert.Equal(1.2345m, frozen.ActualWidth); Assert.Equal(2.3456m, frozen.ActualHeight); Assert.Equal("Site custom system", frozen.ActualSystemText); Assert.Equal(first.ImageCatalogItemId, frozen.ImageCatalogItemId);
         Assert.Equal(1.4m, state.Snapshot.Structures.Single(s => s.Id == added.Id).ActualWidth); Assert.Equal(ids.Order(), state.Snapshot.DocumentIds.Order());
         Assert.Equal(2, await db.MeasurementSubmissionDocuments.CountAsync(d => d.ProjectId == project.Id));
@@ -157,7 +198,7 @@ public sealed class MeasurementPostgresTests
         Assert.Equal(3, await db.ProjectTasks.CountAsync(t => t.ProjectId == project.Id));
         Assert.Null((await db.ProjectTasks.AsNoTracking().SingleAsync(t => t.Id == task.Id)).DeadlineAt);
         Assert.All(await db.MeasurementStructures.AsNoTracking().Where(s => s.ProjectId == project.Id && s.MeasuredAt != null).ToArrayAsync(), s => Assert.Equal("installer", s.MeasuredBySubject));
-        Assert.Equal(2, Directory.GetFiles(files.Root, "*", SearchOption.AllDirectories).Length);
+        Assert.Equal(6, Directory.GetFiles(files.Root, "*", SearchOption.AllDirectories).Length);
     }
     [VerificationPostgresFact]
     public async Task OrderingUsesOriginalQuotationRowsForReadAndSnapshotWithoutChangingStoredData()
@@ -165,7 +206,8 @@ public sealed class MeasurementPostgresTests
         var config = new NpgsqlConnectionStringBuilder(Environment.GetEnvironmentVariable("SNG_VERIFICATION_TEST_DATABASE"));
         Assert.Equal("127.0.0.1", config.Host); Assert.Equal("verification_test", config.Database);
         SnGControlDbContext Db() => new(new DbContextOptionsBuilder<SnGControlDbContext>().UseNpgsql(config.ConnectionString).Options);
-        EfMeasurementStore Store(SnGControlDbContext context) => new(context, TestTiming.Value, new(context, new ProjectNotificationPlanner(TestTiming.Value)));
+        using var files = new TemporaryStorage(); var storage = new LocalFileStorage(Options.Create(new FileStorageOptions { RootPath = files.Root }));
+        EfMeasurementStore Store(SnGControlDbContext context) => new(context, TestTiming.Value, new(context, new ProjectNotificationPlanner(TestTiming.Value)), storage);
         var actor = new DecisionActor("installer", null, "Installer"); var now = TestTiming.Value.UtcNow;
         foreach (var count in new[] { 1, 4, 9 })
         {
@@ -240,6 +282,7 @@ public sealed class MeasurementPostgresTests
             Assert.Equal(before, await StoredRows()); Assert.Equal(quotationBefore, await StoredQuotes());
         }
     }
+    private static InstallationTechnicalDetails CompleteTechnical() => new("NotApplicable", null, "Outside", "NotApplicable", null, null, false, null);
     private static async Task Error(string code, Func<Task> action) => Assert.Equal(code, (await Assert.ThrowsAsync<DocumentException>(action)).Code);
     private static async IAsyncEnumerable<DocumentUpload> Uploads(params string[] names)
     {

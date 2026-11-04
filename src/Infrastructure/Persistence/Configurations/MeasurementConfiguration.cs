@@ -29,6 +29,8 @@ public sealed class MeasurementStructureConfiguration : IEntityTypeConfiguration
             t.HasCheckConstraint("CK_MeasurementStructures_State", "((\"MeasuredAt\" IS NULL AND \"MeasuredBySubject\" IS NULL) OR (\"MeasuredAt\" >= \"CreatedAt\" AND \"MeasuredBySubject\" IS NOT NULL)) AND ((\"RetiredAt\" IS NULL AND \"RetiredBySubject\" IS NULL) OR (\"RetiredAt\" >= \"CreatedAt\" AND \"RetiredBySubject\" IS NOT NULL))");
         });
         b.HasKey(x => x.Id); b.Property(x => x.Id).ValueGeneratedNever();
+        b.Ignore(x => x.Technical); b.Ignore(x => x.IsTechnicallyComplete);
+        b.Property(x => x.TechnicalJson).HasColumnType("jsonb");
         b.Property(x => x.ActualSystemText).HasMaxLength(2000);
         b.HasAlternateKey(x => new { x.Id, x.ChecklistId });
         b.HasOne<MeasurementChecklist>().WithMany().HasForeignKey(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
@@ -44,6 +46,8 @@ public sealed class MeasurementEventConfiguration : IEntityTypeConfiguration<Mea
         b.HasOne<MeasurementChecklist>().WithMany().HasForeignKey(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<MeasurementStructure>().WithMany().HasForeignKey(x => new { x.StructureId, x.ChecklistId }).HasPrincipalKey(x => new { x.Id, x.ChecklistId }).OnDelete(DeleteBehavior.Restrict);
         b.HasIndex(x => new { x.ChecklistId, x.RequestKey }).IsUnique(); b.HasIndex(x => new { x.ChecklistId, x.Revision }).IsUnique();
+        b.Property(x => x.TechnicalChangeJson).HasColumnType("jsonb");
+        b.Property(x => x.SketchChangeJson).HasColumnType("jsonb");
         b.Property(x => x.DetailsJson).HasColumnType("jsonb");
         b.Property(x => x.Fingerprint).HasMaxLength(64); b.Property(x => x.Action).HasMaxLength(30);
     }
@@ -55,5 +59,18 @@ public sealed class MeasurementSubmissionDocumentConfiguration : IEntityTypeConf
         b.ToTable("MeasurementSubmissionDocuments"); b.HasKey(x => new { x.ChecklistId, x.ProjectDocumentId });
         b.HasOne<MeasurementChecklist>().WithMany().HasForeignKey(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
         b.HasOne<ProjectDocument>().WithMany().HasForeignKey(x => new { x.ProjectId, x.ProjectDocumentId }).HasPrincipalKey(x => new { x.ProjectId, x.Id }).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public sealed class MeasurementSketchVersionConfiguration : IEntityTypeConfiguration<MeasurementSketchVersion>
+{
+    public void Configure(EntityTypeBuilder<MeasurementSketchVersion> b)
+    {
+        b.ToTable("MeasurementSketchVersions"); b.HasKey(x => x.Id); b.Property(x => x.Id).ValueGeneratedNever();
+        b.Ignore(x => x.StorageKey); b.Property(x => x.DrawingJson).HasColumnType("jsonb"); b.Property(x => x.WebpSha256).HasMaxLength(64);
+        b.HasAlternateKey(x => new { x.Id, x.StructureId });
+        b.HasIndex(x => new { x.StructureId, x.Revision }).IsUnique();
+        b.HasOne<MeasurementStructure>().WithMany().HasForeignKey(x => new { x.StructureId, x.ChecklistId }).HasPrincipalKey(x => new { x.Id, x.ChecklistId }).OnDelete(DeleteBehavior.Restrict);
+        b.HasOne<MeasurementChecklist>().WithMany().HasForeignKey(x => new { x.ChecklistId, x.ProjectId }).HasPrincipalKey(x => new { x.Id, x.ProjectId }).OnDelete(DeleteBehavior.Restrict);
     }
 }
