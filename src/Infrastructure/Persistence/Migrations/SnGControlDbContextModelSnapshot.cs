@@ -1241,6 +1241,257 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                     b.ToTable("MeasurementSubmissionDocuments", (string)null);
                 });
 
+            modelBuilder.Entity("SnG.Control.Domain.Entities.OpeningRecordDocument", b =>
+                {
+                    b.Property<Guid>("DocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AffectedIdsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("RoundId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("DocumentId");
+
+                    b.HasIndex("ProjectId", "DocumentId")
+                        .IsUnique();
+
+                    b.HasIndex("RoundId", "ProjectId");
+
+                    b.HasIndex("ProjectId", "Kind", "Version")
+                        .IsUnique();
+
+                    b.ToTable("OpeningRecordDocuments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OpeningDocument_State", "\"Version\" > 0 AND \"Kind\" IN (1,2)");
+                        });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.OpeningRecordEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("ActorName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ActorSubject")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTime>("At")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DetailsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Fingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("RequestKey")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid>("RoundId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RoundId", "RequestKey")
+                        .IsUnique();
+
+                    b.HasIndex("RoundId", "Revision")
+                        .IsUnique();
+
+                    b.ToTable("OpeningRecordEvents", (string)null);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.OpeningRecordRound", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AffectedDeclared")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ChecklistId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("FilingTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("FinalSnapshotJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("GeneralObservations")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("PresentationTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("PresentedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("PresentedBySubject")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("PresentedDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ProjectId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RespondedBySubject")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("ReviewCompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ReviewCompletedBySubject")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("ReviewTaskId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RevisedDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.Property<Guid?>("SignedDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("SubmissionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FilingTaskId")
+                        .IsUnique();
+
+                    b.HasIndex("PresentationTaskId")
+                        .IsUnique();
+
+                    b.HasIndex("ReviewTaskId")
+                        .IsUnique();
+
+                    b.HasIndex("ChecklistId", "ProjectId");
+
+                    b.HasIndex("ProjectId", "Number")
+                        .IsUnique();
+
+                    b.HasIndex("ProjectId", "PresentedDocumentId");
+
+                    b.HasIndex("ProjectId", "RevisedDocumentId");
+
+                    b.HasIndex("ProjectId", "SignedDocumentId");
+
+                    b.HasIndex(new[] { "ProjectId" }, "UX_OpeningRounds_Accepted")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 5");
+
+                    b.HasIndex(new[] { "ProjectId" }, "UX_OpeningRounds_Active")
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN (1,2,3)");
+
+                    b.ToTable("OpeningRecordRounds", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OpeningRound_Accepted", "\"Status\" <> 5 OR (\"SignedDocumentId\" IS NOT NULL AND \"FilingTaskId\" IS NOT NULL AND \"FinalSnapshotJson\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_OpeningRound_Presentation", "(\"Status\" = 1 AND \"PresentedAt\" IS NULL AND \"PresentedBySubject\" IS NULL) OR (\"Status\" <> 1 AND \"PresentedAt\" IS NOT NULL AND \"PresentedAt\" >= \"ReceivedAt\" AND \"PresentedBySubject\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_OpeningRound_Response", "(\"Status\" IN (1,2) AND \"RespondedAt\" IS NULL) OR (\"Status\" IN (3,4,5) AND \"RespondedAt\" IS NOT NULL AND \"RespondedAt\" >= \"PresentedAt\" AND \"RespondedBySubject\" IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_OpeningRound_Reviewed", "\"Status\" NOT IN (3,4) OR (\"ReviewTaskId\" IS NOT NULL AND (\"Status\" <> 4 OR (\"RevisedDocumentId\" IS NOT NULL AND \"ReviewCompletedAt\" IS NOT NULL AND \"FinalSnapshotJson\" IS NOT NULL)))");
+
+                            t.HasCheckConstraint("CK_OpeningRound_State", "\"Number\" > 0 AND \"Revision\" >= 0 AND \"Status\" IN (1,2,3,4,5)");
+                        });
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.OpeningRecordStructure", b =>
+                {
+                    b.Property<Guid>("RoundId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("StructureId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Affected")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("Approval")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid?>("ApprovalDocumentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("CarriedApproval")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ChangeDescription")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<bool>("ReviewCompleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
+                    b.HasKey("RoundId", "StructureId");
+
+                    b.HasIndex("ApprovalDocumentId");
+
+                    b.HasIndex("StructureId");
+
+                    b.ToTable("OpeningRecordStructures", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_OpeningStructure_State", "\"Revision\" >= 0 AND \"Approval\" IN (1,2,3) AND (\"Approval\" <> 2 OR \"ApprovalDocumentId\" IS NOT NULL) AND (\"Approval\" <> 3 OR \"ChangeDescription\" IS NOT NULL) AND (NOT \"ReviewCompleted\" OR \"Affected\")");
+                        });
+                });
+
             modelBuilder.Entity("SnG.Control.Domain.Entities.Project", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1541,6 +1792,10 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasFilter(" \"Type\" = 7 ");
 
+                    b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_FileOpeningRecord")
+                        .IsUnique()
+                        .HasFilter("\"Type\" = 10");
+
                     b.HasIndex(new[] { "ProjectId" }, "UX_ProjectTasks_Measurements")
                         .IsUnique()
                         .HasFilter("\"Type\" = 5");
@@ -1566,6 +1821,8 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("CK_ProjectTasks_Engineering", " \"Type\" <> 7 OR (\"QuotationRound\" IS NULL AND \"Area\" = 5 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL) ");
 
                             t.HasCheckConstraint("CK_ProjectTasks_Installation", "\"Type\" <> 5 OR (\"QuotationRound\" IS NULL AND \"Area\" = 4 AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL)");
+
+                            t.HasCheckConstraint("CK_ProjectTasks_OpeningRounds", "\"Type\" NOT IN (8,9,10) OR (\"QuotationRound\" IS NULL AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL AND ((\"Type\" = 8 AND \"Area\" = 1) OR (\"Type\" IN (9,10) AND \"Area\" = 5)))");
 
                             t.HasCheckConstraint("CK_ProjectTasks_QuotationRound", "\"Type\" NOT IN (1,2,3) OR (\"QuotationRound\" IS NOT NULL AND \"QuotationRound\" > 0)");
                         });
@@ -1971,6 +2228,97 @@ namespace SnG.Control.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("ProjectId", "ProjectDocumentId")
                         .HasPrincipalKey("ProjectId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.OpeningRecordDocument", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocument", null)
+                        .WithOne()
+                        .HasForeignKey("SnG.Control.Domain.Entities.OpeningRecordDocument", "ProjectId", "DocumentId")
+                        .HasPrincipalKey("SnG.Control.Domain.Entities.ProjectDocument", "ProjectId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.OpeningRecordRound", null)
+                        .WithMany()
+                        .HasForeignKey("RoundId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.OpeningRecordEvent", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.OpeningRecordRound", null)
+                        .WithMany()
+                        .HasForeignKey("RoundId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.OpeningRecordRound", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithOne()
+                        .HasForeignKey("SnG.Control.Domain.Entities.OpeningRecordRound", "FilingTaskId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithOne()
+                        .HasForeignKey("SnG.Control.Domain.Entities.OpeningRecordRound", "PresentationTaskId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectTask", null)
+                        .WithOne()
+                        .HasForeignKey("SnG.Control.Domain.Entities.OpeningRecordRound", "ReviewTaskId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SnG.Control.Domain.Entities.EngineeringChecklist", null)
+                        .WithMany()
+                        .HasForeignKey("ChecklistId", "ProjectId")
+                        .HasPrincipalKey("Id", "ProjectId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId", "PresentedDocumentId")
+                        .HasPrincipalKey("ProjectId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId", "RevisedDocumentId")
+                        .HasPrincipalKey("ProjectId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId", "SignedDocumentId")
+                        .HasPrincipalKey("ProjectId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("SnG.Control.Domain.Entities.OpeningRecordStructure", b =>
+                {
+                    b.HasOne("SnG.Control.Domain.Entities.ProjectDocument", null)
+                        .WithMany()
+                        .HasForeignKey("ApprovalDocumentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("SnG.Control.Domain.Entities.OpeningRecordRound", null)
+                        .WithMany()
+                        .HasForeignKey("RoundId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("SnG.Control.Domain.Entities.MeasurementStructure", null)
+                        .WithMany()
+                        .HasForeignKey("StructureId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });

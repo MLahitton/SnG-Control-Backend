@@ -8,5 +8,8 @@ public enum ProjectTaskType
     RegisterInitialDeposit = 4,
     TakeMeasurements = 5,
     CorrectDepositReceipts = 6,
-    PrepareOpeningRecord = 7
+    PrepareOpeningRecord = 7,
+    PresentOpeningRecord = 8,
+    ReviewOpeningRecord = 9,
+    FileOpeningRecord = 10
 }

@@ -22,6 +22,8 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
         builder.Property(task => task.WasOverdue);
         builder.ToTable(t => t.HasCheckConstraint("CK_ProjectTasks_Engineering", """ "Type" <> 7 OR ("QuotationRound" IS NULL AND "Area" = 5 AND "DeadlineAt" IS NULL AND "WasOverdue" IS NULL) """));
         builder.HasIndex(task => task.ProjectId, "UX_ProjectTasks_Engineering").IsUnique().HasFilter(""" "Type" = 7 """);
+        builder.ToTable(t => t.HasCheckConstraint("CK_ProjectTasks_OpeningRounds", "\"Type\" NOT IN (8,9,10) OR (\"QuotationRound\" IS NULL AND \"DeadlineAt\" IS NULL AND \"WasOverdue\" IS NULL AND ((\"Type\" = 8 AND \"Area\" = 1) OR (\"Type\" IN (9,10) AND \"Area\" = 5)))"));
+        builder.HasIndex(task => task.ProjectId, "UX_ProjectTasks_FileOpeningRecord").IsUnique().HasFilter("\"Type\" = 10");
         builder.HasKey(task => task.Id);
         builder.Property(task => task.Id).ValueGeneratedNever();
         builder.Property(task => task.ProjectId).IsRequired();

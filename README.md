@@ -467,6 +467,21 @@ La radicación de Instalación crea y comienza «Elaborar Acta de Vanos», asign
 
 Cada unidad vigente del snapshot radicado conserva su ID, orden, medidas en mm, ficha, imágenes y croquis de solo lectura. Se incluyen adiciones y reintegradas, excluyendo las finalmente retiradas. Solo Ingeniería activa y asignada marca/desmarca cada estructura; el servidor guarda responsable, fecha UTC e historial, calcula el avance y detecta conflictos sin sobrescribir otros checks.
 
-El Acta se elabora externamente y se carga como PDF (máximo 25 MiB). Cada reemplazo conserva los bytes y metadatos de versiones anteriores, con descarga autenticada y verificación SHA-256. El cierre requiere todos los checks y un Acta vigente íntegra, además de confirmación humana: congela el snapshot final y documento, completa la tarea y concilia sus notificaciones existentes. No crea tareas ni notificaciones para otra área. Ingeniería no tiene SLA; conserva inicio, responsable y finalización para auditoría.
+El Acta se elabora externamente y se carga como PDF (máximo 25 MiB). Cada reemplazo conserva los bytes y metadatos de versiones anteriores, con descarga autenticada y verificación SHA-256. El cierre requiere todos los checks y un Acta vigente íntegra, además de confirmación humana: congela el snapshot final y documento, completa la tarea y concilia sus notificaciones existentes. El cierre inicial crea la tarea de presentación del Acta para el asesor responsable y su notificación. Ingeniería no tiene SLA; conserva inicio, responsable y finalización para auditoría.
 
 Los expedientes ya radicados no reciben tareas por la migración. Su incorporación exige el procedimiento explícito descrito en README_TECHNICAL.md, sin modificar la radicación histórica.
+
+
+## Presentación y respuesta del Acta de Vanos
+
+Al completar Ingeniería se crea «Presentar Acta de Vanos al cliente» para el asesor responsable del proyecto, validando su membresía configurada. El cierre, la ronda, la tarea y la notificación son atómicos e idempotentes. Una identidad comercial ausente o inválida bloquea el cierre sin modificar el expediente.
+
+Cada ronda conserva el PDF exacto y todas las estructuras vigentes del snapshot, en su orden original. El asesor confirma la presentación explícitamente; solo entonces comienza el tiempo de respuesta, con fechas UTC del servidor y sin SLA, vencimientos ni alertas. Las confirmaciones individuales se guardan por estructura. La respuesta formal detiene el tiempo de esa ronda.
+
+Solicitar cambios exige seleccionar estructuras pendientes y describir cada cambio; admite observaciones generales. La confirmación informa que las no seleccionadas quedan Confirmadas respecto al PDF presentado. Cierra esa tarea comercial y crea «Revisar cambios del Acta de Vanos» para Ingeniería. Las aprobaciones y solicitudes anteriores permanecen auditadas.
+
+Ingeniería trabaja checks independientes de su checklist inicial, sobre las estructuras observadas y las adicionales que declare afectadas. Debe declarar explícitamente todas las afectadas, completar sus checks y cargar un nuevo PDF asociado a esa declaración. No se analizan ni infieren cambios internos del PDF. Al cerrar se congela la revisión y se crea otra ronda comercial: las afectadas vuelven a Esperando aprobación; las confirmaciones de estructuras sin cambios se conservan con su versión de origen.
+
+Aceptar definitivamente exige todas las estructuras Confirmadas, un PDF firmado persistido en la ronda vigente y la declaración explícita del asesor de que está firmado y corresponde al Acta presentada. El sistema conserva esa declaración; no verifica criptográficamente firmas ni deduce correspondencia por nombre. La aceptación congela la ronda, completa Comercial y crea una única «Radicación de Vanos» asignada a Ingeniería, pendiente y sin SLA. Conserva las referencias a radicación original, documentos presentado/firmado y estructuras aprobadas. Su ejecución no está implementada y la aceptación no autoriza fabricar. «Detener proyecto» permanece deshabilitado.
+
+Los expedientes anteriores se habilitan solo mediante el procedimiento controlado del manual técnico; no reciben tareas por backfill automático.

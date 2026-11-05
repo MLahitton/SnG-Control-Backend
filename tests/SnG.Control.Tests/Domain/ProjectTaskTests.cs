@@ -79,7 +79,7 @@ public class ProjectTaskTests
     [Theory]
     [InlineData(-1)]
     [InlineData(0)]
-    [InlineData(8)]
+    [InlineData(11)]
     public void Constructor_WithUndefinedType_Throws(int value)
     {
         Assert.Throws<ArgumentOutOfRangeException>("type",

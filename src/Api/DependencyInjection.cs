@@ -80,6 +80,8 @@ public static class DependencyInjection
         services.AddSingleton<SnG.Control.Application.Identity.IEngineeringAssigneeIdentity, ConfiguredEngineeringAssigneeIdentity>();
         services.AddScoped<SnG.Control.Application.Features.Engineering.EngineeringService>();
         services.AddScoped<SnG.Control.Application.Features.Engineering.IEngineeringStore, EfEngineeringStore>();
+        services.AddScoped<SnG.Control.Application.Features.Engineering.IOpeningRecordStore, EfOpeningRecordStore>();
+        services.AddScoped<SnG.Control.Application.Features.Engineering.OpeningRecordService>();
         services.AddOptions<InstallationAssigneeOptions>().BindConfiguration("Authentication");
         services.AddSingleton<SnG.Control.Application.Identity.IInstallationAssigneeIdentity, ConfiguredInstallationAssigneeIdentity>();
         services.AddScoped<SnG.Control.Application.Features.Accounting.IDepositVerificationStore, EfDepositVerificationStore>();

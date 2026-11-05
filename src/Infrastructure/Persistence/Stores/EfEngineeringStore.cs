@@ -18,7 +18,7 @@ using SnG.Control.Domain.Enums;
 namespace SnG.Control.Infrastructure.Persistence.Stores;
 
 public sealed class EfEngineeringStore(SnGControlDbContext db, TaskTiming timing, EfProjectNotificationWriter notifications,
-    IStreamingFileStorage files, IEngineeringAssigneeIdentity engineering) : IEngineeringStore
+    IStreamingFileStorage files, IEngineeringAssigneeIdentity engineering, IRoleResolver? roles = null) : IEngineeringStore
 {
     public const int MaxPdfBytes = 25 * 1024 * 1024;
     private static string Hash(byte[] value) => Convert.ToHexString(SHA256.HashData(value));
@@ -118,11 +118,18 @@ public sealed class EfEngineeringStore(SnGControlDbContext db, TaskTiming timing
         task.Complete(now);
         var e = new EngineeringEvent(c, command.RequestKey, fingerprint, "Complete", null, now, actor.Subject, actor.Email, actor.Name);
         EfProjectNotificationWriter.NotificationWriteSet? staged = null;
-        try { db.Add(e); staged = await notifications.StageAsync([task], now, token); await db.SaveChangesAsync(token); await tx.CommitAsync(token); }
+        var added = new List<object> { e };
+        try
+        {
+            var next = await EfOpeningRecordStore.CreateInitialAsync(db, c, roles, now, token);
+            added.AddRange(next.Entities); db.AddRange(added);
+            staged = await notifications.StageAsync([task, next.Task], now, token);
+            await db.SaveChangesAsync(token); await tx.CommitAsync(token);
+        }
         catch { staged?.RestoreTracking(); throw; }
-        finally { db.Entry(c).State = EntityState.Detached; db.Entry(task).State = EntityState.Detached; db.Entry(e).State = EntityState.Detached; }
+        finally { foreach (var entity in added.Concat(new object[] { c, task })) db.Entry(entity).State = EntityState.Detached; }
     }
-    private static async Task<byte[]> ReadBounded(Stream input, CancellationToken token)
+    internal static async Task<byte[]> ReadBounded(Stream input, CancellationToken token)
     {
         using var output = new MemoryStream(); var buffer = new byte[81920]; int read;
         while ((read = await input.ReadAsync(buffer, token)) > 0) { if (output.Length + read > MaxPdfBytes) throw new DocumentException(413, "EngineeringActaTooLarge"); await output.WriteAsync(buffer.AsMemory(0, read), token); }

@@ -16,7 +16,7 @@ internal static class EngineeringPostgresChecks
 {
     public static async Task VerifyAsync(Func<SnGControlDbContext> open, Guid id, IStreamingFileStorage storage, TaskTiming timing, MeasurementState source)
     {
-        EfEngineeringStore Store(SnGControlDbContext db) => new(db, timing, new(db, new ProjectNotificationPlanner(timing)), storage, new IdentityDouble("engineer"));
+        EfEngineeringStore Store(SnGControlDbContext db) => new(db, timing, new(db, new ProjectNotificationPlanner(timing)), storage, new IdentityDouble("engineer"), new OpeningRoles());
         var actor = new DecisionActor("engineer", "engineer@example.test", "Engineer");
         async Task<EngineeringState> Read() { await using var db = open(); return (await Store(db).ReadAsync(id, new("engineer", SystemRole.Engineering), default))!; }
         async Task Check(Guid sid, EngineeringCheck command) { await using var db = open(); await Store(db).CheckAsync(id, sid, command, actor, default); }
@@ -84,6 +84,10 @@ internal static class EngineeringPostgresChecks
         Assert.Equal("InProgress", (await Read()).TaskStatus);
         await storage.DeleteAsync(currentFile.StorageKey, default);
         await storage.SaveAsync(currentFile.StorageKey, pdf, default);
+        var unconfigured = new EfEngineeringStore(verify, timing, new(verify, new ProjectNotificationPlanner(timing)), storage, new IdentityDouble("engineer"));
+        await Error("OpeningAdvisorNotConfigured", () => unconfigured.CloseAsync(id, close, actor, default));
+        Assert.Equal("InProgress", (await Read()).TaskStatus);
+        Assert.False(await verify.OpeningRecordRounds.AnyAsync(r => r.ProjectId == id));
         await Store(verify).CloseAsync(id, close, actor, default); await Store(verify).CloseAsync(id, close, actor, default);
         state = await Read(); Assert.Equal("Completed", state.TaskStatus); Assert.False(state.CanModify); Assert.NotNull(state.CompletedAt);
         await Error("EngineeringLocked", () => Check(first.Structure.Id, new(Guid.NewGuid(), state.Structures[0].Revision, false)));
@@ -94,5 +98,6 @@ internal static class EngineeringPostgresChecks
         Assert.Equal(pdf, (await verify.MeasurementReports.AsNoTracking().SingleAsync(r => r.ProjectId == id)).Pdf);
         await Store(verify).InitializeHistoricalAsync(id, new(source.SubmissionId!.Value, "Explicit synthetic replay"), actor, default);
         Assert.Equal(1, await verify.EngineeringChecklists.CountAsync(c => c.ProjectId == id));
+        await OpeningRecordPostgresChecks.VerifyAsync(open, id, storage, timing.UtcNow, pdf);
     }
 }
