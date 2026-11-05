@@ -91,7 +91,7 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
             {
                 Assert.Equal(scenario.Bytes, await response.Content.ReadAsByteArrayAsync());
                 Assert.Equal(DownloadCommercialQuotationUseCase.ContentType, response.Content.Headers.ContentType!.MediaType);
-                Assert.Equal("Cotización \"final\".xlsx", response.Content.Headers.ContentDisposition!.FileNameStar);
+                Assert.Equal("Cotización _final_.xlsx", response.Content.Headers.ContentDisposition!.FileNameStar);
             }
         }
         Assert.Equal(before, JsonSerializer.Serialize(scenario.State)); Assert.Equal(1, scenario.SaveCalls); Assert.Equal(1, scenario.DeleteCalls);

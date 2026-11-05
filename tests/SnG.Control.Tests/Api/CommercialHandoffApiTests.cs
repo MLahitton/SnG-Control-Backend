@@ -70,7 +70,8 @@ public class CommercialHandoffApiTests : IClassFixture<ApiFixture>
             using var download = await fixture.Http.GetAsync(root + "/budget-quotation/commercial-file");
             Assert.Equal(HttpStatusCode.OK, download.StatusCode);
             Assert.Equal(DownloadCommercialQuotationUseCase.ContentType, download.Content.Headers.ContentType!.MediaType);
-            Assert.Equal(state.Version!.OriginalFileName, download.Content.Headers.ContentDisposition!.FileNameStar);
+            Assert.Equal("Cotización _operativa_.xlsx", download.Content.Headers.ContentDisposition!.FileNameStar);
+            Assert.Equal("Cotización \"operativa\".xlsx", state.Version!.OriginalFileName);
             var bytes = await download.Content.ReadAsByteArrayAsync();
             Assert.Equal(fixture.Handoff.Files[state.Version.ConfirmedFileStorageKey!], bytes);
             if (previous is not null) Assert.Equal(previous, bytes); previous = bytes;

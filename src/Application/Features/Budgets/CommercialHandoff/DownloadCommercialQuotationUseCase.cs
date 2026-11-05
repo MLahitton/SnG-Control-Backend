@@ -14,6 +14,6 @@ public sealed class DownloadCommercialQuotationUseCase(IBudgetQuotationCommercia
         if (!file.ProjectExists) return new(CommercialHandoffStatus.ProjectNotFound);
         if (file.StorageKey is null || !file.ReviewExists) return new(CommercialHandoffStatus.InvalidState);
         // A missing referenced file is an unexpected server failure; do not regenerate it or expose its path.
-        return new(CommercialHandoffStatus.Sent, await storage.ReadAsync(file.StorageKey, cancellationToken), file.FileName);
+        return new(CommercialHandoffStatus.Sent, await storage.ReadAsync(file.StorageKey, cancellationToken), QuotationDownloadName.Sanitize(file.FileName!));
     }
 }

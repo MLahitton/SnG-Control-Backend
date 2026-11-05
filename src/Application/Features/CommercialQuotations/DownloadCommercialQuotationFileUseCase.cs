@@ -15,6 +15,6 @@ public sealed class DownloadCommercialQuotationFileUseCase(ICommercialQuotationS
         if (active.Role != SystemRole.CommercialHead
             && !(active.Role == SystemRole.CommercialAdvisor && string.Equals(user.Subject, state.Project.CreatedByGoogleSubject, StringComparison.Ordinal))) return new(CommercialQuotationStatus.Forbidden);
         if (state.Quotation is null) return new(CommercialQuotationStatus.DocumentUnavailable);
-        return new(CommercialQuotationStatus.Success, await storage.ReadAsync(state.Quotation.FileStorageKey, token), state.Quotation.OriginalFileName);
+        return new(CommercialQuotationStatus.Success, await storage.ReadAsync(state.Quotation.FileStorageKey, token), QuotationDownloadName.Sanitize(state.Quotation.OriginalFileName));
     }
 }

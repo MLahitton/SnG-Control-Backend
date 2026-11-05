@@ -335,6 +335,8 @@ Respuesta sintética ilustrativa:
 
 Los ejemplos HTTP de negocio requieren un ID token válido; para SG, preview/confirm de la cotización inicial y send-to-commercial debe pertenecer a Presupuestos; para commercial-file debe pertenecer al Jefe Comercial configurado. No registrar ni compartir tokens en logs o reportes. La validación con Google real requiere un ID token obtenido en el navegador; los tests locales usan exclusivamente identidades sintéticas. La descarga comercial final acepta también al creador original por Subject, aunque su email actual sea diferente.
 
+Las descargas XLSX conservan el nombre persistido de la versión pertinente, saneado mediante QuotationDownloadName solo al responder (componentes de ruta eliminados, caracteres incompatibles sustituidos, nombres reservados protegidos y extensión conservada). El archivo operativo de Presupuestos es el derivado ya guardado con sus correcciones técnicas; el archivo final es el subido y confirmado por Comercial. No se regeneran bytes, no se modifica metadata histórica y se conservan los filtros de proyecto/versión y autorización.
+
 ### Identidad y autorización del Jefe Comercial
 
 `Authentication:CommercialHeadSubject` es obligatorio al arrancar. `CommercialHeadOptions`, separado de GoogleAuthenticationOptions, se vincula a la sección Authentication y usa ValidateOnStart: null, vacío y whitespace producen `Configure Authentication:CommercialHeadSubject.`, sin imprimir el valor. No requiere email, nombre ni Client Secret.
