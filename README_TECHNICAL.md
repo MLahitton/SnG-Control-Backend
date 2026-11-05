@@ -1694,6 +1694,17 @@ Ficha ampliada y expediente de Instalación:
 - El render usa SkiaSharp 3.119.2 (MIT, https://github.com/mono/SkiaSharp) y Noto Sans embebida (OFL,
   licencia incluida). Evita navegador, capturas de tarjetas y servicios externos. Los assets nativos
   Windows/macOS llegan con SkiaSharp; un despliegue Linux requiere el paquete nativo Linux compatible.
+- Composición A3 horizontal, hasta tres filas con croquis / imagen cotizada / ficha técnica.
+  Se planifican líneas y páginas antes del render: fuente fija, ajuste de texto y continuaciones
+  con identidad e imágenes repetidas; pie con página/total. El orden es el del snapshot.
+  No hay portada independiente ni regeneración de PDFs históricos.
+- Las imágenes se resuelven por CommercialQuotationItemId de la cotización del checklist,
+  validando proyecto, catálogo, versión presupuestal, Section/SourceRow y clave histórica exacta.
+  Una consulta obtiene los vínculos y otra las extracciones; cada ítem se lee una vez aunque tenga
+  varias unidades. Los bytes se incorporan al PDF, sin URLs ni nueva extracción XLSX.
+  Archivo histórico ausente: indicación explícita. Vínculo incorrecto, bytes corruptos o límites
+  excedidos: falla la preparación sin cerrar la tarea. Límite por imagen: 16 MiB / 24 millones
+  de píxeles; imágenes comerciales acumuladas: 128 MiB. Decodificación en memoria, sin assets públicos.
 - Antes de abrir la transacción de escritura, se construye y renderiza un snapshot propuesto usando
   versiones inmutables de WEBP verificadas por SHA256. Bajo los locks se revalida revisión, documentos
   y proyección exacta. Solo entonces se confirma ese mismo snapshot, MeasurementReport (PDF bytea,

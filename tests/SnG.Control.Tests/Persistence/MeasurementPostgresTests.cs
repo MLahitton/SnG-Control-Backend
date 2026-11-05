@@ -45,7 +45,7 @@ public sealed class MeasurementPostgresTests
         {
             var values = new CatalogItemValues((index + 1).ToString(), "Room", "Window", null, null, null, null, 1.2m, 2, 2.4m, quantity);
             var source = new CommercialCatalogItem(catalog.Id, CommercialItemSection.Main, index + 1, values);
-            db.Add(new CommercialCatalogItemExtraction(source.Id, values, CatalogItemImageStatus.Stored, $"synthetic/{source.Id}.png", "image/png"));
+            db.Add(new CommercialCatalogItemExtraction(source.Id, values, CatalogItemImageStatus.Stored, $"projects/{project.Id:D}/budget-quotations/{version.Id:D}/images/{source.Id:D}.png", "image/png"));
             db.AddRange(source, new CommercialQuotationItem(quote.Id, source.Id, CommercialItemSection.Main, index + 1, values, 10, 100));
         }
         await db.SaveChangesAsync(); db.ChangeTracker.Clear();
@@ -189,6 +189,24 @@ public sealed class MeasurementPostgresTests
         Assert.Equal(2, state.Documents.Count); var ids = upload.Documents.Select(d => d.Id).ToArray();
         await Error("InvalidReplacement", () => Documents(db, "advisor", SystemRole.CommercialAdvisor).UploadAsync(project.Id, Replacing(ids[0]), default));
         var submit = Command("Submit") with { DocumentIds = ids };
+        var imageExtraction = await db.CommercialCatalogItemExtractions.AsNoTracking().SingleAsync(e => e.CatalogItemId == first.ImageCatalogItemId);
+        using var imageBitmap = new SkiaSharp.SKBitmap(213, 417);
+        using (var canvas = new SkiaSharp.SKCanvas(imageBitmap)) canvas.Clear(SkiaSharp.SKColors.DarkBlue);
+        using var image = SkiaSharp.SKImage.FromBitmap(imageBitmap);
+        using var encoded = image.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        var commercialBytes = encoded.ToArray();
+        await storage.SaveAsync(imageExtraction.ImageStorageKey!, commercialBytes, default);
+        // A storage key from another project is rejected even if the extraction relation is valid.
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"CommercialCatalogItemExtractions\" SET \"ImageStorageKey\" = {"projects/" + Guid.NewGuid() + "/foreign.png"} WHERE \"CatalogItemId\" = {imageExtraction.CatalogItemId}");
+        try { await Error("MeasurementReportUnavailable", () => Store(db).ExecuteAsync(project.Id, submit, actor, default)); }
+        finally { await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"CommercialCatalogItemExtractions\" SET \"ImageStorageKey\" = {imageExtraction.ImageStorageKey} WHERE \"CatalogItemId\" = {imageExtraction.CatalogItemId}"); }
+        await Refresh(); Assert.Null(state.SubmissionId);
+        // Corrupt commercial bytes fail before closing the task.
+        var commercialPath = Path.Combine(files.Root, imageExtraction.ImageStorageKey!.Replace('/', Path.DirectorySeparatorChar));
+        await File.WriteAllBytesAsync(commercialPath, [1, 2, 3]);
+        try { await Error("MeasurementReportUnavailable", () => Store(db).ExecuteAsync(project.Id, submit, actor, default)); }
+        finally { await File.WriteAllBytesAsync(commercialPath, commercialBytes); }
+
         await Error("MeasurementDocumentsChanged", () => Store(db).ExecuteAsync(project.Id, submit with { DocumentIds = [ids[0]] }, actor, default));
         var sketchRecord = await db.MeasurementSketchVersions.AsNoTracking().SingleAsync(v => v.Id == finalVersion);
         var sketchPath = Path.Combine(files.Root, sketchRecord.StorageKey.Replace('/', Path.DirectorySeparatorChar));
@@ -203,7 +221,13 @@ public sealed class MeasurementPostgresTests
         await Refresh(); Assert.NotNull(state.SubmissionId); Assert.Equal("Completed", state.TaskStatus); Assert.False(state.CanModify);
         Assert.Single(state.History, h => h.Action == "Submit"); Assert.Equal(22, state.Snapshot!.Structures.Count);
         var report = await Store(db).ReadReportAsync(project.Id, state.SubmissionId!.Value, new("installer", SystemRole.Installation), default);
-        Assert.NotNull(report); Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(report.Bytes, 0, 4));
+        Assert.NotNull(report);
+        Assert.Contains("/Width 213", System.Text.Encoding.Latin1.GetString(report.Bytes));
+        Assert.Contains("/Height 417", System.Text.Encoding.Latin1.GetString(report.Bytes));
+        Assert.Equal(commercialBytes, await storage.ReadAsync(imageExtraction.ImageStorageKey!, default));
+        // The persisted PDF no longer depends on the commercial file.
+        await storage.DeleteAsync(imageExtraction.ImageStorageKey!, default);
+        Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(report.Bytes, 0, 4));
         Assert.Equal(report.Bytes, (await Store(db).ReadReportAsync(project.Id, state.SubmissionId.Value, new("manager", SystemRole.Management), default))!.Bytes);
         Assert.Null(await Store(db).ReadReportAsync(Guid.NewGuid(), state.SubmissionId.Value, new("manager", SystemRole.Management), default));
         Assert.Null(await Store(db).ReadReportAsync(project.Id, state.SubmissionId.Value, new("other", SystemRole.Installation), default));
@@ -306,6 +330,15 @@ public sealed class MeasurementPostgresTests
                 Assert.Equal(read.Structures, reloaded.Structures); Assert.Equal(read.Summary, reloaded.Summary); Assert.Empty(reloaded.History);
             }
             Assert.Equal(before, await StoredRows()); Assert.Equal(quotationBefore, await StoredQuotes());
+            // Valid FK, wrong historical catalog: must not render another quotation's image.
+            var wrongSource = new CommercialCatalogItem(newerCatalog.Id, originals[0].Item.Section, originals[0].Item.SourceRow,
+                new CatalogItemValues("V-X", "Room", "Window", null, null, null, null, 1, 1, 1, 1));
+            db.Add(wrongSource); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+            var chosen = originals[0].Item;
+            await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"CommercialQuotationItems\" SET \"CommercialCatalogItemId\" = {wrongSource.Id} WHERE \"Id\" = {chosen.Id}");
+            try { await Error("MeasurementReportUnavailable", () => Store(db).ExecuteAsync(project.Id, new(Guid.NewGuid(), 0, "Submit", DocumentIds: [document.Id]), actor, default)); }
+            finally { await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE \"CommercialQuotationItems\" SET \"CommercialCatalogItemId\" = {chosen.CommercialCatalogItemId} WHERE \"Id\" = {chosen.Id}"); }
+            Assert.False(await db.MeasurementReports.AnyAsync(r => r.ProjectId == project.Id));
             await Store(db).ExecuteAsync(project.Id, new(Guid.NewGuid(), 0, "Submit", DocumentIds: [document.Id]), actor, default);
             await using (var reopened = Db())
             {

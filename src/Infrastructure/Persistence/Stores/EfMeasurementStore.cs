@@ -268,9 +268,66 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
                 var bytes = await ReadSketchImageAsync(id, row.Id, version, scope, token) ?? throw new DocumentException(409, "MeasurementReportUnavailable");
                 sketches.Add(version, bytes);
             }
-        try { return new(snapshot, JsonSerializer.Serialize(snapshot), new InstallationPdfRenderer().Render(snapshot, sketches, token)); }
+        try
+        {
+            var images = await ReadQuotationImagesAsync(id, snapshot, token);
+            return new(snapshot, JsonSerializer.Serialize(snapshot), new InstallationPdfRenderer().Render(new(snapshot, sketches, images), token));
+        }
         catch (OperationCanceledException) { throw; }
         catch (Exception e) when (e is InvalidOperationException or ArgumentException) { throw new DocumentException(409, "MeasurementReportUnavailable"); }
+    }
+    // Resolve only the frozen quotation's items, never the latest project quotation or display number.
+    private async Task<IReadOnlyDictionary<Guid, byte[]>> ReadQuotationImagesAsync(Guid projectId, MeasurementSnapshot snapshot, CancellationToken token)
+    {
+        var ids = snapshot.Structures.Select(s => s.ItemId).OfType<Guid>().Distinct().ToArray();
+        var links = await (from item in db.CommercialQuotationItems.AsNoTracking()
+                           join quote in db.CommercialQuotations.AsNoTracking() on item.CommercialQuotationId equals quote.Id
+                           join source in db.CommercialCatalogItems.AsNoTracking() on item.CommercialCatalogItemId equals source.Id
+                           join catalog in db.CommercialCatalogs.AsNoTracking() on source.CommercialCatalogId equals catalog.Id
+                           join budget in db.BudgetQuotationVersions.AsNoTracking() on catalog.BudgetQuotationVersionId equals budget.Id
+                           where ids.Contains(item.Id) && quote.Id == snapshot.CommercialQuotationId && quote.ProjectId == projectId
+                               && quote.CommercialCatalogId == catalog.Id && quote.BudgetQuotationVersionId == budget.Id && budget.ProjectId == projectId
+                               && item.Section == source.Section && item.SourceRow == source.SourceRow
+                           select new { item.Id, sourceId = source.Id, budgetId = budget.Id }).ToArrayAsync(token);
+        if (links.Length != ids.Length) throw new DocumentException(409, "MeasurementReportUnavailable");
+        var sourceIds = links.Select(l => l.sourceId).ToArray();
+        var extractions = await db.CommercialCatalogItemExtractions.AsNoTracking()
+            .Where(e => sourceIds.Contains(e.CatalogItemId) && e.ImageStatus == CatalogItemImageStatus.Stored && e.ImageStorageKey != null)
+            .ToDictionaryAsync(e => e.CatalogItemId, token);
+        var result = new Dictionary<Guid, byte[]>();
+        long total = 0;
+        foreach (var link in links)
+        {
+            if (!extractions.TryGetValue(link.sourceId, out var extraction)) continue;
+            var stem = $"projects/{projectId:D}/budget-quotations/{link.budgetId:D}/images/{link.sourceId:D}";
+            if (!new[] { ".png", ".jpg", ".gif", ".bmp", ".tiff", ".bin" }.Any(ext => extraction.ImageStorageKey == stem + ext))
+                throw new DocumentException(409, "MeasurementReportUnavailable");
+            try
+            {
+                byte[] bytes;
+                if (files is IStreamingFileStorage streaming)
+                {
+                    await using var input = await streaming.OpenReadAsync(extraction.ImageStorageKey!, token);
+                    using var output = new MemoryStream();
+                    var buffer = new byte[81920];
+                    int read;
+                    while ((read = await input.ReadAsync(buffer, token)) != 0)
+                    {
+                        if (output.Length + read > InstallationPdfRenderer.MaxImageBytes) throw new InvalidOperationException("Report image exceeds byte limit.");
+                        output.Write(buffer, 0, read);
+                    }
+                    bytes = output.ToArray();
+                }
+                else bytes = await files.ReadAsync(extraction.ImageStorageKey!, token);
+                total += bytes.Length;
+                if (bytes.Length > InstallationPdfRenderer.MaxImageBytes || total > 128L * 1024 * 1024)
+                    throw new InvalidOperationException("Report images exceed byte limit.");
+                result.Add(link.Id, bytes);
+            }
+            catch (FileNotFoundException) { /* Explicit unavailable-image caption in the report. */ }
+            catch (DirectoryNotFoundException) { /* Historical file absent; never substitute another item. */ }
+        }
+        return result;
     }
     public async Task<MeasurementReportFile?> ReadReportAsync(Guid id, Guid submissionId, ProjectReadScope scope, CancellationToken token)
     {
