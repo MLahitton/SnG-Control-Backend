@@ -1187,6 +1187,18 @@ UnitPrice viene de **N{SourceRow}** y TotalPrice de **O{SourceRow}**, también p
 
 Los importes usan decimal y CultureInfo.InvariantCulture, leyendo representación OOXML numérica y cached values de fórmulas. Se acepta cero, se rechazan negativos, texto económico y fórmulas sin caché numérica. No se usa double, texto formateado, Excel ni LibreOffice. Money.Normalize aplica escala 2 con MidpointRounding.AwayFromZero en el parser y el dominio. UnitPrice, TotalPrice y ProjectTotal se mapean a **PostgreSQL numeric(20,2)**. No se calcula precio por cantidad, sumatorias, IVA ni descuentos.
 
+La validación financiera es de lectura, no un motor Excel. Si existen fórmulas monetarias, se
+rechazan con HTTP 400 / RecalculationRequired las marcas explícitas forceFullCalc, fullCalcOnLoad,
+calcCompleted=false, calcMode=manual, sheetCalcPr.fullCalcOnLoad o ca en la celda económica.
+El confirmed.xlsx generado por Presupuestos conserva fórmulas y cachés, pero marca recálculo:
+debe revisarse, recalcularse y guardarse en Excel antes de su confirmación comercial.
+InconsistentFormulaCache rechaza diferencias numéricas exactas en referencias locales directas
+y IFERROR(referencia,""), antes de Money.Normalize. No evalúa multiplicaciones, sumas, impuestos,
+fórmulas compartidas/de matriz ni dependencias externas. La ausencia de esas señales no certifica
+vigencia de cachés complejas; calcId por sí solo tampoco prueba obsolescencia. Comparar siempre
+el preview con el archivo revisado y guardado. No se cambian snapshots, importes ni XLSX históricos.
+Prueba externa opcional: SNG_FINANCIAL_SOURCE_XLSX valida valores guardados y SHA256 en solo lectura.
+
 **Matching y diferencias:** CommercialItemKey es Section+SourceRow. Debe coincidir exactamente el conjunto del XLSX con el catálogo; duplicados, claves ausentes o adicionales producen 409 StructuralMismatch con missingItems/unexpectedItems. No hay matching aproximado, por ItemNumber, Location ni orden. Insertar/eliminar ítems o desplazar su estructura no está soportado. Cambiar ItemNumber sí está permitido si conserva la clave.
 
 CommercialTechnicalDifferences compara los once campos de CatalogItemValues: ItemNumber, Location, System, Glass, AluminumFinish, LockType, Observations, Width, Height, SquareMeters y Quantity. Usa igualdad ordinal para textos normalizados por las reglas técnicas existentes y numérica para medidas/cantidad. TechnicalDifference contiene field (enum serializado como string), previousValue y currentValue (representaciones textuales invariantes, también para números). No compara imágenes, Section/SourceRow ni PELÍCULA PROTECCIÓN. No persiste una tabla de diferencias: ambos snapshots permiten reconstruirlas.

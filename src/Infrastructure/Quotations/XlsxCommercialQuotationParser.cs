@@ -32,6 +32,11 @@ public sealed class XlsxCommercialQuotationParser(IBudgetQuotationParser technic
             var totals = rows.Where(r => r.Key < additional[0].Key
                 && string.Equals(reader.Text(r.Value.GetValueOrDefault("N")).Trim(), "VALOR TOTAL", StringComparison.OrdinalIgnoreCase)).ToArray();
             if (totals.Length != 1) return new(CommercialQuotationStatus.InvalidEconomics);
+            var monetaryCells = document.Items.SelectMany(i => new[] {
+                rows[i.SourceRow].GetValueOrDefault("N"), rows[i.SourceRow].GetValueOrDefault("O")
+            }).Append(totals[0].Value.GetValueOrDefault("O")).ToArray();
+            var financialStatus = QuotationFinancialCache.Validate(workbook, rows, monetaryCells, reader);
+            if (financialStatus != CommercialQuotationStatus.Success) return new(financialStatus);
             var total = Money.Normalize(reader.NonnegativeDecimal(totals[0].Value.GetValueOrDefault("O")));
             var items = document.Items.Select(i => new CommercialParsedItem(new(i.Section, i.SourceRow),
                 new CatalogItemValues(i.ItemNumber, i.Location, i.System, i.Glass, i.AluminumFinish, i.LockType, i.Observations, i.Width, i.Height, i.SquareMeters, i.Quantity),

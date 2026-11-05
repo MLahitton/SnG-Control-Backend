@@ -69,7 +69,8 @@ public sealed class CommercialQuotationController(PreviewCommercialQuotationUseC
         var code = status switch
         {
             CommercialQuotationStatus.ProjectNotFound => 404,
-            CommercialQuotationStatus.InvalidWorkbook or CommercialQuotationStatus.InvalidEconomics => 400,
+            CommercialQuotationStatus.InvalidWorkbook or CommercialQuotationStatus.InvalidEconomics
+                or CommercialQuotationStatus.RecalculationRequired or CommercialQuotationStatus.InconsistentFormulaCache => 400,
             _ => 409
         };
         var details = new Dictionary<string, object?> { ["code"] = status.ToString() };

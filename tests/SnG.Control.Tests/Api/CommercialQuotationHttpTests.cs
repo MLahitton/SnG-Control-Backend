@@ -25,6 +25,20 @@ public class CommercialQuotationHttpTests(ApiFixture fixture) : IClassFixture<Ap
         return form;
     }
     [Theory]
+    [InlineData("preview")] [InlineData("confirm")]
+    public async Task FinancialReviewIsActionableAndCannotPersist(string action)
+    {
+        var scenario = await Scenario();
+        var bytes = SnG.Control.Tests.Quotations.FinancialCacheTests.Flag(
+            CommercialQuotationScenario.Workbook().Formula("N15", "AL15", "100").Number("AL15", 100).Build(), "force");
+        using var form = Upload(bytes);
+        using var response = await fixture.Http.PostAsync($"/api/projects/{scenario.State!.Project.Id}/commercial-quotation/{action}", form);
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("RecalculationRequired", json.RootElement.GetProperty("code").GetString());
+        Assert.Equal(0, scenario.ConfirmCalls); Assert.Null(scenario.State.Quotation);
+    }
+    [Theory]
     [InlineData("preview", null, 401)]
     [InlineData("confirm", null, 401)]
     [InlineData("preview", "other", 403)]

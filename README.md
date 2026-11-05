@@ -185,6 +185,12 @@ La descarga, exclusiva del Jefe Comercial, usa exactamente el nombre original de
 
 ## Revisión y confirmación comercial
 
+La confirmación financiera comercial lee los importes guardados del XLSX, no recalcula Excel.
+Un libro con cálculo pendiente explícito o una discrepancia verificable de caché se rechaza antes
+de confirmar. Recalcular, revisar y guardar en Excel, volver a subir y comparar precios y total
+con el preview. La revisión técnica de Presupuestos no certifica esos importes; las cotizaciones
+comerciales ya confirmadas conservan sus valores y documentos históricos.
+
 El preview comercial es **solo de lectura**: no admite correcciones web, precios ni totales enviados por JSON. Requiere ReviewQuotation InProgress asignada al Jefe configurado, el catálogo y sus extracciones, confirmed.xlsx disponible y SG coincidente con el histórico. Confirmar vuelve a interpretar el XLSX recibido; no confía en un preview anterior.
 
 Comercial puede cambiar los once valores técnicos: número de ítem, ubicación, sistema, cristal, acabado, cerradura, observaciones, ancho, alto, m² y cantidad. El preview muestra valores anteriores y actuales y un resumen de diferencias. Esos cambios no bloquean la confirmación. Debe conservarse exactamente el conjunto **Section + SourceRow**: altas, bajas o desplazamientos de filas se rechazan como conflicto estructural. Esta limitación no define una regla permanente para futuras revisiones; no se intenta vincular ítems por número, nombre u orden.

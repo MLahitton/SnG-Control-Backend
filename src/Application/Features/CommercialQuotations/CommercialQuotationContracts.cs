@@ -10,7 +10,7 @@ namespace SnG.Control.Application.Features.CommercialQuotations;
 public enum CommercialQuotationStatus
 {
     Success, ProjectNotFound, Forbidden, InvalidWorkflowState, AlreadyConfirmed, ProjectCreatorUnavailable,
-    DocumentUnavailable, SgCodeMismatch, StructuralMismatch, InvalidWorkbook, InvalidEconomics
+    DocumentUnavailable, SgCodeMismatch, StructuralMismatch, InvalidWorkbook, InvalidEconomics, RecalculationRequired, InconsistentFormulaCache
 }
 public enum TechnicalField { ItemNumber, Location, System, Glass, AluminumFinish, LockType, Observations, Width, Height, SquareMeters, Quantity }
 public sealed record CommercialItemKey(CommercialItemSection Section, int SourceRow);
