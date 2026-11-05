@@ -52,7 +52,7 @@ public sealed class XlsxBudgetQuotationParser(IOptions<BudgetQuotationParserOpti
         }
     }
 
-    private void ValidatePackage(Stream stream, CancellationToken cancellationToken)
+    internal void ValidatePackage(Stream stream, CancellationToken cancellationToken)
     {
         using var archive = new ZipArchive(stream, ZipArchiveMode.Read, leaveOpen: true);
         if (archive.Entries.Count > options.Value.MaxZipEntries)
@@ -174,7 +174,7 @@ public sealed class XlsxBudgetQuotationParser(IOptions<BudgetQuotationParserOpti
                 reader.PositiveDecimal(At(sourceRow, "L")), (int)quantityValue, image, sourceRow));
         }
         if (items.Count == 0) throw new UnsupportedQuotationException();
-        return new BudgetQuotationParseResult.Success(document, items, warnings);
+        return new BudgetQuotationParseResult.Success(document, items, warnings, XlsxBudgetQuotationEconomicsReader.Read(workbook, rows, items.Select(i => new BudgetEconomicRow(i.Section, i.SourceRow)).ToArray(), reader));
     }
 
     private static List<(int Row, ImagePart Part)> ReadImages(WorksheetPart worksheet, CancellationToken cancellationToken)

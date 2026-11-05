@@ -35,6 +35,55 @@ public sealed class QuotationReadViewTests(QuotationReadFixture fixture) : IClas
         if (role is not null) client.DefaultRequestHeaders.Add(HttpActiveRoleContext.HeaderName, role);
         return client;
     }
+    [Fact]
+    public async Task OriginalEconomicsAreReadOnlyScopedAndFollowTheReturnedVersionAfterReload()
+    {
+        var store = fixture.ReadStore;
+        var originalVersion = store.VersionId;
+        var first = new SnG.Control.Tests.Fixtures.QuotationWorkbook().Item(19)
+            .Text("N30", "VALOR TOTAL").Number("O30", 987.654m).Text("A40", "ADICIONALES").Build();
+        var second = new SnG.Control.Tests.Fixtures.QuotationWorkbook().Item(19)
+            .Number("N20", 9.876m).Text("N30", "VALOR TOTAL").Number("O30", 222.22m).Text("A40", "ADICIONALES").Build();
+        store.HasOriginal = true;
+        fixture.Images.Originals[store.OriginalKey] = first;
+        using var client = Client("Budgets");
+        var path = $"/api/projects/{store.Project.Id}/budget-quotation/view";
+        try
+        {
+            for (var reload = 0; reload < 2; reload++)
+            {
+                using var response = await client.GetAsync(path);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                var economics = json.RootElement.GetProperty("economics");
+                Assert.Equal("Success", economics.GetProperty("status").GetString());
+                Assert.Equal("987.65", economics.GetProperty("projectTotal").GetString());
+                Assert.Equal("123456.00", economics.GetProperty("items")[0].GetProperty("unitPrice").GetString());
+            }
+            store.VersionId = Guid.NewGuid();
+            fixture.Images.Originals[store.OriginalKey] = second;
+            using var newer = JsonDocument.Parse(await client.GetStringAsync(path));
+            Assert.Equal(store.VersionId, newer.RootElement.GetProperty("quotationVersionId").GetGuid());
+            Assert.Equal("222.22", newer.RootElement.GetProperty("economics").GetProperty("projectTotal").GetString());
+            Assert.Equal("9.88", newer.RootElement.GetProperty("economics").GetProperty("items")[0].GetProperty("unitPrice").GetString());
+            Assert.Equal(first, fixture.Images.Originals[$"synthetic/{originalVersion}/original.xlsx"]);
+            Assert.Null(await store.GetBudgetOriginalKeyAsync(Guid.NewGuid(), store.VersionId, default));
+            Assert.Null(await store.GetBudgetOriginalKeyAsync(store.Project.Id, Guid.NewGuid(), default));
+            using var outsider = Client("CommercialAdvisor", "other");
+            var opens = fixture.Images.OpenCount;
+            Assert.Equal(HttpStatusCode.Forbidden, (await outsider.GetAsync(path)).StatusCode);
+            Assert.Equal(opens, fixture.Images.OpenCount);
+            fixture.Images.Missing = true;
+            using var missing = JsonDocument.Parse(await client.GetStringAsync(path));
+            Assert.Equal("OriginalUnavailable", missing.RootElement.GetProperty("economics").GetProperty("status").GetString());
+        }
+        finally
+        {
+            store.HasOriginal = false; store.VersionId = originalVersion;
+            fixture.Images.Originals.Clear(); fixture.Images.Missing = false;
+        }
+    }
+
     [Theory]
     [InlineData("CommercialAdvisor", "budget", 200)]
     [InlineData("Budgets", "budget", 200)]
@@ -136,6 +185,11 @@ public sealed class QuotationReadDouble : IQuotationReadStore
 {
     public Project Project { get; } = new(Guid.NewGuid(), "Synthetic", "City", ProductLine.Classic, "google-test-subject");
     public Guid ItemId { get; } = Guid.NewGuid();
+    public Guid VersionId { get; set; } = Guid.NewGuid();
+    public bool HasOriginal { get; set; }
+    public string OriginalKey => $"synthetic/{VersionId}/original.xlsx";
+    public Task<string?> GetBudgetOriginalKeyAsync(Guid id, Guid versionId, CancellationToken token)
+        => Task.FromResult(HasOriginal && id == Project.Id && versionId == VersionId ? OriginalKey : null);
     public bool HasQuotation { get; set; } = true;
     public bool HasTasks { get; set; } = true;
     public string ImageType { get; set; } = "image/png";
@@ -143,7 +197,7 @@ public sealed class QuotationReadDouble : IQuotationReadStore
     public Task<QuotationReadAccess?> GetAccessAsync(Guid id, CancellationToken token) => Task.FromResult(id != Project.Id ? null : new QuotationReadAccess(Project,
         HasTasks ? [new(Project.Id, OperationalArea.Budgets, ProjectTaskType.PrepareQuotation, "google-test-subject"),
             new(Project.Id, OperationalArea.Commercial, ProjectTaskType.ReviewQuotation, "google-test-subject")] : []));
-    public Task<ConfirmedBudgetQuotationView?> GetBudgetAsync(Guid id, CancellationToken token) => Task.FromResult(!HasQuotation ? null : new ConfirmedBudgetQuotationView(id, Guid.NewGuid(), 1,
+    public Task<ConfirmedBudgetQuotationView?> GetBudgetAsync(Guid id, CancellationToken token) => Task.FromResult(!HasQuotation ? null : new ConfirmedBudgetQuotationView(id, VersionId, 1,
         new(2026, 10, 20, 15, 0, 0, DateTimeKind.Utc), new("synthetic.xlsx", "Client", "Project", "City", "ClientLine", "Production", "Author", "SG9001"),
         [new(ItemId, CommercialItemSection.Main, 20, Values, Values, CatalogItemImageStatus.Stored, true, [])]));
     public Task<ConfirmedCommercialQuotationView?> GetCommercialAsync(Guid id, CancellationToken token) => Task.FromResult(!HasQuotation ? null : new ConfirmedCommercialQuotationView(id, Guid.NewGuid(),
@@ -152,12 +206,14 @@ public sealed class QuotationReadDouble : IQuotationReadStore
 }
 public sealed class ImageStorageDouble : IStreamingFileStorage
 {
+    public Dictionary<string, byte[]> Originals { get; } = [];
     public int OpenCount { get; private set; }
     public bool Missing { get; set; }
     public Task<Stream> OpenReadAsync(string key, CancellationToken token)
     {
         OpenCount++;
         if (Missing) throw new FileNotFoundException();
+        if (Originals.TryGetValue(key, out var bytes)) return Task.FromResult<Stream>(new MemoryStream(bytes, false));
         Assert.Equal("synthetic/image.png", key);
         return Task.FromResult<Stream>(new MemoryStream([1, 2, 3]));
     }

@@ -44,6 +44,9 @@ public sealed class EfQuotationReadStore(SnGControlDbContext context) : IQuotati
             new(version.OriginalFileName, version.DocumentClientName, version.DocumentProjectName, version.DocumentLocation,
                 version.ClientLine, version.ProductionLine, version.PreparedBy, version.DocumentSgCode), items);
     }
+    public Task<string?> GetBudgetOriginalKeyAsync(Guid projectId, Guid versionId, CancellationToken token) =>
+        context.BudgetQuotationVersions.AsNoTracking().Where(v => v.ProjectId == projectId && v.Id == versionId)
+            .Select(v => (string?)v.OriginalFileStorageKey).SingleOrDefaultAsync(token);
     public async Task<ConfirmedCommercialQuotationView?> GetCommercialAsync(Guid projectId, CancellationToken token)
     {
         var quotation = await context.CurrentCommercial().SingleOrDefaultAsync(q => q.ProjectId == projectId, token);

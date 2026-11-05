@@ -76,6 +76,6 @@ public sealed class ConfirmBudgetQuotationUseCase(PreviewBudgetQuotationUseCase 
         var saved = await store.ConfirmAsync(new BudgetQuotationConfirmation(version, catalog, items, snapshots, files), cancellationToken);
         if (saved.Status != QuotationConfirmationStatus.Created) return new(saved.Status);
         return new(QuotationConfirmationStatus.Created, new ConfirmedBudgetQuotationResponse(version.Id, version.VersionNumber, catalog.Id, projectId,
-            version.ConfirmedAt, document, items.Count, items.Sum(item => (long)item.Quantity), responses, ProjectTaskResponse.FromEntity(saved.Task!, timing)));
+            version.ConfirmedAt, document, items.Count, items.Sum(item => (long)item.Quantity), responses, ProjectTaskResponse.FromEntity(saved.Task!, timing), extracted.Economics));
     }
 }

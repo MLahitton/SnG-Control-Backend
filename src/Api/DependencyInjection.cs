@@ -130,6 +130,7 @@ public static class DependencyInjection
         services.AddScoped<IBudgetsWorkflowStore, EfBudgetsWorkflowStore>();
         services.AddScoped<AssignProjectSgCodeUseCase>();
         services.AddScoped<IBudgetQuotationParser, XlsxBudgetQuotationParser>();
+        services.AddScoped<IBudgetQuotationEconomicsReader, XlsxBudgetQuotationEconomicsReader>();
         services.AddScoped<PreviewBudgetQuotationUseCase>();
         services.AddScoped<SendProjectToBudgetsUseCase>();
         services.AddScoped<ListProjectTasksByAreaUseCase>();

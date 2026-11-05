@@ -10,7 +10,7 @@ public sealed record BudgetQuotationReadItem(Guid Id, CommercialItemSection Sect
     CatalogItemValues Confirmed, CatalogItemValues? Extracted, CatalogItemImageStatus? ImageStatus,
     bool HasImage, IReadOnlyList<TechnicalDifference> TechnicalDifferences);
 public sealed record ConfirmedBudgetQuotationView(Guid ProjectId, Guid QuotationVersionId, int VersionNumber,
-    DateTime ConfirmedAt, BudgetQuotationDocument Document, IReadOnlyList<BudgetQuotationReadItem> Items);
+    DateTime ConfirmedAt, BudgetQuotationDocument Document, IReadOnlyList<BudgetQuotationReadItem> Items, BudgetQuotationEconomics? Economics = null);
 public sealed record ConfirmedCommercialQuotationView(Guid ProjectId, Guid CommercialQuotationId, DateTime ConfirmedAt,
     decimal ProjectTotal, IReadOnlyList<CommercialQuotationReadItem> Items, int VersionNumber = 1)
 {
@@ -30,6 +30,7 @@ public interface IQuotationReadStore
 {
     Task<QuotationReadAccess?> GetAccessAsync(Guid projectId, CancellationToken token);
     Task<ConfirmedBudgetQuotationView?> GetBudgetAsync(Guid projectId, CancellationToken token);
+    Task<string?> GetBudgetOriginalKeyAsync(Guid projectId, Guid versionId, CancellationToken token) => Task.FromResult<string?>(null);
     Task<ConfirmedCommercialQuotationView?> GetCommercialAsync(Guid projectId, CancellationToken token);
     Task<QuotationImageFile?> GetBudgetImageAsync(Guid projectId, Guid itemId, CancellationToken token);
 }

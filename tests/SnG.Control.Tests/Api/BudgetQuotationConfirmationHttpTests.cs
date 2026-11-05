@@ -33,7 +33,10 @@ public class BudgetQuotationConfirmationHttpTests(ApiFixture fixture) : IClassFi
         Assert.Equal(scenario.Task.StartedAt, result.GetProperty("prepareQuotationTask").GetProperty("startedAt").GetDateTime());
         Assert.Equal(JsonValueKind.Null, result.GetProperty("prepareQuotationTask").GetProperty("completedAt").ValueKind);
         Assert.Equal(before, JsonSerializer.Serialize(new { scenario.Project, scenario.Task }));
-        foreach (var excluded in new[] { "storageKey", "rootPath", "unitPrice", "totalPrice", "projectTotal", "base64" }) Assert.DoesNotContain(excluded, result.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        foreach (var excluded in new[] { "storageKey", "rootPath", "base64" }) Assert.DoesNotContain(excluded, result.GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("price", result.GetProperty("items").GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("InvalidEconomics", result.GetProperty("economics").GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("economics").GetProperty("projectTotal").ValueKind);
         using var repeat = await Post(scenario, request.ToJsonString()); Assert.Equal(HttpStatusCode.Conflict, repeat.StatusCode);
     }
 

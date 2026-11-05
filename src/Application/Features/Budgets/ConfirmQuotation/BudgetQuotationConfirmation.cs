@@ -23,7 +23,7 @@ public sealed record ConfirmBudgetQuotationResult(QuotationConfirmationStatus St
 
 public sealed record ConfirmedBudgetQuotationResponse(Guid QuotationVersionId, int VersionNumber, Guid CommercialCatalogId,
     Guid ProjectId, DateTime ConfirmedAt, BudgetQuotationDocument Document, int ItemCount, long TotalQuantity,
-    IReadOnlyList<ConfirmedCatalogItemResponse> Items, ProjectTaskResponse PrepareQuotationTask);
+    IReadOnlyList<ConfirmedCatalogItemResponse> Items, ProjectTaskResponse PrepareQuotationTask, BudgetQuotationEconomics? Economics = null);
 public sealed record ConfirmedCatalogItemResponse(Guid Id, CommercialItemSection Section, int SourceRow,
     CatalogItemValues Extracted, CatalogItemValues Confirmed, CatalogItemImageResponse Image);
 public sealed record CatalogItemImageResponse(CatalogItemImageStatus Status, string? ContentType);

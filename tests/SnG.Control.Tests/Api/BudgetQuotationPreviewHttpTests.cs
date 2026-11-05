@@ -30,7 +30,9 @@ public class BudgetQuotationPreviewHttpTests(ApiFixture fixture) : IClassFixture
         Assert.Equal("image/png", result.GetProperty("items")[0].GetProperty("image").GetProperty("contentType").GetString());
         Assert.Equal(QuotationWorkbook.FirstImage, result.GetProperty("items")[0].GetProperty("image").GetProperty("base64").GetBytesFromBase64());
         Assert.Empty(result.GetProperty("warnings").EnumerateArray());
-        Assert.DoesNotContain("price", result.GetRawText(), StringComparison.OrdinalIgnoreCase); Assert.DoesNotContain("projectTotal", result.GetRawText());
+        Assert.DoesNotContain("price", result.GetProperty("items").GetRawText(), StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("InvalidEconomics", result.GetProperty("economics").GetProperty("status").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("economics").GetProperty("projectTotal").ValueKind);
         Assert.Equal(before, JsonSerializer.Serialize(new { project, task })); Assert.Equal(count, fixture.Tasks.Items.Count);
     }
 

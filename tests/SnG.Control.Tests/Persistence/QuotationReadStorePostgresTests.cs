@@ -74,6 +74,13 @@ public sealed class QuotationReadStorePostgresTests
             Assert.Null(await store.GetBudgetImageAsync(Guid.NewGuid(), item.Id, default));
             Assert.Null(await store.GetBudgetImageAsync(project.Id, Guid.NewGuid(), default));
             Assert.Equal(2, (await store.GetAccessAsync(project.Id, default))!.Tasks.Count);
+            Assert.Equal(version.OriginalFileStorageKey, await store.GetBudgetOriginalKeyAsync(project.Id, version.Id, default));
+            Assert.Null(await store.GetBudgetOriginalKeyAsync(Guid.NewGuid(), version.Id, default));
+            Assert.Null(await store.GetBudgetOriginalKeyAsync(project.Id, Guid.NewGuid(), default));
+            var nextVersion = new BudgetQuotationVersion(project.Id, 2, "next.xlsx", "Client", "Project", "City", "Line", "Production", "Author", "SG9001");
+            db.Add(nextVersion); await db.SaveChangesAsync(); db.ChangeTracker.Clear();
+            Assert.Equal(version.OriginalFileStorageKey, await store.GetBudgetOriginalKeyAsync(project.Id, version.Id, default));
+            Assert.Equal(nextVersion.OriginalFileStorageKey, await store.GetBudgetOriginalKeyAsync(project.Id, nextVersion.Id, default));
             Assert.Empty(db.ChangeTracker.Entries());
             Assert.Equal(JsonSerializer.Serialize(budget), JsonSerializer.Serialize(await store.GetBudgetAsync(project.Id, default)));
         }
