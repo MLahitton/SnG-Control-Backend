@@ -1716,7 +1716,7 @@ Ficha ampliada y expediente de Instalación:
 - Las imágenes se resuelven por CommercialQuotationItemId de la cotización del checklist,
   validando proyecto, catálogo, versión presupuestal, Section/SourceRow y clave histórica exacta.
   Una consulta obtiene los vínculos y otra las extracciones; cada ítem se lee una vez aunque tenga
-  varias unidades. Los bytes se incorporan al PDF, sin URLs ni nueva extracción XLSX.
+  varias unidades. Los bytes se incorporan al PDF, sin URLs ni nueva extracción XLSX. La composición usa los valores predeterminados de Skia para codificación sin pérdida; conserva dimensiones, proporción y alfa de PNG/WEBP sin convertirlos a JPEG. Los PDFs ya radicados no se regeneran.
   Archivo histórico ausente: indicación explícita. Vínculo incorrecto, bytes corruptos o límites
   excedidos: falla la preparación sin cerrar la tarea. Límite por imagen: 16 MiB / 24 millones
   de píxeles; imágenes comerciales acumuladas: 128 MiB. Decodificación en memoria, sin assets públicos.

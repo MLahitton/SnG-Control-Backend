@@ -81,7 +81,13 @@ public sealed class InstallationPdfRenderer
         if (current.Count > 0) pages.Add(current);
         if (pages.Count == 0) pages.Add([]);
         using var output = new MemoryStream();
-        using var document = SKDocument.CreatePdf(output, new SKDocumentPdfMetadata { Title = "Reporte de Toma de Medidas - Steel & Glass", Author = "Steel & Glass", Creation = header.SubmittedAt });
+        // A zero-initialized metadata struct selects JPEG quality 0. Start from Skia's
+        // defaults (lossless encoding) so historical PNG/WEBP pixels and alpha survive embedding.
+        var pdfMetadata = SKDocumentPdfMetadata.Default;
+        pdfMetadata.Title = "Reporte de Toma de Medidas - Steel & Glass";
+        pdfMetadata.Author = "Steel & Glass";
+        pdfMetadata.Creation = header.SubmittedAt;
+        using var document = SKDocument.CreatePdf(output, pdfMetadata);
         for (var page = 0; page < pages.Count; page++)
         {
             token.ThrowIfCancellationRequested();

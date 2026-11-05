@@ -4,6 +4,90 @@ using SnG.Control.Infrastructure.Measurements;
 namespace SnG.Control.Tests.Application;
 public sealed class InstallationPdfTests
 {
+    [SnG.Control.Tests.Quotations.FinancialSourceFact]
+    public async Task HistoricalImageBytesSurviveExtractionStorageAndReportPreparation()
+    {
+        var source = await File.ReadAllBytesAsync(Environment.GetEnvironmentVariable("SNG_FINANCIAL_SOURCE_XLSX")!);
+        using var input = new MemoryStream(source, false);
+        var parser = new SnG.Control.Infrastructure.Quotations.XlsxBudgetQuotationParser(
+            Microsoft.Extensions.Options.Options.Create(new SnG.Control.Infrastructure.Quotations.BudgetQuotationParserOptions()));
+        var parsed = Assert.IsType<SnG.Control.Application.Features.Budgets.PreviewQuotation.BudgetQuotationParseResult.Success>(
+            await parser.ParseAsync(input, "synthetic.xlsx", default));
+        var images = parsed.Items.Where(i => i.Image != null).Select(i => Convert.FromBase64String(i.Image!.Base64)).ToArray();
+        Assert.NotEmpty(images);
+        using var archive = new System.IO.Compression.ZipArchive(new MemoryStream(source));
+        var media = archive.Entries.Where(e => e.FullName.StartsWith("xl/media/")).Select(e => {
+            using var stream = e.Open(); using var copy = new MemoryStream(); stream.CopyTo(copy); return copy.ToArray();
+        }).ToArray();
+        using var folder = new SnG.Control.Tests.Fixtures.TemporaryStorage();
+        var storage = new SnG.Control.Infrastructure.Files.LocalFileStorage(Microsoft.Extensions.Options.Options.Create(
+            new SnG.Control.Infrastructure.Files.FileStorageOptions { RootPath = folder.Root }));
+        var snapshot = Sample(images.Length);
+        var stored = new Dictionary<Guid, byte[]>();
+        for (var i = 0; i < images.Length; i++)
+        {
+            Assert.Contains(media, b => b.AsSpan().SequenceEqual(images[i]));
+            await storage.SaveAsync($"images/{i}.png", images[i], default);
+            var bytes = await storage.ReadAsync($"images/{i}.png", default);
+            Assert.Equal(images[i], bytes);
+            stored.Add(snapshot.Structures[i].ItemId!.Value, bytes);
+            if (Environment.GetEnvironmentVariable("SNG_IMAGE_COMPARISON_DIR") is { } directory)
+            {
+                Directory.CreateDirectory(directory);
+                await File.WriteAllBytesAsync(Path.Combine(directory, $"source-{i}.png"), images[i]);
+                await File.WriteAllBytesAsync(Path.Combine(directory, $"persisted-{i}.png"), bytes);
+            }
+        }
+        var pdf = new InstallationPdfRenderer().Render(new(snapshot, new Dictionary<Guid, byte[]>(), stored), default);
+        Assert.Equal((images.Length + 2) / 3, PageCount(pdf));
+        if (Environment.GetEnvironmentVariable("SNG_IMAGE_COMPARISON_DIR") is { } output)
+            await File.WriteAllBytesAsync(Path.Combine(output, "report.pdf"), pdf);
+    }
+
+    [Theory]
+    [InlineData(SKEncodedImageFormat.Png)]
+    [InlineData(SKEncodedImageFormat.Webp)]
+    public void PreservesColorAndAlphaWithoutLossyPdfRecompression(SKEncodedImageFormat format)
+    {
+        using var bitmap = new SKBitmap(240, 120);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.Transparent);
+        using var paint = new SKPaint();
+        for (var x = 20; x < 220; x++)
+        {
+            paint.Color = new SKColor(40, (byte)(80 + x / 2), 220, x < 120 ? (byte)255 : (byte)128);
+            canvas.DrawRect(x, 15, 1, 90, paint);
+        }
+        paint.Color = SKColors.DarkBlue; paint.Style = SKPaintStyle.Stroke; paint.StrokeWidth = 2;
+        canvas.DrawRect(20, 15, 200, 90, paint); canvas.DrawLine(120, 15, 120, 105, paint);
+        using var image = SKImage.FromBitmap(bitmap);
+        using var encoded = image.Encode(format, 100);
+        var original = encoded.ToArray();
+        var snapshot = Sample(3);
+        var images = snapshot.Structures.ToDictionary(s => s.ItemId!.Value, _ => original);
+        var pdf = new InstallationPdfRenderer().Render(new(snapshot, new Dictionary<Guid, byte[]>(), images), default);
+        var raw = System.Text.Encoding.Latin1.GetString(pdf);
+        Assert.DoesNotContain("/DCTDecode", raw); // PNG/WEBP must not become lossy JPEG.
+        Assert.Contains("/SMask", raw); // Preserve transparency in a PDF soft mask.
+        Assert.Contains("/Width 240", raw); Assert.Contains("/Height 120", raw);
+        Assert.Equal(original, encoded.ToArray());
+        Save($"alpha-{format}", pdf);
+        if (Environment.GetEnvironmentVariable("SNG_SYNTHETIC_PDF_OUTPUT") is { } output)
+        {
+            var directory = Path.GetDirectoryName(output)!;
+            File.WriteAllBytes(Path.Combine(directory, $"source-{format}.{format.ToString().ToLowerInvariant()}"), original);
+            // Reproduce the previous metadata initialization independently for visual comparison.
+            using var before = new MemoryStream();
+            using (var document = SKDocument.CreatePdf(before, new SKDocumentPdfMetadata { Title = "Synthetic encoding comparison" }))
+            {
+                var page = document.BeginPage(240, 120);
+                using var decoded = SKImage.FromEncodedData(original);
+                page.DrawImage(decoded, 0, 0); document.EndPage(); document.Close();
+            }
+            File.WriteAllBytes(Path.Combine(directory, $"before-{format}.pdf"), before.ToArray());
+        }
+    }
+
     [Theory]
     [InlineData(1, 1)] [InlineData(2, 1)] [InlineData(3, 1)] [InlineData(4, 2)]
     [InlineData(6, 2)] [InlineData(7, 3)] [InlineData(21, 7)]
