@@ -1697,6 +1697,9 @@ Ficha ampliada y expediente de Instalación:
 - Composición A3 horizontal, hasta tres filas con croquis / imagen cotizada / ficha técnica.
   Se planifican líneas y páginas antes del render: fuente fija, ajuste de texto y continuaciones
   con identidad e imágenes repetidas; pie con página/total. El orden es el del snapshot.
+  Identidad visual de la maqueta aprobada: logo corporativo embebido, encabezado con bloque de
+  proyecto, franja oscura, tarjetas redondeadas y ficha de etiquetas/valores. Observaciones a ancho
+  de columna; estados pendientes explícitos, identificadores en texto secundario.
   No hay portada independiente ni regeneración de PDFs históricos.
 - Las imágenes se resuelven por CommercialQuotationItemId de la cotización del checklist,
   validando proyecto, catálogo, versión presupuestal, Section/SourceRow y clave histórica exacta.

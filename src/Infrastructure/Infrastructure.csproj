@@ -15,7 +15,7 @@
     <InternalsVisibleTo Include="SnG.Control.Tests" />
   </ItemGroup>
 
-  <ItemGroup><EmbeddedResource Include="Measurements/Fonts/NotoSans-Regular.ttf" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="Measurements/Fonts/NotoSans-Regular.ttf" /><EmbeddedResource Include="Measurements/SteelAndGlassLogo.png" /></ItemGroup>
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>SnG.Control.Infrastructure</RootNamespace>

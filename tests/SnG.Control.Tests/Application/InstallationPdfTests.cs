@@ -36,6 +36,7 @@ public sealed class InstallationPdfTests
         Assert.Contains("/Width 500", raw); Assert.Contains("/Height 150", raw);
         Assert.Contains("/Width 1200", raw); Assert.Contains("/Height 900", raw);
         Assert.DoesNotContain("/URI", raw);
+        Assert.Contains("/Width 1296", raw); Assert.Contains("/Height 278", raw); // Approved corporate logo, embedded.
         Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(snapshot));
         Assert.Equal(portrait, images[item]);
         Save("three-drawings", bytes);
@@ -63,6 +64,25 @@ public sealed class InstallationPdfTests
         var sketch = Guid.NewGuid();
         snapshot = snapshot with { Structures = [snapshot.Structures[0] with { SketchVersionId = sketch }] };
         Assert.Throws<InvalidOperationException>(() => new InstallationPdfRenderer().Render(snapshot, new Dictionary<Guid, byte[]> { [sketch] = Drawing(30, 30) }, default));
+    }
+
+    [Fact]
+    public void LongProjectAndTechnicalValuesContinueWithoutDroppingFollowingStructures()
+    {
+        var snapshot = Sample(4);
+        snapshot = snapshot with
+        {
+            Report = snapshot.Report! with { ProjectName = string.Join(" ", Enumerable.Repeat("Proyecto de validación", 6)) },
+            Structures = snapshot.Structures.Select((s, i) => i == 1 ? s with {
+                ActualSystemText = new string('W', 160),
+                InstallationObservations = string.Join(" ", Enumerable.Repeat("Revisar nivel y ubicación de estructura.", 80))
+            } : s).ToArray()
+        };
+        var before = System.Text.Json.JsonSerializer.Serialize(snapshot);
+        var bytes = new InstallationPdfRenderer().Render(snapshot, new Dictionary<Guid, byte[]>(), default);
+        Assert.True(PageCount(bytes) > 2);
+        Assert.Equal(before, System.Text.Json.JsonSerializer.Serialize(snapshot));
+        Save("long-fields", bytes);
     }
 
     private static MeasurementSnapshot Sample(int count)
