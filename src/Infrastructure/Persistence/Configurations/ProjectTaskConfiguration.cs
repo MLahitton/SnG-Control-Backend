@@ -20,6 +20,8 @@ public class ProjectTaskConfiguration : IEntityTypeConfiguration<ProjectTask>
         builder.HasIndex(task => task.ProjectId, "UX_ProjectTasks_ActiveDepositCorrection").IsUnique().HasFilter("\"Type\" = 6 AND \"Status\" IN (1,2)");
         builder.Property(task => task.DeadlineAt).HasColumnType("timestamp with time zone");
         builder.Property(task => task.WasOverdue);
+        builder.ToTable(t => t.HasCheckConstraint("CK_ProjectTasks_Engineering", """ "Type" <> 7 OR ("QuotationRound" IS NULL AND "Area" = 5 AND "DeadlineAt" IS NULL AND "WasOverdue" IS NULL) """));
+        builder.HasIndex(task => task.ProjectId, "UX_ProjectTasks_Engineering").IsUnique().HasFilter(""" "Type" = 7 """);
         builder.HasKey(task => task.Id);
         builder.Property(task => task.Id).ValueGeneratedNever();
         builder.Property(task => task.ProjectId).IsRequired();

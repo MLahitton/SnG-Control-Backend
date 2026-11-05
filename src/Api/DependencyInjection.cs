@@ -76,6 +76,10 @@ public static class DependencyInjection
         services.AddHostedService<ProjectNotificationBackgroundService>();
         services.AddBudgetsAssigneeAuthorization();
         services.AddAccountingAssigneeAuthorization();
+        services.AddOptions<EngineeringAssigneeOptions>().BindConfiguration("Authentication");
+        services.AddSingleton<SnG.Control.Application.Identity.IEngineeringAssigneeIdentity, ConfiguredEngineeringAssigneeIdentity>();
+        services.AddScoped<SnG.Control.Application.Features.Engineering.EngineeringService>();
+        services.AddScoped<SnG.Control.Application.Features.Engineering.IEngineeringStore, EfEngineeringStore>();
         services.AddOptions<InstallationAssigneeOptions>().BindConfiguration("Authentication");
         services.AddSingleton<SnG.Control.Application.Identity.IInstallationAssigneeIdentity, ConfiguredInstallationAssigneeIdentity>();
         services.AddScoped<SnG.Control.Application.Features.Accounting.IDepositVerificationStore, EfDepositVerificationStore>();

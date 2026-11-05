@@ -366,7 +366,7 @@ CommercialHead y Budgets permanecen separados incluso si sus claves tienen el mi
 ### Roles y área activa V1
 
 El enum cerrado SystemRole reserva CommercialAdvisor, Budgets, CommercialHead, Accounting,
-Engineering, Production, Logistics, Installation y Management. La configuraci?n asigna Advisor, Budgets, Head, Accounting, Installation y Management;
+Engineering, Production, Logistics, Installation y Management. La configuraci?n asigna Advisor, Budgets, Head, Accounting, Installation, Engineering y Management;
 Installation dispone de checklist persistido y radicación documental de medidas.
 
 `Authentication:CommercialAdvisorSubjects` admite una lista vacía (ningún asesor), pero
@@ -1593,8 +1593,7 @@ TakeMeasurements. `MeasurementStructure` tiene UUID propio, FK al ítem cuando e
 ordinal/cantidad de origen y dimensiones descriptivas. Las adiciones nacen sin medir; retiros y
 marcas guardan actor/UTC. `MeasurementEvent` conserva las correcciones, incluso desmarcados.
 `MeasurementSubmissionDocument` vincula exactamente los documentos congelados; SnapshotJson
-(jsonb) y SubmissionId conservan la radicación formal en el checklist. No hay una tarea nueva
-de Ingeniería: la siguiente implementación podrá consumir ese snapshot con su autorización definida.
+(jsonb) y SubmissionId conservan la radicación formal en el checklist. Ingeniería consume ese snapshot inmutable al crear su tarea y checklist en la misma transacción.
 
 Rutas bajo `/api/projects/{id}/measurements`:
 - GET: estado, responsable, resumen oficial, estructuras, documentos, historial y snapshot final.
@@ -1740,3 +1739,27 @@ Ficha ampliada y expediente de Instalación:
   20261104214213_AddInstallationAssessments y 20261104214806_AddInstallationSubmissionReports.
   Campos nuevos nullable, sin backfill. Validación solo en PostgreSQL temporal aislado; no aplicar
   a bases operativas sin autorización específica. Copias previas de snapshots permanecen intactas.
+
+
+## Ingeniería: persistencia y operación
+
+`EngineeringChecklist`, `EngineeringStructure`, `EngineeringEvent` y `EngineeringActa` conservan la radicación de origen, posición e identidad física, checks, actor/UTC, revisión, claves idempotentes, versiones PDF y snapshot final. `PrepareOpeningRecord = 7`, `OperationalArea.Engineering = 5`; los valores previos no cambian. La tarea comienza sin SLA ni ronda. El Google Subject se configura exclusivamente en User Secrets o entorno mediante `Authentication:EngineeringAssigneeSubject`; habilita membresía Engineering, pero cada escritura requiere también rol activo y asignación persistida.
+
+Migración: `AddEngineeringOpeningRecords`. Añade cuatro tablas y la clasificación `ProjectDocument.IsEngineeringDocument`, índices únicos y restricciones de estado. No modifica radicaciones ni genera tareas históricas. Aplicar mediante despliegue autorizado; nunca automáticamente al iniciar la API. Las pruebas usan PostgreSQL temporal aislado.
+
+Rutas bajo `/api/projects/{id}/engineering`:
+- `GET`: estado y fichas congeladas con lectura limitada al proyecto.
+- `PUT /structures/{structureId}/check`: `requestKey`, `expectedRevision` de la estructura, `completed`.
+- `POST /acta?requestKey=...&expectedRevision=...`: multipart del protocolo documental existente, un PDF y referencia de reemplazo vigente.
+- `GET /acta/{documentId}/download`: bytes históricos autenticados, tamaño/hash verificados, attachment y no-store.
+- `GET /structures/{structureId}/sketches/{versionId}/image`: solo versiones vinculadas al snapshot.
+- `POST /complete`: `requestKey`, revisión del checklist y `documentId` vigente; exige checks completos y bytes íntegros.
+- `POST /initialize-historical`: incorporación explícita descrita abajo.
+
+Las escrituras bloquean proyecto y tareas en ese orden. Los checks usan revisión individual; reemplazos y cierre usan revisión global. Un replay exige misma operación y actor. Las restricciones únicas protegen tarea por proyecto, radicación, posiciones, versiones y eventos idempotentes. El progreso se deriva del estado persistido; el último check no cierra automáticamente. Al cerrar se conserva el snapshot final y se concilian notificaciones existentes sin generar un traspaso a otra área.
+
+Los PDFs se almacenan mediante ProjectDocument y el almacenamiento protegido existente. Se valida nombre, extensión, límite, cabecera, cierre y referencia xref; es filtrado estructural básico, no antivirus ni validación exhaustiva de todos los objetos PDF. Las descargas son adjuntos privados. Un rollback conocido elimina solo el archivo nuevo; un resultado de commit incierto conserva sus bytes. Los documentos de Ingeniería quedan fuera de cargas/ZIPs/reemplazos genéricos.
+
+### Incorporación explícita de radicaciones históricas
+
+No ejecutar sobre una base operativa sin autorización específica. Antes de actuar, verificar proyecto, radicación definitiva y ausencia de Ingeniería; conservar los identificadores originales. Con identidad configurada y rol activo Engineering, enviar `POST /api/projects/{id}/engineering/initialize-historical` con `{ "submissionId": "<radicacion-existente>", "reason": "<motivo-autorizado>" }`. El servidor exige tarea de Instalación completada, snapshot y PDF persistidos con hashes coherentes; crea únicamente el trabajo de Ingeniería y registra el motivo. Una repetición de la misma radicación no duplica la tarea; otra radicación es conflicto. No reconstruye PDFs ausentes ni cambia datos históricos. Verificar luego GET de Ingeniería y bandeja del responsable. No usar un backfill automático ni enviar solicitudes por lotes sobre SG1003/SG1004.

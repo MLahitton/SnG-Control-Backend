@@ -26,7 +26,7 @@ public sealed class MeasurementPostgresTests
         SnGControlDbContext Db(bool fail = false) => new(new DbContextOptionsBuilder<SnGControlDbContext>().UseNpgsql(config.ConnectionString).AddInterceptors(new FailSave(fail)).Options);
         using var files = new TemporaryStorage(); var storage = new LocalFileStorage(Options.Create(new FileStorageOptions { RootPath = files.Root }));
         var clock = new ControlledTimeProvider(TestTiming.Value.UtcNow); var timing = new SnG.Control.Application.Scheduling.TaskTiming(clock, new());
-        EfMeasurementStore Store(SnGControlDbContext db) => new(db, timing, new(db, new ProjectNotificationPlanner(timing)), storage);
+        EfMeasurementStore Store(SnGControlDbContext db) => new(db, timing, new(db, new ProjectNotificationPlanner(timing)), storage, new IdentityDouble("engineer"));
         EfProjectDocumentStore Documents(SnGControlDbContext db, string subject = "installer", SystemRole role = SystemRole.Installation) => new(db, storage, new(new IdentityDouble(subject), new ActiveRoleDouble(role), new IdentityDouble("budgets")), TestTiming.Value);
         var actor = new DecisionActor("installer", "installer@example.test", "Installer"); var now = clock.Now;
         await using var db = Db(); await db.Database.MigrateAsync(); Assert.False(db.Database.HasPendingModelChanges());
@@ -218,6 +218,8 @@ public sealed class MeasurementPostgresTests
         try { await Error("MeasurementSketchIntegrity", () => Store(db).ExecuteAsync(project.Id, submit, actor, default)); }
         finally { await File.WriteAllBytesAsync(sketchPath, originalWebp); }
         await Refresh(); Assert.Null(state.SubmissionId); Assert.False(await db.MeasurementReports.AnyAsync(r => r.ProjectId == project.Id));
+        await Error("EngineeringAssigneeNotConfigured", () => new EfMeasurementStore(db, timing, new(db, new ProjectNotificationPlanner(timing)), storage).ExecuteAsync(project.Id, submit, actor, default));
+        Assert.False(await db.EngineeringChecklists.AnyAsync(c => c.ProjectId == project.Id));
         await using (var failed = Db(true)) await Assert.ThrowsAsync<InvalidOperationException>(() => Store(failed).ExecuteAsync(project.Id, submit, actor, default));
         await Refresh(); Assert.Null(state.SubmissionId); Assert.False(await db.MeasurementReports.AnyAsync(r => r.ProjectId == project.Id)); Assert.Equal("InProgress", state.TaskStatus); Assert.Empty(await db.MeasurementSubmissionDocuments.Where(d => d.ProjectId == project.Id).ToArrayAsync());
         await using (var a = Db()) await using (var b = Db()) await Task.WhenAll(Store(a).ExecuteAsync(project.Id, submit, actor, default), Store(b).ExecuteAsync(project.Id, submit, actor, default));
@@ -260,10 +262,12 @@ public sealed class MeasurementPostgresTests
         await Error("MeasurementsLocked", () => Store(db).ExecuteAsync(project.Id, Command("Retire", state.Structures.First(s => s.RetiredAt is null).Id), actor, default));
         Assert.Equal(quotationBefore, System.Text.Json.JsonSerializer.Serialize(await db.CommercialQuotationItems.AsNoTracking().Where(i => i.CommercialQuotationId == quote.Id).OrderBy(i => i.Id).ToArrayAsync()));
         Assert.Equal(14, await db.CommercialQuotationItems.CountAsync(i => i.CommercialQuotationId == quote.Id)); Assert.Equal(21, await db.CommercialQuotationItems.Where(i => i.CommercialQuotationId == quote.Id).SumAsync(i => i.Quantity));
-        Assert.Equal(3, await db.ProjectTasks.CountAsync(t => t.ProjectId == project.Id));
+        Assert.Equal(4, await db.ProjectTasks.CountAsync(t => t.ProjectId == project.Id));
         Assert.Null((await db.ProjectTasks.AsNoTracking().SingleAsync(t => t.Id == task.Id)).DeadlineAt);
         Assert.All(await db.MeasurementStructures.AsNoTracking().Where(s => s.ProjectId == project.Id && s.MeasuredAt != null).ToArrayAsync(), s => Assert.Equal("installer", s.MeasuredBySubject));
         Assert.Equal(6, Directory.GetFiles(files.Root, "*", SearchOption.AllDirectories).Length);
+        await EngineeringPostgresChecks.VerifyAsync(() => Db(), project.Id, storage, timing, state);
+
     }
     [VerificationPostgresFact]
     public async Task OrderingUsesOriginalQuotationRowsForReadAndSnapshotWithoutChangingStoredData()
@@ -272,7 +276,7 @@ public sealed class MeasurementPostgresTests
         Assert.Equal("127.0.0.1", config.Host); Assert.Equal("verification_test", config.Database);
         SnGControlDbContext Db() => new(new DbContextOptionsBuilder<SnGControlDbContext>().UseNpgsql(config.ConnectionString).Options);
         using var files = new TemporaryStorage(); var storage = new LocalFileStorage(Options.Create(new FileStorageOptions { RootPath = files.Root }));
-        EfMeasurementStore Store(SnGControlDbContext context) => new(context, TestTiming.Value, new(context, new ProjectNotificationPlanner(TestTiming.Value)), storage);
+        EfMeasurementStore Store(SnGControlDbContext context) => new(context, TestTiming.Value, new(context, new ProjectNotificationPlanner(TestTiming.Value)), storage, new IdentityDouble("engineer"));
         var actor = new DecisionActor("installer", null, "Installer"); var now = TestTiming.Value.UtcNow;
         foreach (var count in new[] { 1, 4, 9 })
         {

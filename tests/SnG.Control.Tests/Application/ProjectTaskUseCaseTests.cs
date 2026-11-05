@@ -151,7 +151,7 @@ public class ProjectTaskUseCaseTests : IDisposable
 
     [Theory]
     [InlineData(0, 1)]
-    [InlineData(5, 1)]
+    [InlineData(6, 1)]
     [InlineData(2, 0)]
     [InlineData(2, 4)]
     public async Task ListByArea_InvalidEnums_FailBeforeReading(int area, int status)

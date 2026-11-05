@@ -30,14 +30,14 @@ public sealed class ProjectDocumentService(IProjectDocumentStore store, ProjectD
         var initial = state.HandoffItems.Select(i => i.ProjectDocumentId).ToHashSet();
         var canModify = access.CanModify(state.Project);
         var sent = state.PrepareQuotation is not null || state.Handoff is not null;
-        return new(state.Documents.Where(d => d.RemovedAt is null && !d.IsPaymentReceipt && !d.IsMeasurementDocument).Select(d => DocumentResponse.From(d, initial)).ToArray(),
+        return new(state.Documents.Where(d => d.RemovedAt is null && !d.IsPaymentReceipt && !d.IsMeasurementDocument && !d.IsEngineeringDocument).Select(d => DocumentResponse.From(d, initial)).ToArray(),
             state.Handoff is { } h ? new(h.Id, h.SentAt, new(h.SentByEmail, h.SentByName), initial.Order().ToArray()) : null,
-            canModify, canModify && !sent, access.CanSendToBudgets(state.Project) && !sent && state.Documents.Any(d => d.IsCurrent && !d.IsPaymentReceipt && !d.IsMeasurementDocument));
+            canModify, canModify && !sent, access.CanSendToBudgets(state.Project) && !sent && state.Documents.Any(d => d.IsCurrent && !d.IsPaymentReceipt && !d.IsMeasurementDocument && !d.IsEngineeringDocument));
     }
     public async Task<DocumentDownload> DownloadAsync(Guid id, Guid documentId, CancellationToken token)
     {
         var state = await ReadAsync(id, token);
-        var document = state.Documents.SingleOrDefault(d => d.Id == documentId && d.RemovedAt is null)
+        var document = state.Documents.SingleOrDefault(d => d.Id == documentId && d.RemovedAt is null && !d.IsEngineeringDocument)
             ?? throw new DocumentException(404, "DocumentNotFound");
         try { return new(await storage.OpenReadAsync(document.StorageKey, token), document.OriginalFileName); }
         catch (FileNotFoundException) { throw new DocumentException(500, "DocumentUnavailable"); }
@@ -48,7 +48,7 @@ public sealed class ProjectDocumentService(IProjectDocumentStore store, ProjectD
         var state = await ReadAsync(id, token);
         if (initial && state.Handoff is null) throw new DocumentException(409, "InitialHandoffUnavailable");
         var ids = state.HandoffItems.Select(i => i.ProjectDocumentId).ToHashSet();
-        var documents = state.Documents.Where(d => !d.IsPaymentReceipt && !d.IsMeasurementDocument && (initial ? ids.Contains(d.Id) : d.IsCurrent)).OrderBy(d => d.UploadedAt).ThenBy(d => d.Id).ToArray();
+        var documents = state.Documents.Where(d => !d.IsPaymentReceipt && !d.IsMeasurementDocument && !d.IsEngineeringDocument && (initial ? ids.Contains(d.Id) : d.IsCurrent)).OrderBy(d => d.UploadedAt).ThenBy(d => d.Id).ToArray();
         try { return new(await archive.CreateAsync(documents, token), initial ? "initial-handoff.zip" : "current.zip"); }
         catch (FileNotFoundException) { throw new DocumentException(500, "DocumentUnavailable"); }
         catch (DirectoryNotFoundException) { throw new DocumentException(500, "DocumentUnavailable"); }

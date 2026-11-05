@@ -15,7 +15,7 @@ using SnG.Control.Domain.Entities;
 using SnG.Control.Domain.Enums;
 namespace SnG.Control.Infrastructure.Persistence.Stores;
 
-public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing, EfProjectNotificationWriter notifications, IFileStorage files) : IMeasurementStore
+public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing, EfProjectNotificationWriter notifications, IFileStorage files, SnG.Control.Application.Identity.IEngineeringAssigneeIdentity? engineering = null) : IMeasurementStore
 {
     public async Task<MeasurementState?> ReadAsync(Guid id, ProjectReadScope scope, CancellationToken token)
     {
@@ -154,7 +154,9 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
                 checklist.Submit(prepared.Snapshot.Report!.SubmittedAt, actor.Subject, snapshotJson, prepared.Snapshot.Report.SubmissionId);
                 added.Add(new MeasurementReport(checklist, prepared.Bytes, Hash(prepared.Bytes), Hash(Encoding.UTF8.GetBytes(snapshotJson))));
                 added.AddRange(docs.Select(d => new MeasurementSubmissionDocument(checklist, d)));
-                Track(task); task.Complete(now); staged = await notifications.StageAsync([task], now, token);
+                var next = EfEngineeringStore.Create(checklist, finalSnapshot, engineering?.Subject ?? "", now, actor);
+                added.AddRange(next.Entities); db.Add(next.Task);
+                Track(task); task.Complete(now); staged = await notifications.StageAsync([task, next.Task], now, token);
             }
             else
             {
@@ -251,6 +253,7 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
         var scope = new ProjectReadScope(actor.Subject, SystemRole.Installation);
         var state = await ReadAsync(id, scope, token) ?? throw new DocumentException(404, "ProjectNotFound");
         if (state.SubmissionId != null) return null; // exact command replay is checked inside the transaction
+        if (string.IsNullOrWhiteSpace(engineering?.Subject)) throw new DocumentException(503, "EngineeringAssigneeNotConfigured");
         if (!state.CanModify) throw new DocumentException(403, "MeasurementAccessDenied");
         if (state.Revision != command.ExpectedRevision) throw new DocumentException(409, "MeasurementRevisionConflict");
         if (state.Summary.Active == 0 || state.Summary.Pending != 0) throw new DocumentException(409, "MeasurementsIncomplete");

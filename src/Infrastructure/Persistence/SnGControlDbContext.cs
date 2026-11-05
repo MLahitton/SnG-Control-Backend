@@ -7,6 +7,10 @@ namespace SnG.Control.Infrastructure.Persistence;
 public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) : DbContext(options)
 {
 
+    public DbSet<EngineeringChecklist> EngineeringChecklists => Set<EngineeringChecklist>();
+    public DbSet<EngineeringStructure> EngineeringStructures => Set<EngineeringStructure>();
+    public DbSet<EngineeringEvent> EngineeringEvents => Set<EngineeringEvent>();
+    public DbSet<EngineeringActa> EngineeringActas => Set<EngineeringActa>();
     public DbSet<MeasurementReport> MeasurementReports => Set<MeasurementReport>();
     public DbSet<MeasurementSketchVersion> MeasurementSketchVersions => Set<MeasurementSketchVersion>();
     public DbSet<MeasurementChecklist> MeasurementChecklists => Set<MeasurementChecklist>();
@@ -36,6 +40,10 @@ public class SnGControlDbContext(DbContextOptions<SnGControlDbContext> options) 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.ApplyConfiguration(new EngineeringChecklistConfiguration());
+        modelBuilder.ApplyConfiguration(new EngineeringStructureConfiguration());
+        modelBuilder.ApplyConfiguration(new EngineeringEventConfiguration());
+        modelBuilder.ApplyConfiguration(new EngineeringActaConfiguration());
         modelBuilder.ApplyConfiguration(new MeasurementReportConfiguration());
         modelBuilder.ApplyConfiguration(new MeasurementSketchVersionConfiguration());
         modelBuilder.ApplyConfiguration(new MeasurementChecklistConfiguration());

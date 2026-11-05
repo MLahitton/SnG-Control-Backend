@@ -81,7 +81,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
         var replacements = new HashSet<Guid>();
         var parts = new HashSet<string>(StringComparer.Ordinal);
         var sizes = new DocumentBatchSize();
-        var currentCount = state.Documents.Count(d => d.IsCurrent && d.IsPaymentReceipt == receipt && d.IsMeasurementDocument == measurement);
+        var currentCount = state.Documents.Count(d => d.IsCurrent && d.IsPaymentReceipt == receipt && d.IsMeasurementDocument == measurement && !d.IsEngineeringDocument);
         var commitStarted = false;
         try
         {
@@ -93,7 +93,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
                 ProjectDocument? old = null;
                 if (upload.ReplacesDocumentId is Guid replaces)
                 {
-                    old = state.Documents.SingleOrDefault(d => d.Id == replaces && d.IsCurrent && d.IsPaymentReceipt == receipt && d.IsMeasurementDocument == measurement);
+                    old = state.Documents.SingleOrDefault(d => d.Id == replaces && d.IsCurrent && d.IsPaymentReceipt == receipt && d.IsMeasurementDocument == measurement && !d.IsEngineeringDocument);
                     if (old is null || !replacements.Add(replaces)) throw new DocumentException(409, "InvalidReplacement");
                 }
                 else if (++currentCount > ProjectDocument.MaxCurrentDocuments) throw new DocumentException(409, "DocumentLimitExceeded");
@@ -151,7 +151,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
         var state = await LoadLockedAsync(projectId, token) ?? throw new DocumentException(404, "ProjectNotFound");
         access.RequireModify(state.Project);
         if (state.PrepareQuotation is not null || state.Handoff is not null) throw new DocumentException(409, "DocumentRemovalLocked");
-        var document = state.Documents.SingleOrDefault(d => d.Id == documentId && d.RemovedAt is null && !d.IsPaymentReceipt && !d.IsMeasurementDocument)
+        var document = state.Documents.SingleOrDefault(d => d.Id == documentId && d.RemovedAt is null && !d.IsPaymentReceipt && !d.IsMeasurementDocument && !d.IsEngineeringDocument)
             ?? throw new DocumentException(404, "DocumentNotFound");
         if (!document.IsCurrent) throw new DocumentException(409, "InvalidReplacement");
         // Logical removal keeps the referenced bytes, avoiding a DB/filesystem deletion window.
@@ -178,7 +178,7 @@ public class EfProjectDocumentStore(SnGControlDbContext context, IStreamingFileS
         if (state is null) return new SendProjectToBudgetsResult.ProjectNotFound();
         if (!access.CanModify(state.Project)) return new SendProjectToBudgetsResult.Forbidden();
         if (state.PrepareQuotation is not null || state.Handoff is not null) return new SendProjectToBudgetsResult.AlreadySent();
-        var documents = state.Documents.Where(d => d.IsCurrent && !d.IsPaymentReceipt && !d.IsMeasurementDocument).ToArray();
+        var documents = state.Documents.Where(d => d.IsCurrent && !d.IsPaymentReceipt && !d.IsMeasurementDocument && !d.IsEngineeringDocument).ToArray();
         if (documents.Length == 0) return new SendProjectToBudgetsResult.DocumentsRequired();
         var now = timing.UtcNow; var actor = access.Current;
         var handoff = new ProjectDocumentHandoff(projectId, now, actor.Subject, actor.Email, actor.Name);

@@ -14,7 +14,7 @@ Google identifica al usuario mediante el **Subject (`sub`)**, nunca por email o 
 
 Las membresías V1 provienen de configuración: `Authentication:CommercialAdvisorSubjects` es una lista explícita de asesores; `BudgetsAssigneeSubject`, `CommercialHeadSubject`, `AccountingAssigneeSubject` y `ManagementSubject` asignan sus respectivos roles. Una cuenta puede poseer varios, pero cada request operacional debe enviar **`X-SnG-Active-Role`** con uno que realmente posea. Sin autenticación válida se responde 401; sin área, con un valor inválido o con un rol ajeno, 403. No hay tabla Users/UserRoles, passwords ni tokens propios.
 
-Los roles activos implementados son `CommercialAdvisor`, `Budgets`, `CommercialHead`, `Accounting`, `Installation` y `Management`. Engineering, Production y Logistics están reservados en el contrato, sin experiencia operativa. Solo el Asesor activo crea clientes/proyectos y envía a Presupuestos un proyecto propio. Puede modificar documentos propios; el Jefe Comercial escribe únicamente en su revisión comercial. Presupuestos y Jefe consultan documentos de proyectos con su tarea asignada, incluso completada. Gerencia tiene lectura transversal, sin adquirir escritura por compartir Subject con el creador o el Jefe.
+Los roles activos implementados son `CommercialAdvisor`, `Budgets`, `CommercialHead`, `Accounting`, `Installation`, `Engineering` y `Management`. Production y Logistics están reservados en el contrato, sin experiencia operativa. Solo el Asesor activo crea clientes/proyectos y envía a Presupuestos un proyecto propio. Puede modificar documentos propios; el Jefe Comercial escribe únicamente en su revisión comercial. Presupuestos y Jefe consultan documentos de proyectos con su tarea asignada, incluso completada. Gerencia tiene lectura transversal, sin adquirir escritura por compartir Subject con el creador o el Jefe.
 
 La política BudgetsAssignee exige membresía y área activa Budgets. SG, preview, confirmación y envío a Comercial requieren también PrepareQuotation asignada al Subject actual; una tarea sin asignación o asignada a otro usuario no permite esas acciones. CommercialHead activo puede descargar el Excel operativo de proyectos con ReviewQuotation asignada y revisar/confirmar según workflow. El archivo final permite acceso al Jefe activo asignado o al Asesor activo propietario.
 
@@ -406,8 +406,7 @@ Al confirmar Radicar medidas, todas las estructuras vigentes deben estar medidas
 al menos un documento vigente. Se congelan el snapshot y los IDs exactos de los archivos,
 se registra actor/fecha y se completa la tarea en una transacción. No se admiten cambios posteriores.
 Gerencia consulta checklist, progreso, historial y radicación sin escritura. El expediente muestra
-estos datos también después de recargar. La radicación conserva el contrato para Ingeniería;
-no crea tareas de Ingeniería ni implementa Acta de Vanos o extracción automática de medidas.
+estos datos también después de recargar. La radicación inicia Ingeniería desde su snapshot oficial, sin extracción automática de medidas.
 
 La captura en obra guarda ancho, alto y sistema libre por estructura, separados de los datos
 originales cotizados. Cada cambio queda auditado con valores anteriores/nuevos y actor/UTC.
@@ -424,7 +423,7 @@ Para marcar Medido se requieren medidas reales y ficha completa, con campos cond
 aplicación. Los checks anteriores se conservan; desmarcarlos exige completar la ficha al remarcar.
 El croquis es opcional salvo modificación formal, independiente por unidad y editable con mouse, dedo o lápiz. Sus versiones
 conservan trazos editables y WEBP privado; cancelar no cambia el guardado. Retiro y radicación
-bloquean la edición. No se crean tareas de Ingeniería ni Actas de Vanos.
+bloquean la edición. El Acta de Vanos se elabora externamente y se carga en Ingeniería.
 
 Steel & Glass utiliza **milímetros como unidad de negocio para todas las longitudes**. Instalación
 muestra y captura longitudes en mm, incluidas las referencias cotizadas. Los contratos existentes
@@ -458,6 +457,16 @@ A3 horizontal presenta hasta tres estructuras por página en orden comercial: cr
 imagen histórica de cotización y ficha técnica en mm. Incluye encabezado compacto, modificaciones
 y paginación; el texto extenso continúa en páginas identificadas sin recortes. Las imágenes ausentes
 y las fichas históricas incompletas se indican expresamente. Los PDFs ya radicados no cambian. Se descarga
-por Instalación asignada y Gerencia con los permisos del proyecto, como `Radicacion de medidas-[Nombre del proyecto].pdf` (nombre seguro, contenido histórico intacto). No se generan Actas de Vanos
-ni nuevas tareas de Ingeniería. Los snapshots anteriores permanecen intactos y no reciben un PDF
+por Instalación asignada y Gerencia con los permisos del proyecto, como `Radicacion de medidas-[Nombre del proyecto].pdf` (nombre seguro, contenido histórico intacto). No se genera automáticamente el Acta de Vanos; se crea la tarea de Ingeniería. Los snapshots anteriores permanecen intactos y no reciben un PDF
 reconstruido desde datos actuales.
+
+
+## Ingeniería: checklist y Acta de Vanos
+
+La radicación de Instalación crea y comienza «Elaborar Acta de Vanos», asignada al Google Subject configurado en `Authentication:EngineeringAssigneeSubject`. La ausencia de configuración bloquea la radicación con un error específico antes del cierre. Tarea, notificación, checklist, snapshot y reporte se confirman conjuntamente; un reintento no duplica trabajo.
+
+Cada unidad vigente del snapshot radicado conserva su ID, orden, medidas en mm, ficha, imágenes y croquis de solo lectura. Se incluyen adiciones y reintegradas, excluyendo las finalmente retiradas. Solo Ingeniería activa y asignada marca/desmarca cada estructura; el servidor guarda responsable, fecha UTC e historial, calcula el avance y detecta conflictos sin sobrescribir otros checks.
+
+El Acta se elabora externamente y se carga como PDF (máximo 25 MiB). Cada reemplazo conserva los bytes y metadatos de versiones anteriores, con descarga autenticada y verificación SHA-256. El cierre requiere todos los checks y un Acta vigente íntegra, además de confirmación humana: congela el snapshot final y documento, completa la tarea y concilia sus notificaciones existentes. No crea tareas ni notificaciones para otra área. Ingeniería no tiene SLA; conserva inicio, responsable y finalización para auditoría.
+
+Los expedientes ya radicados no reciben tareas por la migración. Su incorporación exige el procedimiento explícito descrito en README_TECHNICAL.md, sin modificar la radicación histórica.
