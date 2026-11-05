@@ -30,6 +30,26 @@ public sealed class InstallationTechnicalTests
         Assert.Equal(2.000m, row.ActualWidth); Assert.Equal(2.400m, row.ActualHeight);
     }
     [Fact]
+    public void BrowserIccVariantRejectsAnimationAlphaMetadataBadLengthsAndMismatchedDimensions()
+    {
+        var upload = BrowserSketchFixture.Upload(); MeasurementSketch.Validate(upload);
+        foreach (var (offset, value) in new (int, byte)[] { (20, 0x22), (20, 0x30), (20, 0x28), (20, 0), (21, 1), (24, 0), (27, 0), (30, (byte)'X'), (34, 255), (38, 255), (74, 0), (494, (byte)'X'), (508, 0) })
+        {
+            var bytes = upload.Webp.ToArray(); bytes[offset] = value;
+            Assert.Throws<SnG.Control.Application.Features.ProjectDocuments.DocumentException>(() => MeasurementSketch.Validate(upload with { Webp = bytes }));
+        }
+        var extra = upload.Webp.Concat(new byte[8]).ToArray();
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(extra.AsSpan(4), (uint)extra.Length - 8);
+        Assert.Throws<SnG.Control.Application.Features.ProjectDocuments.DocumentException>(() => MeasurementSketch.Validate(upload with { Webp = extra }));
+        foreach (var size in new[] { 29, 30, 37, 100, 494, upload.Webp.Length - 1 })
+        {
+            var truncated = upload.Webp[..size];
+            if (size >= 30) System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(truncated.AsSpan(4), (uint)size - 8);
+            Assert.Throws<SnG.Control.Application.Features.ProjectDocuments.DocumentException>(() => MeasurementSketch.Validate(upload with { Webp = truncated }));
+        }
+        MeasurementSketch.Validate(SketchFixture.Upload());
+    }
+    [Fact]
     public void InvalidOrContradictoryValuesAreRejectedAndDraftsAreExplicit()
     {
         var d = new InstallationTechnicalDetails("Confirmed", 1100, "Inside", "HingedDoor", "Outward", "Left", true, 100);

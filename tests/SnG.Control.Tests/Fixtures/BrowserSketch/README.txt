@@ -1,0 +1,1 @@
+Synthetic fixture, no customer data. Exported from SketchEditor using Edge Chromium, canvas.toBlob(image/webp, 0.9), 1200 x 900 opaque white canvas. Pen rectangle and inline annotation; editable v2 drawing accompanies exact browser WEBP bytes. Used to test validator, persistence and historical PDF rendering.

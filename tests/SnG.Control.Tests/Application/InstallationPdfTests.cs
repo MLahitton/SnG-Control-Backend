@@ -4,6 +4,25 @@ using SnG.Control.Infrastructure.Measurements;
 namespace SnG.Control.Tests.Application;
 public sealed class InstallationPdfTests
 {
+    [Fact]
+    public void RealBrowserExportValidatesAndRendersExactVersionWithoutChangingSnapshot()
+    {
+        var upload = SnG.Control.Tests.TestDoubles.BrowserSketchFixture.Upload();
+        MeasurementSketch.Validate(upload);
+        Assert.Equal(2, upload.Drawing.Version); Assert.Single(upload.Drawing.Strokes);
+        Assert.Equal("2000 mm · prueba de croquis", Assert.Single(upload.Drawing.Annotations!).Content);
+        using var decoded = SKBitmap.Decode(upload.Webp);
+        Assert.Equal(1200, decoded.Width); Assert.Equal(900, decoded.Height);
+        Assert.Equal("VP8X", System.Text.Encoding.ASCII.GetString(upload.Webp, 12, 4));
+        var version = Guid.NewGuid(); var snapshot = Sample(3);
+        snapshot = snapshot with { Structures = snapshot.Structures.Select(s => s with { SketchVersionId = version }).ToArray() };
+        var original = System.Text.Json.JsonSerializer.Serialize(snapshot);
+        var pdf = new InstallationPdfRenderer().Render(snapshot, new Dictionary<Guid, byte[]> { [version] = upload.Webp }, default);
+        Assert.Equal(1, PageCount(pdf)); Assert.DoesNotContain("/DCTDecode", System.Text.Encoding.Latin1.GetString(pdf));
+        Assert.Equal(original, System.Text.Json.JsonSerializer.Serialize(snapshot));
+        Save("browser-sketch", pdf);
+    }
+
     [SnG.Control.Tests.Quotations.FinancialSourceFact]
     public async Task HistoricalImageBytesSurviveExtractionStorageAndReportPreparation()
     {

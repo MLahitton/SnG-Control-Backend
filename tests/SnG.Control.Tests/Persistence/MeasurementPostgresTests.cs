@@ -110,8 +110,11 @@ public sealed class MeasurementPostgresTests
         Assert.Null(await Store(db).ReadSketchAsync(project.Id, Guid.NewGuid(), firstVersion, new("manager", SystemRole.Management), default));
         await Error("MeasurementSketchRateLimit", () => Store(db).ExecuteAsync(project.Id, sketchCommand with { RequestKey = Guid.NewGuid(), ExpectedRevision = state.Revision }, actor, default));
         clock.Now = clock.Now.AddSeconds(2);
-        await Execute(sketchCommand with { RequestKey = Guid.NewGuid(), ExpectedRevision = state.Revision });
+        await Execute(sketchCommand with { RequestKey = Guid.NewGuid(), ExpectedRevision = state.Revision, Sketch = BrowserSketchFixture.Upload() });
         var finalVersion = state.Structures.Single(s => s.Id == first.Id).SketchVersionId!.Value;
+        Assert.Equal(BrowserSketchFixture.Upload().Webp, await Store(db).ReadSketchImageAsync(project.Id, first.Id, finalVersion, new("manager", SystemRole.Management), default));
+        var savedSketch = await Store(db).ReadSketchAsync(project.Id, first.Id, finalVersion, new("installer", SystemRole.Installation), default);
+        Assert.Equal("2000 mm · prueba de croquis", Assert.Single(savedSketch!.Drawing.Annotations!).Content);
         var sibling = state.Structures.First(s => s.ItemId == first.ItemId && s.Id != first.Id);
         await Execute(new(Guid.NewGuid(), state.Revision, "RecordSketch", sibling.Id, Sketch: SketchFixture.Upload()));
         Assert.NotEqual(finalVersion, state.Structures.Single(s => s.Id == sibling.Id).SketchVersionId);
@@ -222,12 +225,14 @@ public sealed class MeasurementPostgresTests
         Assert.Single(state.History, h => h.Action == "Submit"); Assert.Equal(22, state.Snapshot!.Structures.Count);
         var report = await Store(db).ReadReportAsync(project.Id, state.SubmissionId!.Value, new("installer", SystemRole.Installation), default);
         Assert.NotNull(report);
+        Assert.Equal(finalVersion, state.Snapshot!.Structures.Single(s => s.Id == first.Id).SketchVersionId);
         Assert.Contains("/Width 213", System.Text.Encoding.Latin1.GetString(report.Bytes));
         Assert.Contains("/Height 417", System.Text.Encoding.Latin1.GetString(report.Bytes));
         Assert.Equal(commercialBytes, await storage.ReadAsync(imageExtraction.ImageStorageKey!, default));
         // The persisted PDF no longer depends on the commercial file.
         await storage.DeleteAsync(imageExtraction.ImageStorageKey!, default);
         Assert.StartsWith("%PDF", System.Text.Encoding.ASCII.GetString(report.Bytes, 0, 4));
+        Assert.Equal("Radicacion de medidas-Measurement synthetic.pdf", report.FileName);
         Assert.Equal(report.Bytes, (await Store(db).ReadReportAsync(project.Id, state.SubmissionId.Value, new("manager", SystemRole.Management), default))!.Bytes);
         Assert.Null(await Store(db).ReadReportAsync(Guid.NewGuid(), state.SubmissionId.Value, new("manager", SystemRole.Management), default));
         Assert.Null(await Store(db).ReadReportAsync(project.Id, state.SubmissionId.Value, new("other", SystemRole.Installation), default));
@@ -244,7 +249,7 @@ public sealed class MeasurementPostgresTests
         }
         var frozen = state.Snapshot.Structures.Single(s => s.Id == first.Id);
         Assert.Equal(CompleteTechnical(), frozen.Technical); Assert.Equal(finalVersion, frozen.SketchVersionId);
-        Assert.Equal(sketchCommand.Sketch.Webp, await Store(db).ReadSketchImageAsync(project.Id, first.Id, finalVersion, new("manager", SystemRole.Management), default));
+        Assert.Equal(BrowserSketchFixture.Upload().Webp, await Store(db).ReadSketchImageAsync(project.Id, first.Id, finalVersion, new("manager", SystemRole.Management), default));
         await Error("MeasurementsLocked", () => Store(db).ExecuteAsync(project.Id, sketchCommand with { RequestKey = Guid.NewGuid(), ExpectedRevision = state.Revision }, actor, default));
         Assert.Equal(1.2345m, frozen.ActualWidth); Assert.Equal(2.3456m, frozen.ActualHeight); Assert.Equal("Site custom system", frozen.ActualSystemText); Assert.Equal(first.ImageCatalogItemId, frozen.ImageCatalogItemId);
         Assert.Equal(1.4m, state.Snapshot.Structures.Single(s => s.Id == added.Id).ActualWidth); Assert.Equal(ids.Order(), state.Snapshot.DocumentIds.Order());

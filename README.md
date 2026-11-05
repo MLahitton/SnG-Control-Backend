@@ -458,6 +458,6 @@ A3 horizontal presenta hasta tres estructuras por página en orden comercial: cr
 imagen histórica de cotización y ficha técnica en mm. Incluye encabezado compacto, modificaciones
 y paginación; el texto extenso continúa en páginas identificadas sin recortes. Las imágenes ausentes
 y las fichas históricas incompletas se indican expresamente. Los PDFs ya radicados no cambian. Se descarga
-por Instalación asignada y Gerencia con los permisos del proyecto. No se generan Actas de Vanos
+por Instalación asignada y Gerencia con los permisos del proyecto, como `Radicacion de medidas-[Nombre del proyecto].pdf` (nombre seguro, contenido histórico intacto). No se generan Actas de Vanos
 ni nuevas tareas de Ingeniería. Los snapshots anteriores permanecen intactos y no reciben un PDF
 reconstruido desde datos actuales.

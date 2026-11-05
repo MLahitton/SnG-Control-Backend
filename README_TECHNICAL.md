@@ -1658,7 +1658,8 @@ Ficha técnica y croquis por unidad:
   normalizadas [0,1], proporción 4:3, hasta 200 trazos, 2000 puntos/trazo y 20000 puntos totales.
   Colores permitidos #111111/#0066cc/#cc2222, grosor 1–20 px del lienzo de referencia. Borrador
   pinta blanco sobre un fondo opaco. Límite JSON de trazos 1 MB; petición completa 2 MB;
-  WEBP 512 KB, RIFF/VP8 opaco sin animación/metadata, dimensiones verificadas. No hay SVG ni URLs.
+  WEBP 512 KB: VP8 simple histórico o VP8X + ICCP + VP8 opaco, sin animación, alfa ni EXIF/XMP. Se verifican tamaños, orden de bloques, perfil ICC y dimensiones del contenedor y fotograma; se conservan los bytes del navegador. No hay SVG ni URLs.
+  La descarga del reporte usa el nombre saneado `Radicacion de medidas-[Nombre del proyecto].pdf`, leído del proyecto autorizado; no cambia PDF, hash ni snapshot.
   El guardado valida contenedor/cabecera y límites; la generación del expediente decodifica también el WEBP y falla sin radicar si no es legible.
 - Cada guardado crea MeasurementSketchVersion inmutable con DrawingJson, SHA256, actor/UTC y
   revisión; WEBP usa IFileStorage en clave generada por servidor por proyecto/estructura/versión.

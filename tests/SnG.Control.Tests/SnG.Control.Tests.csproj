@@ -26,4 +26,8 @@
     <ProjectReference Include="..\..\src\Api\Api.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Fixtures\BrowserSketch\browser.webp" />
+    <EmbeddedResource Include="Fixtures\BrowserSketch\drawing.json" />
+  </ItemGroup>
 </Project>

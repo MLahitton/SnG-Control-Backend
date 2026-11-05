@@ -331,13 +331,15 @@ public sealed class EfMeasurementStore(SnGControlDbContext db, TaskTiming timing
     }
     public async Task<MeasurementReportFile?> ReadReportAsync(Guid id, Guid submissionId, ProjectReadScope scope, CancellationToken token)
     {
-        if (scope.Role is not (SystemRole.Installation or SystemRole.Management) || !await db.Projects.AsNoTracking().Where(scope.Filter(db.ProjectTasks)).AnyAsync(p => p.Id == id, token)) return null;
+        if (scope.Role is not (SystemRole.Installation or SystemRole.Management)) return null;
+        var projectName = await db.Projects.AsNoTracking().Where(scope.Filter(db.ProjectTasks)).Where(p => p.Id == id).Select(p => p.Name).SingleOrDefaultAsync(token);
+        if (projectName is null) return null;
         var report = await db.MeasurementReports.AsNoTracking().SingleOrDefaultAsync(r => r.ProjectId == id && r.SubmissionId == submissionId, token);
         if (report == null) return null;
         var snapshot = await db.MeasurementChecklists.AsNoTracking().Where(c => c.Id == report.ChecklistId && c.SubmissionId == submissionId).Select(c => c.SnapshotJson).SingleAsync(token);
         using var expected = JsonDocument.Parse(report.SnapshotCanonical); using var actual = JsonDocument.Parse(snapshot!);
         if (Hash(report.Pdf) != report.PdfSha256 || Hash(Encoding.UTF8.GetBytes(report.SnapshotCanonical)) != report.SnapshotSha256 || !JsonElement.DeepEquals(expected.RootElement, actual.RootElement)) throw new DocumentException(409, "MeasurementReportIntegrity");
-        return new(report.Pdf, $"toma-medidas-{submissionId:N}-v{report.Version}.pdf");
+        return new(report.Pdf, MeasurementReportName.ForProject(projectName));
     }
     public static async Task RequireUploadAsync(SnGControlDbContext db, Guid id, IReadOnlyList<ProjectTask> tasks, string subject, CancellationToken token)
     {

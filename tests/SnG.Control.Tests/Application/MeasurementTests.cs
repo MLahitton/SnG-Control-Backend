@@ -11,6 +11,21 @@ namespace SnG.Control.Tests.Application;
 
 public sealed class MeasurementTests
 {
+    [Theory]
+    [InlineData("Casa MDK", "Radicacion de medidas-Casa MDK.pdf")]
+    [InlineData("Ático norte", "Radicacion de medidas-Ático norte.pdf")]
+    [InlineData("../Casa\\Norte:*?<>|\"\r\n", "Radicacion de medidas-.._Casa_Norte_________.pdf")]
+    public void ReportNameIsReadableDeterministicAndSafe(string project, string expected)
+    {
+        Assert.Equal(expected, MeasurementReportName.ForProject(project));
+        Assert.Equal(MeasurementReportName.ForProject(project), MeasurementReportName.ForProject(project));
+    }
+    [Fact]
+    public void ReportNamePreservesExtensionAtMaximumLength()
+    {
+        var name = MeasurementReportName.ForProject(new string('a', 500));
+        Assert.Equal(200, name.Length); Assert.EndsWith(".pdf", name);
+    }
     private static readonly DateTime Now = new(2026, 11, 3, 12, 0, 0, DateTimeKind.Utc);
     [Theory]
     [InlineData(new[] { 1 }, 1)]
